@@ -53,7 +53,7 @@ with open(VERSION_FILE,'w' ) as f:
     f.write(version)
 
 with open('version.template.txt','r' ) as fr:
-    with open('version.txt','w' ) as f:
+    with open('version.pi.txt','w' ) as f:
         f.write(fr.read().replace('VER_TO_REPLACE',ver_num))
 
 print(version)
