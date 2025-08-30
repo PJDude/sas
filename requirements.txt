@@ -1,3 +1,4 @@
 pyinstaller
 numpy
 sounddevice
+pillow

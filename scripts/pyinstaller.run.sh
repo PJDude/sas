@@ -20,8 +20,11 @@ echo `python3 --version` > distro.info.txt
 echo pyinstaller `pyinstaller --version` >> distro.info.txt
 
 echo ''
+
 echo running-pyinstaller
-pyinstaller --strip --noconfirm --noconsole --clean --add-data="distro.info.txt:." --add-data="version.txt:." --add-data="../LICENSE:." --contents-directory=internal --distpath=$outdir --additional-hooks-dir=. --collect-binaries tkinterdnd2 --collect-data dateparser --optimize 2 ./sas.py
+#--onefile
+pyinstaller \
+     --strip --noconfirm --noconsole --clean --add-data="distro.info.txt:." --add-data="version.txt:." --add-data="../LICENSE:." --contents-directory=internal --distpath=$outdir --additional-hooks-dir=. --collect-binaries tkinterdnd2 --collect-data dateparser --optimize 2 ./sas.py
 
 echo ''
 echo packing
