@@ -263,6 +263,7 @@ class SimpleAudioSweeper:
     def save(self):
         #%Y_%m_%d_
         time_postfix=strftime('%H_%M_%S',localtime())
+        self.slower_update=True
         filename = asksaveasfilename(title = "Save Image",initialfile = f'sas_image_{time_postfix}.png',defaultextension=".png",filetypes=[("All Files","*.*"),("PNG Files","*.png")])
 
         if filename:
@@ -300,6 +301,8 @@ class SimpleAudioSweeper:
                     print("Unknown file type")
         else:
             print("Cancel")
+
+        self.slower_update=False
 
     def clear(self):
         self.canvas.delete("fline")
@@ -344,19 +347,27 @@ class SimpleAudioSweeper:
             else:
                 self.canvas.create_line(x, 0, x, self.canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (5, 2))
 
+        self.dbarray_modified=True
+
         self.scale_mod(self.current_log10freq)
         self.draw_db_grid()
 
     def db2y(self,db):
         return self.canvas_winfo_height - ( self.canvas_winfo_height*(db-self.dbmin_display)/self.dbrange_display )
 
+    slower_update=False
     def update_plot(self):
         try:
             self.draw_spectrum()
         except Exception as e:
             print("update_plot_2:",e)
 
-        self.root.after(10, self.update_plot)
+        #self.root.after_idle(self.update_plot)
+        if self.slower_update:
+            self.root.after(1,self.update_plot)
+        else:
+            self.root.after_idle(self.update_plot)
+
 
     dbarray_modified=False
 
@@ -439,6 +450,7 @@ class SimpleAudioSweeper:
         self.recording_var.set(True)
         self.recording_var_toggle()
 
+        self.slower_update=True
         for x in range(self.internal_samples_quant):
             logf=self.log10fmin_audio+x*flog_quant
 
@@ -449,6 +461,8 @@ class SimpleAudioSweeper:
             self.root.after(100)
 
         self.stop()
+
+        self.slower_update=False
 
         self.recording_var.set(False)
         self.recording_var_toggle()
