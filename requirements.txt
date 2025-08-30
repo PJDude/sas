@@ -1,0 +1,3 @@
+pyinstaller
+numpy
+sounddevice

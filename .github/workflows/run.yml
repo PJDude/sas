@@ -1,0 +1,266 @@
+name: win_lin_release
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions: read-all
+
+jobs:
+##########################################################################
+  win-pyinstaller-gen-version:
+    runs-on: windows-latest
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+
+    - name: python setup
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+        cache: 'pip'
+        check-latest: true
+
+    - name: pip upgrade
+      run: python -m pip install --upgrade pip
+
+    - name: install requirements
+      run: pip install -r requirements.txt
+
+    #####################################
+    - name: generate version number
+      working-directory: ./scripts
+      run: "version.gen.bat"
+      shell: cmd
+
+    - name: version upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: version
+        path: ./src/version.txt
+        if-no-files-found: error
+
+    #####################################
+    - name: convert icons to python source
+      working-directory: ./scripts
+      run: "icons.convert.bat"
+      shell: cmd
+
+    #####################################
+    - name: run pyinstaller
+      working-directory: ./scripts
+      run: "pyinstaller.run.bat"
+      shell: cmd
+
+    #####################################
+    - name: upload win pyinstaller distro
+      uses: actions/upload-artifact@v4
+      with:
+        name: pyinstaller-win
+        path: ./build-pyinstaller/sas.win.zip
+        if-no-files-found: error
+
+##########################################################################
+#  win-nuitka:
+#    needs: [win-pyinstaller-gen-version]
+#    runs-on: windows-latest
+
+#    steps:
+#    - name: checkout
+#      uses: actions/checkout@v4
+
+#    - name: python setup
+#      uses: actions/setup-python@v5
+#      with:
+#        python-version: "3.13"
+#        cache: 'pip'
+#        check-latest: true
+
+#    - name: pip upgrade
+#      run: python -m pip install --upgrade pip
+
+#    - name: install requirements
+#      run: pip install -r requirements.txt
+
+    #####################################
+#    - name: version download
+#      uses: actions/download-artifact@v4
+#      with:
+#        name: version
+#        path: ./src
+
+    #####################################
+#    - name: convert icons to python source
+#      working-directory: ./scripts
+#      run: "icons.convert.bat"
+#      shell: cmd
+
+    #####################################
+#    - name: run nuitka
+#      working-directory: ./scripts
+#      run: "nuitka.run.bat"
+#      shell: cmd
+
+    #####################################
+#    - name: upload win nuitka distro
+#      uses: actions/upload-artifact@v4
+#      with:
+#        name: nuitka-win
+#        path: ./build-nuitka/sas.win.zip
+#        if-no-files-found: error
+
+##########################################################################
+#  lin-nuitka:
+#    permissions: write-all
+#    needs: [win-nuitka]
+#    runs-on: ubuntu-20.04
+
+#    steps:
+#    - name: checkout
+#      uses: actions/checkout@v4
+
+#    - name: python setup
+#      uses: actions/setup-python@v5
+#      with:
+#        python-version: "3.13"
+#        cache: 'pip'
+#        check-latest: true
+
+#    - name: pip upgrade
+#      run: python -m pip install --upgrade pip
+
+#    - name: install requirements
+#      run: pip install -r requirements.txt
+
+#    - name: strip python binaries
+#      run: find $pythonLocation -name *.so* -type f -exec strip {} \;
+
+    #####################################
+#    - name: version download
+#      uses: actions/download-artifact@v4
+#      with:
+#        name: version
+#        path: ./src
+
+    #####################################
+#    - name: convert icons to python source
+#      working-directory: ./scripts
+#      run: bash "icons.convert.sh"
+
+    #####################################
+#    - name: run nuitka
+#      working-directory: ./scripts
+#      run: bash "nuitka.run.sh"
+
+
+    #####################################
+#    - name: upload lin distro
+#      uses: actions/upload-artifact@v4
+#      with:
+#        name: nuitka-lin
+#        path: ./build-nuitka/sas.lin.zip
+#        if-no-files-found: error
+
+##########################################################################
+  lin-pyinstaller:
+    permissions: write-all
+    needs: [win-pyinstaller-gen-version]
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+
+    - name: python setup
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+        cache: 'pip'
+        check-latest: true
+
+    - name: pip upgrade
+      run: python -m pip install --upgrade pip
+
+    - name: install requirements
+      run: pip install -r requirements.txt
+
+    - name: strip python binaries
+      run: find $pythonLocation -name *.so* -type f -exec strip {} \;
+
+    #####################################
+    - name: version download
+      uses: actions/download-artifact@v4
+      with:
+        name: version
+        path: ./src
+
+    - name: convert icons to python source
+      working-directory: ./scripts
+      run: bash "icons.convert.sh"
+
+    #####################################
+    - name: run pyinstaller
+      working-directory: ./scripts
+      run: bash "pyinstaller.run.sh"
+
+    #####################################
+    - name: upload lin distro
+      uses: actions/upload-artifact@v4
+      with:
+        name: pyinstaller-lin
+        path: ./build-pyinstaller/sas.lin.zip
+        if-no-files-found: error
+
+    #####################################
+    - name: version read
+      id: version
+      run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
+
+    - name: rename linux distro
+      run: mv ./build-pyinstaller/sas.lin.zip ./sas.${{ steps.version.outputs.version }}.linux.portable.zip
+
+    #####################################
+    - name: download windows pyinstaller distro
+      uses: actions/download-artifact@v4
+      with:
+        name: pyinstaller-win
+        path: ./
+
+    - name: rename windows distro
+      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.windows.portable.zip
+
+    #####################################
+#    - name: download windows nuitka distro
+#      uses: actions/download-artifact@v4
+#      with:
+#        name: nuitka-win
+#        path: ./
+
+#    - name: rename windows distro
+#      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.windows.nuitka.portable.zip
+
+
+    #####################################
+#    - name: download linux nuitka distro
+#      uses: actions/download-artifact@v4
+#      with:
+#        name: nuitka-lin
+#        path: ./
+
+#    - name: rename linux distro
+#      run: mv ./sas.lin.zip ./sas.${{ steps.version.outputs.version }}.linux.nuitka.portable.zip
+
+    #####################################
+    - name: Create GitHub release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: sas ${{ steps.version.outputs.version }}
+        draft: true
+        prerelease: true
+        files: |
+            sas.${{ steps.version.outputs.version }}.lin.portable.zip
+            sas.${{ steps.version.outputs.version }}.win.portable.zip
