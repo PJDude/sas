@@ -49,13 +49,20 @@ from images import image
 
 windows = bool(os_name=='nt')
 
+f_current=0
+
+def status_set_frequency():
+    status_var.set(str(round(f_current))+ ' Hz ' + ("🎵" if stream_out_playing else "") )
+
 def on_mouse_move(event):
     if not sweeping:
         logf=xpixel_to_logf(event.x)
 
         if logf<logf_max_audio and logf>logf_min_audio:
             change_logf(logf)
-            status_var.set(str(round(10**logf))+ ' Hz')
+            status_set_frequency()
+            global f_current
+            f_current=10**logf
 
 def recording_start():
     global recording
@@ -66,6 +73,7 @@ def on_mouse_press(event):
     sweeping=False
 
     start_out()
+    status_set_frequency()
 
     global record_after
     record_after=root.after(200,recording_start)
@@ -77,10 +85,12 @@ def on_mouse_release(event):
     global recording
     recording=False
 
+
     global sweeping
     sweeping=False
 
     stop_out()
+    status_set_frequency()
 
 def save_csv():
     global slower_update
@@ -369,8 +379,10 @@ exiting=False
 def close_app():
     global recording
     recording=False
+
     global sweeping
     sweeping=False
+
     global exiting
     exiting=True
 
@@ -405,6 +417,12 @@ def audio_input_callback(indata, frames, time_info, status):
 
     except Exception as e:
         print("audio_input_callback_error:",e)
+
+def show_about():
+    pass
+
+def show_help():
+    pass
 
 VERSION_FILE='version.txt'
 
@@ -465,7 +483,7 @@ except Exception as e:
     print(e)
     sys_exit(1)
 
-bg_color = bg_color = style.lookup('TFrame', 'background')
+bg_color = style.lookup('TFrame', 'background')
 
 style.theme_use("dummy")
 style_map = style.map
@@ -526,15 +544,17 @@ cursor_db = canvas.create_line(0, y, logf_max, y, width=10, fill="white", tags="
 btns = Frame(root)
 btns.grid(row=4, column=0, pady=4,padx=4,sticky="news")
 
-button_sweep=Label(btns,textvariable=status_var,relief='sunken')
-button_sweep.grid(row=0, column=0, padx=5,sticky='news')
+Label(btns,textvariable=status_var,relief='sunken').grid(row=0, column=0, padx=5,sticky='news')
+Button(btns,image=ico['empty'],compound='center',text="▶", command=sweep).grid(row=0, column=1, padx=5)
 
 
-button_sweep=Button(btns,image=ico['empty'],compound='center',text="▶", command=sweep)
-button_sweep.grid(row=0, column=2, padx=5)
+Button(btns,image=ico['empty'],compound='center', text="🖺",  command=save_csv).grid(row=0, column=2, padx=5)
+Button(btns,image=ico['empty'],compound='center', text="🖻",  command=save_image).grid(row=0, column=3, padx=5)
 
-Button(btns,image=ico['empty'],compound='center', text="🖫",  command=save_csv).grid(row=0, column=14, padx=5)
-Button(btns,image=ico['empty'],compound='center', text="💾",  command=save_image).grid(row=0, column=15, padx=5)
+Label(btns,text='',image=ico['empty'],relief='flat').grid(row=0, column=4, padx=5,sticky='news')
+
+Button(btns,image=ico['empty'],compound='center', text="?",  command=show_help).grid(row=0, column=5, padx=5)
+Button(btns,image=ico['empty'],compound='center', text="⚖",  command=show_about).grid(row=0, column=6, padx=5)
 
 btns.columnconfigure(0,weight=1)
 
