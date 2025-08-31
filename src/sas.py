@@ -25,8 +25,8 @@
 #  SOFTWARE.
 #
 ####################################################################################
-from tkinter import Tk,Toplevel,Frame,DoubleVar, BooleanVar, StringVar, IntVar, Canvas, PhotoImage, LabelFrame
-from tkinter.ttk import Label,Button,Checkbutton,Style,Entry
+from tkinter import Tk,Toplevel,Frame, StringVar, Canvas, PhotoImage, LabelFrame
+from tkinter.ttk import Button,Checkbutton,Style,Entry
 from tkinter.filedialog import asksaveasfilename
 
 from numpy import mean as np_mean,square as np_square,float64, zeros, sin as np_sin
@@ -192,17 +192,20 @@ def root_configure(event=None):
 
         canvas_create_line=canvas.create_line
         canvas_create_text=canvas.create_text
-        for f,bold,lab in ((10,0,''),(20,1,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
+        for f,bold,lab in ((10,0,''),(20,2,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
                     (200,0,''),(300,0,''),(400,0,''),(500,0,''),(600,0,''),(700,0,''),(800,0,''),(900,0,''),(1000,1,'1kHz'),
                     (2000,0,''),(3000,0,''),(4000,0,''),(5000,0,''),(6000,0,''),(7000,0,''),(8000,0,''),(9000,0,''),(10000,1,'10kHz'),
-                    (20000,1,'20kHz'),(40000,1,'')):
+                    (20000,2,'20kHz'),(40000,1,'')):
             x=scale_logf_to_pixels(log10(f))
 
-            if bold:
-                canvas_create_line(x, 0, x, canvas_winfo_height, fill="black" , tags="grid",width=1)
+            if bold==2:
+                canvas_create_line(x, 0, x, canvas_winfo_height, fill="black" , tags="grid",width=1, dash = (6, 4))
+                canvas_create_text(x+2, canvas_winfo_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
+            elif bold==1:
+                canvas_create_line(x, 0, x, canvas_winfo_height, fill="black" , tags="grid",width=1, dash = (6, 4))
                 canvas_create_text(x+2, canvas_winfo_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
             else:
-                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (6, 4))
+                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
         for db,bold in ((10,0),(0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,1)):
             y=db2y(db)
@@ -211,7 +214,7 @@ def root_configure(event=None):
             if bold:
                 canvas_create_line(0, y, canvas_winfo_width,y, fill="black" , tags="grid",width=1)
             else:
-                canvas_create_line(0, y, canvas_winfo_width,y, fill="gray" , tags="grid",width=1,dash = (6, 4))
+                canvas_create_line(0, y, canvas_winfo_width,y, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
         global dbarray_modified
         dbarray_modified=True
@@ -687,7 +690,7 @@ cursor_db = canvas.create_line(0, y, logf_max, y, width=10, fill="white", tags="
 btns = Frame(root,bg=bg_color)
 btns.grid(row=4, column=0, pady=4,padx=4,sticky="news")
 
-Label(btns,textvariable=status_var,relief='sunken').grid(row=0, column=0, padx=5,sticky='news')
+Label(btns,textvariable=status_var,relief='sunken', anchor='nw',bd=1).grid(row=0, column=0, padx=5,sticky='news')
 
 sweep_button=Button(btns,image=ico['play'], command=sweep)
 sweep_button.grid(row=0, column=1, padx=5)
