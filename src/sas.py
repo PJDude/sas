@@ -25,8 +25,8 @@
 #  SOFTWARE.
 #
 ####################################################################################
-from tkinter import Tk,DoubleVar, BooleanVar, StringVar, IntVar, Canvas, PhotoImage
-from tkinter.ttk import Frame,Label,Button,Checkbutton,Style,Entry
+from tkinter import Tk,Frame,DoubleVar, BooleanVar, StringVar, IntVar, Canvas, PhotoImage
+from tkinter.ttk import Label,Button,Checkbutton,Style,Entry
 
 from sounddevice import InputStream,RawOutputStream
 from math import pi, sin, log10
@@ -247,7 +247,7 @@ def gui_update():
                     spectrum_line_data[i2:i2+2]=[x_min_audio+scale_factor_canvas_width_to_buckets_quant*i,db2y(db)]
 
                 canvas.delete("spectrum")
-                canvas.create_line(spectrum_line_data, fill="darkred" , width=2, smooth=0,tags="spectrum")
+                canvas.create_line(spectrum_line_data, fill="darkred" , width=2, smooth=1,tags="spectrum")
                 dbarray_modified=False
 
             global db_modified
@@ -421,7 +421,10 @@ def audio_input_callback(indata, frames, time_info, status):
 def show_about():
     pass
 
-def show_help():
+def go_to_homepage():
+    pass
+
+def show_license():
     pass
 
 VERSION_FILE='version.txt'
@@ -469,11 +472,18 @@ db_modified=True
 root = Tk()
 root.protocol("WM_DELETE_WINDOW", close_app)
 
-root.title(f"Small Audio Sweeper {VER_TIMESTAMP}")
+root.title(f"Simple Audio Sweeper {VER_TIMESTAMP}")
 
 style = Style()
 
 ico = { img:PhotoImage(data = img_data) for img,img_data in image.items() }
+
+ico_sas = ico['sas']
+ico_sas_small = ico['sas_small']
+
+main_icon_tuple = (ico_sas,ico_sas_small)
+
+root.iconphoto(True, *main_icon_tuple)
 
 theme_name='vista' if windows else 'clam',
 try:
@@ -541,20 +551,21 @@ canvas.bind("<ButtonRelease>", on_mouse_release)
 cursor_f = canvas.create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
 cursor_db = canvas.create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
 
-btns = Frame(root)
+btns = Frame(root,bg=bg_color)
 btns.grid(row=4, column=0, pady=4,padx=4,sticky="news")
 
 Label(btns,textvariable=status_var,relief='sunken').grid(row=0, column=0, padx=5,sticky='news')
-Button(btns,image=ico['empty'],compound='center',text="▶", command=sweep).grid(row=0, column=1, padx=5)
+Button(btns,image=ico['play'], command=sweep).grid(row=0, column=1, padx=5)
 
 
-Button(btns,image=ico['empty'],compound='center', text="🖺",  command=save_csv).grid(row=0, column=2, padx=5)
-Button(btns,image=ico['empty'],compound='center', text="🖻",  command=save_image).grid(row=0, column=3, padx=5)
+Button(btns,image=ico['csv'], command=save_csv).grid(row=0, column=2, padx=5)
+Button(btns,image=ico['save'], command=save_image).grid(row=0, column=3, padx=5)
 
 Label(btns,text='',image=ico['empty'],relief='flat').grid(row=0, column=4, padx=5,sticky='news')
 
-Button(btns,image=ico['empty'],compound='center', text="?",  command=show_help).grid(row=0, column=5, padx=5)
-Button(btns,image=ico['empty'],compound='center', text="⚖",  command=show_about).grid(row=0, column=6, padx=5)
+Button(btns,image=ico['home'], command=go_to_homepage).grid(row=0, column=5, padx=5)
+Button(btns,image=ico['license'], command=show_license).grid(row=0, column=5, padx=5)
+Button(btns,image=ico['about'],  command=show_about).grid(row=0, column=6, padx=5)
 
 btns.columnconfigure(0,weight=1)
 

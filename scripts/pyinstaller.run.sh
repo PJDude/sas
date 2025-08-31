@@ -24,7 +24,7 @@ echo ''
 echo running-pyinstaller
 #--onefile
 pyinstaller \
-     --strip --noconfirm --noconsole --clean --add-data="distro.info.txt:." --add-data="version.txt:." --add-data="../LICENSE:." --contents-directory=internal --distpath=$outdir --additional-hooks-dir=. --collect-binaries tkinterdnd2 --collect-data dateparser --optimize 2 ./sas.py
+     --strip --noconfirm --noconsole --clean --add-data="distro.info.txt:." --add-data="version.txt:." --add-data="../LICENSE:." --contents-directory=internal --distpath=$outdir --additional-hooks-dir=. --optimize 2 ./sas.py
 
 echo ''
 echo packing

@@ -1,4 +1,4 @@
-# <img src="./src/icons/sas.png" width=30> SAS (Small Audio Sweeper)
+# <img src="./src/icons/sas.png" width=30> SAS (Simple Audio Sweeper)
 **A little helper for your DIY audio projects**
 
 ### 💥 UNDER DEVELOPMENT ! 💥###
