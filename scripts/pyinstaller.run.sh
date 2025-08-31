@@ -26,9 +26,9 @@ echo "numpy       " `python3 -c "import numpy; print(numpy.__version__)"` >> dis
 echo ''
 
 echo running-pyinstaller
-#--onefile
-pyinstaller \
-     --strip --noconfirm --noconsole --clean --add-data="distro.info.txt:." --add-data="version.txt:." --add-data="../LICENSE:." --contents-directory=internal --distpath=$outdir --additional-hooks-dir=. --optimize 2 ./sas.py
+
+pyinstaller --onefile --noconsole --noconfirm --clean --optimize 2 --strip \
+     --add-data="distro.info.txt:." --add-data="version.txt:." --add-data="../LICENSE:." --contents-directory=internal --distpath=$outdir --additional-hooks-dir=. ./sas.py
 
 echo ''
 echo packing

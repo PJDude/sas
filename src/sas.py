@@ -202,7 +202,8 @@ def root_configure(event=None):
                 canvas_create_line(x, 0, x, canvas_winfo_height, fill="black" , tags="grid",width=1)
                 canvas_create_text(x+2, canvas_winfo_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
             else:
-                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (5, 2))
+                #canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (6, 4) if windows else (5, 2))
+                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (6, 4))
 
         for db,bold in ((10,0),(0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,1)):
             y=db2y(db)

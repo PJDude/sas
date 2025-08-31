@@ -26,7 +26,8 @@
 
 @echo.
 @echo running-pyinstaller
-pyinstaller --version-file=version.pi.txt --noconfirm --clean --add-data="distro.info.txt:." --add-data="version.txt;." --add-data="../LICENSE;." --icon=icon.ico --distpath=%OUTDIR% --windowed --contents-directory=internal --additional-hooks-dir=. --optimize 2 sas.py  || exit /b 2
+pyinstaller --onefile --windowed --noconfirm --clean --optimize 2^
+     --version-file=version.pi.txt --add-data="distro.info.txt:." --add-data="version.txt;." --add-data="../LICENSE;." --icon=icon.ico --distpath=%OUTDIR% --contents-directory=internal --additional-hooks-dir=. sas.py  || exit /b 2
 
 @echo.
 @echo packing
