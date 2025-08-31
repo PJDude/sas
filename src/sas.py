@@ -42,12 +42,15 @@ from pathlib import Path
 from time import strftime, localtime
 
 import os
-from os import name as os_name
+from os import name as os_name, system
 from sys import exit as sys_exit
 
 from images import image
 
 windows = bool(os_name=='nt')
+
+if windows:
+    from os import startfile
 
 f_current=0
 
@@ -422,12 +425,22 @@ def show_about():
     pass
 
 def go_to_homepage():
-    pass
+    try:
+        if windows:
+            status_var.set('opening: %s' % HOMEPAGE)
+            startfile(HOMEPAGE)
+        else:
+            status_var.set('executing: xdg-open %s' % HOMEPAGE)
+            system("xdg-open " + HOMEPAGE)
+    except Exception as e:
+        print('go_to_homepage error:',e)
 
 def show_license():
     pass
 
 VERSION_FILE='version.txt'
+
+HOMEPAGE='https://github.com/PJDude/sas'
 
 try:
     VER_TIMESTAMP=Path(os.path.join(os.path.dirname(__file__),VERSION_FILE)).read_text(encoding='ASCII').strip()
@@ -564,8 +577,8 @@ Button(btns,image=ico['save'], command=save_image).grid(row=0, column=3, padx=5)
 Label(btns,text='',image=ico['empty'],relief='flat').grid(row=0, column=4, padx=5,sticky='news')
 
 Button(btns,image=ico['home'], command=go_to_homepage).grid(row=0, column=5, padx=5)
-Button(btns,image=ico['license'], command=show_license).grid(row=0, column=5, padx=5)
-Button(btns,image=ico['about'],  command=show_about).grid(row=0, column=6, padx=5)
+Button(btns,image=ico['license'], command=show_license).grid(row=0, column=6, padx=5)
+Button(btns,image=ico['about'],  command=show_about).grid(row=0, column=7, padx=5)
 
 btns.columnconfigure(0,weight=1)
 
