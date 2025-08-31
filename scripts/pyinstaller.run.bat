@@ -31,4 +31,4 @@ pyinstaller --onefile --windowed --noconfirm --clean --optimize 2^
 
 @echo.
 @echo packing
-powershell Compress-Archive %OUTDIR%\sas %OUTDIR%\sas.win.zip
+powershell Compress-Archive %OUTDIR%\sas.exe %OUTDIR%\sas.win.zip
