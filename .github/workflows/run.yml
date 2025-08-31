@@ -218,7 +218,7 @@ jobs:
       run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
 
     - name: rename linux distro
-      run: mv ./build-pyinstaller/sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.portable.zip
+      run: mv ./build-pyinstaller/sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.zip
 
     #####################################
     - name: download windows pyinstaller distro
@@ -228,7 +228,7 @@ jobs:
         path: ./
 
     - name: rename windows distro
-      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.portable.zip
+      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.zip
 
     #####################################
 #    - name: download windows nuitka distro
@@ -238,7 +238,7 @@ jobs:
 #        path: ./
 
 #    - name: rename windows distro
-#      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.nuitka.portable.zip
+#      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.nuitka.zip
 
 
     #####################################
@@ -249,7 +249,7 @@ jobs:
 #        path: ./
 
 #    - name: rename linux distro
-#      run: mv ./sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.nuitka.portable.zip
+#      run: mv ./sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.nuitka.zip
 
     #####################################
     - name: Create GitHub release
@@ -259,8 +259,8 @@ jobs:
       with:
         tag_name: ${{ steps.version.outputs.version }}
         name: sas ${{ steps.version.outputs.version }}
-        draft: true
+        draft: false
         prerelease: true
         files: |
-            sas.${{ steps.version.outputs.version }}.lin.portable.zip
-            sas.${{ steps.version.outputs.version }}.win.portable.zip
+            sas.${{ steps.version.outputs.version }}.lin.zip
+            sas.${{ steps.version.outputs.version }}.win.zip
