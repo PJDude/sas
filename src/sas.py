@@ -25,8 +25,8 @@
 #  SOFTWARE.
 #
 ####################################################################################
-from tkinter import Tk,DoubleVar, BooleanVar, IntVar, Canvas, PhotoImage
-from tkinter.ttk import Frame,Label,Scale,Button,Checkbutton,Radiobutton,Style,Entry
+from tkinter import Tk,DoubleVar, BooleanVar, StringVar, IntVar, Canvas, PhotoImage
+from tkinter.ttk import Frame,Label,Button,Checkbutton,Style,Entry
 
 from sounddevice import InputStream,RawOutputStream
 from math import pi, sin, log10
@@ -63,16 +63,16 @@ VER_TIMESTAMP = get_ver_timestamp()
 
 class SimpleAudioSweeper:
     fmin,fini,fmax=10,442,40000
-    fmin_audio,fmax_audio=20,20000
+    fmin_audio,fmax_audio=fmin,20000
 
-    log10fmin,log10fini,log10fmax=log10(fmin),log10(fini),log10(fmax)
-    log10fmin_audio,log10fmax_audio=log10(fmin_audio),log10(fmax_audio)
+    logf_min,logf_ini,logf_max=log10(fmin),log10(fini),log10(fmax)
+    logf_min_audio,logf_max_audio=log10(fmin_audio),log10(fmax_audio)
 
     two_pi = pi+pi
     frequency_buckets_quant=256
 
-    log10fmax_m_log10fmin = log10fmax-log10fmin
-    log10fmax_audio_m_log10fmin_audio = log10fmax_audio-log10fmin_audio
+    logf_max_m_logf_min = logf_max-logf_min
+    logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
     dbmin_display=dbmin=-90.0
     dbinit=-50.0
@@ -107,7 +107,6 @@ class SimpleAudioSweeper:
         except Exception as e:
             print("cannot set theme - setting default")
             print(e)
-            #self.cfg.set(CFG_THEME,self.default_theme)
             sys_exit(1)
 
         bg_color = self.bg_color = style.lookup('TFrame', 'background')
@@ -153,61 +152,44 @@ class SimpleAudioSweeper:
         root.rowconfigure(1, weight=1)
         root.columnconfigure(0, weight=1)
 
-        self.log10freq_var = DoubleVar(value=self.log10fini)
-        self.recording_var = BooleanVar(value=False)
-        self.mode_var = IntVar(value=0)
+        self.status_var = StringVar(value='Click and hold the mouse button on the spectrum graph...')
 
-        self.log10freq_var_get=self.log10freq_var.get
-        self.log10freq_var_set=self.log10freq_var.set
-
-        self.slider = Scale(root, from_=self.log10fmin, to=self.log10fmax, variable=self.log10freq_var, command=self.scale_mod)
-        self.slider.grid(row=0, column=0, sticky="news", padx=10,pady=3)
+        self.recording=False
+        self.sweeping=False
 
         self.canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=self.bg_color)
-        self.canvas.grid(row=1, column=0, sticky="news", padx=20,pady=3)
+        self.canvas.grid(row=1, column=0, sticky="news", padx=4,pady=4)
 
-        self.cursor_f = self.canvas.create_line(self.log10fini, 0, self.log10fini, y, width=2, fill="white", tags="cursor")
-        self.cursor_db = self.canvas.create_line(0, y, self.log10fmax, y, width=10, fill="white", tags="cursor")
+        self.canvas.bind("<Motion>", self.on_mouse_move)
+        self.canvas.bind("<ButtonPress>", self.on_mouse_press)
+        self.canvas.bind("<ButtonRelease>", self.on_mouse_release)
+
+        self.cursor_f = self.canvas.create_line(self.logf_ini, 0, self.logf_ini, y, width=2, fill="white", tags="cursor")
+        self.cursor_db = self.canvas.create_line(0, y, self.logf_max, y, width=10, fill="white", tags="cursor")
 
         btns = Frame(root)
-        btns.grid(row=4, column=0, pady=10,sticky="ewns")
+        btns.grid(row=4, column=0, pady=4,padx=4,sticky="news")
 
-        Radiobutton(btns,text="Manual Frequency", variable=self.mode_var, value=0, command=self.mode_set).grid(row=0, column=0, padx=5)
-        self.button_play=Button(btns,image=self_ico['empty'],compound='center', text="▶", command=self.start_out)
-        self.button_play.grid(row=0, column=1, padx=5)
+        self.button_sweep=Label(btns,textvariable=self.status_var,relief='sunken')
+        self.button_sweep.grid(row=0, column=0, padx=5,sticky='news')
 
-        self.button_stop=Button(btns,image=self_ico['empty'],compound='center', text="⏹", command=self.stop_out)
-        self.button_stop.grid(row=0, column=2, padx=5)
 
-        self.cb_rec=Checkbutton(btns, text="Rec",  variable=self.recording_var,width=3,command=self.recording_var_toggle)
-        self.cb_rec.grid(row=0, column=3, padx=5)
-
-        Radiobutton(btns,text="Frequency Sweep", variable=self.mode_var, value=1, command=self.mode_set).grid(row=0, column=6, padx=5)
         self.button_sweep=Button(btns,image=self_ico['empty'],compound='center',text="▶", command=self.sweep)
-        self.button_sweep.grid(row=0, column=7, padx=5)
-
-        Radiobutton(btns,text="FFT", variable=self.mode_var, value=2, command=self.mode_set,state='disabled').grid(row=0, column=10, padx=5)
+        self.button_sweep.grid(row=0, column=2, padx=5)
 
         Button(btns,image=self_ico['empty'],compound='center', text="🖫",  command=self.save_csv).grid(row=0, column=14, padx=5)
         Button(btns,image=self_ico['empty'],compound='center', text="💾",  command=self.save_image).grid(row=0, column=15, padx=5)
 
-        self.recording_var_toggle()
-
-        btns.columnconfigure(4,weight=1)
-        btns.columnconfigure(9,weight=1)
-        btns.columnconfigure(13,weight=1)
+        btns.columnconfigure(0,weight=1)
 
         self.samplerate = 44100
         self.phase = 0.0
 
         self.two_pi_by_samplerate = self.two_pi/self.samplerate
 
-        self.current_log10freq=self.log10fini
-        self.current_log10freq_scalex=self.scalex(self.current_log10freq)
+        self.current_logf=self.logf_ini
 
         self.current_freq = self.fini
-
-        self.slider.set(self.log10fini)
 
         self.stream_in = InputStream( samplerate=self.samplerate, channels=1, dtype="float32", blocksize=self.blocksize_in, callback=self.audio_input_callback, latency="low" )
         self.stream_out = RawOutputStream( samplerate=self.samplerate, channels=1,dtype='float32', blocksize=self.blocksize_out, callback=self.audio_output_callback, latency="low" )
@@ -223,45 +205,28 @@ class SimpleAudioSweeper:
 
         self.stream_in.start()
 
-    def mode_set(self):
-        mode=self.mode_var.get()
+    def on_mouse_move(self,event):
+        if not self.sweeping:
+            logf=self.xpixel_to_logf(event.x)
 
-        if mode==0:
-            self.slider.configure(state='normal')
-            self.log10freq_var_set(self.log10fini)
-            self.scale_mod(self.log10fini)
-            self.button_play.configure(state='normal')
-            self.button_stop.configure(state='normal')
-            self.cb_rec.configure(state='normal')
-            self.button_sweep.configure(state='disabled')
+            if logf<self.logf_max_audio:
+                self.scale_mod(logf)
+                self.status_var.set(str(round(10**logf))+ ' Hz')
 
-        elif mode==1:
-            self.slider.configure(state='disabled')
-            self.log10freq_var_set(self.log10fmin_audio)
-            self.scale_mod(self.log10fmin_audio)
-            self.button_play.configure(state='disabled')
-            self.button_stop.configure(state='disabled')
-            self.cb_rec.configure(state='disabled')
-            self.button_sweep.configure(state='normal')
-            self.stop_out()
+    def recording_start(self):
+        self.recording=True
 
-        elif mode==2:
-            self.slider.configure(state='disabled')
-            self.log10freq_var_set(self.log10fmin_audio)
-            self.scale_mod(self.log10fmin_audio)
-            self.button_play.configure(state='disabled')
-            self.button_stop.configure(state='disabled')
-            self.cb_rec.configure(state='disabled')
-            self.button_sweep.configure(state='disabled')
-            self.stop_out()
+    def on_mouse_press(self,event):
+        self.sweeping=False
+        self.start_out()
+        self.record_after=self.root.after(200,self.recording_start)
 
-        else:
-            print("unknown mode:",mode)
-            self.slider.configure(state='disabled')
+    def on_mouse_release(self,event):
+        self.root.after_cancel(self.record_after)
+        self.recording=False
+        self.sweeping=False
 
-    def recording_var_toggle(self):
-        self.recording=self.recording_var.get()
-        #print(f'{self.recording=}')
+        self.stop_out()
 
     def save_csv(self):
         self.slower_update=True
@@ -271,6 +236,10 @@ class SimpleAudioSweeper:
             print("save_csv:",filename)
 
         self.slower_update=False
+
+        for i,db in enumerate(self.internal_dbarray):
+            logf=self.scale_bucket_to_log_frequency(i)
+            print(i,10**logf,db)
 
     def save_image(self):
         self.slower_update=True
@@ -332,8 +301,8 @@ class SimpleAudioSweeper:
             canvas_winfo_width=self.canvas_winfo_width=canvas.winfo_width()
             self.canvas_winfo_width_m20=canvas_winfo_width-20
 
-            self.scale_freq_factor_pixels=canvas_winfo_width/self.log10fmax_m_log10fmin
-            self.scale_freq_factor_buckets=self.frequency_buckets_quant/self.log10fmax_m_log10fmin
+            self.scale_freq_factor_pixels=canvas_winfo_width/self.logf_max_m_logf_min
+            self.scale_freq_factor_buckets=self.frequency_buckets_quant/self.logf_max_m_logf_min
             self.canvas_width_to_internal_samples_quant_factor=canvas_winfo_width/self.frequency_buckets_quant
 
             canvas.delete("grid")
@@ -341,7 +310,7 @@ class SimpleAudioSweeper:
             canvas_winfo_height=self.canvas_winfo_height=canvas.winfo_height()
             canvas_winfo_height_m20=canvas_winfo_height-20
 
-            self_scalex=self.scalex
+            self_scalex=self.scale_log_frequency_to_pixels
             for f,bold,lab in ((10,0,''),(20,1,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
                         (200,0,''),(300,0,''),(400,0,''),(500,0,''),(600,0,''),(700,0,''),(800,0,''),(900,0,''),(1000,1,'1kHz'),
                         (2000,0,''),(3000,0,''),(4000,0,''),(5000,0,''),(6000,0,''),(7000,0,''),(8000,0,''),(9000,0,''),(10000,1,'10kHz'),
@@ -369,7 +338,7 @@ class SimpleAudioSweeper:
             self.dbarray_modified=True
             self.db_modified=True
 
-            self.scale_mod(self.current_log10freq)
+            self.scale_mod(self.current_logf)
 
     def db2y(self,db):
         #return self.canvas_winfo_height - ( self.canvas_winfo_height*(db-self.dbmin_display)/self.dbrange_display )
@@ -425,17 +394,23 @@ class SimpleAudioSweeper:
             else:
                 self.root.after_idle(self.gui_update)
 
-    def scalex(self,x):
-        return self.scale_freq_factor_pixels * (x - self.log10fmin)
+    def xpixel_to_logf(self,x):
+        return x /self.scale_freq_factor_pixels + self.logf_min
 
-    def scale_freq(self,f):
-        return round(self.scale_freq_factor_buckets * (f - self.log10fmin))
+    def scale_log_frequency_to_pixels(self,logf):
+        return self.scale_freq_factor_pixels * (logf - self.logf_min)
 
-    def scale_mod(self,log10freq):
-        self.current_log10freq = float(log10freq)
-        x=self.current_log10freq_scalex=self.scalex(self.current_log10freq)
+    def scale_log_frequency_to_buckets(self,logf):
+        return round(self.scale_freq_factor_buckets * (logf - self.logf_min))
 
-        self.current_freq = 10**self.current_log10freq
+    def scale_bucket_to_log_frequency(self,i):
+        return i/self.scale_freq_factor_buckets + self.logf_min
+
+    def scale_mod(self,logf):
+        self.current_logf = logf
+        x=self.scale_log_frequency_to_pixels(logf)
+
+        self.current_freq = 10**logf
         self.phaseinc = self.two_pi_by_samplerate * self.current_freq
 
         y=self.canvas_winfo_height
@@ -474,31 +449,36 @@ class SimpleAudioSweeper:
     def sweep(self):
         self.stop_out()
         self.start_out()
-        self.current_log10freq=self.log10fmin
-        self.log10freq_var_set(self.log10fmin)
-        self.scale_mod(self.log10fmin)
+        self.current_logf=self.logf_min
+        self.scale_mod(self.logf_min)
 
-        flog_bucket=self.log10fmax_audio_m_log10fmin_audio/self.frequency_buckets_quant
+        flog_bucket=self.logf_max_audio_m_logf_min_audio/self.frequency_buckets_quant
 
-        self.recording_var.set(True)
-        self.recording_var_toggle()
+        self.recording=True
+        self.sweeping=True
 
         self.slower_update=True
         for x in range(self.frequency_buckets_quant):
-            logf=self.log10fmin_audio+x*flog_bucket
+            logf=self.logf_min_audio+x*flog_bucket
 
-            self.current_log10freq=logf
-            self.log10freq_var_set(logf)
+            self.current_logf=logf
             self.scale_mod(logf)
+            self.status_var.set('Sweeping (' + str(round(10**logf))+ ' Hz) ...')
+
             self.root.update()
             self.root.after(100)
+
+            if not self.sweeping:
+                break
+
+        self.sweeping=False
+        self.status_var.set('Sweeping done.')
 
         self.stop_out()
 
         self.slower_update=False
 
-        self.recording_var.set(False)
-        self.recording_var_toggle()
+        self.recording=False
 
     def start_out(self):
         if not self.stream_out_playing:
@@ -512,6 +492,8 @@ class SimpleAudioSweeper:
 
     exiting=False
     def close_app(self):
+        self.recording=False
+        self.sweeping=False
         self.exiting=True
 
     def audio_input_callback(self, indata, frames, time_info, status):
@@ -530,7 +512,8 @@ class SimpleAudioSweeper:
             self.db_modified=True
 
             if self.recording:
-                self.internal_dbarray[self.scale_freq(self.current_log10freq)]=self.db
+                #self.internal_dbarray[self.scale_freq(self.current_logf)]=self.db
+                self.internal_dbarray[round( self.scale_freq_factor_buckets * (self.current_logf - self.logf_min) )]=self.db
                 self.dbarray_modified=True
 
             self.record_blocks_index_to_replace+=1
