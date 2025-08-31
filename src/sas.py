@@ -25,27 +25,26 @@
 #  SOFTWARE.
 #
 ####################################################################################
-from tkinter import Tk,Frame,DoubleVar, BooleanVar, StringVar, IntVar, Canvas, PhotoImage
+from tkinter import Tk,Toplevel,Frame,DoubleVar, BooleanVar, StringVar, IntVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Label,Button,Checkbutton,Style,Entry
-
-from sounddevice import InputStream,RawOutputStream
-from math import pi, sin, log10
-
-from numpy import mean as np_mean,square as np_square,float64, zeros, sin as np_sin
-
-from PIL import ImageGrab,Image
-
 from tkinter.filedialog import asksaveasfilename
 
-from pathlib import Path
+from numpy import mean as np_mean,square as np_square,float64, zeros, sin as np_sin
+from sounddevice import InputStream,RawOutputStream
 
+from math import pi, sin, log10
+from PIL import ImageGrab,Image
+from pathlib import Path
 from time import strftime, localtime
 
 import os
 from os import name as os_name, system
+from os.path import join as path_join, normpath,dirname
+
 from sys import exit as sys_exit
 
 from images import image
+from dialogs import *
 
 windows = bool(os_name=='nt')
 
@@ -349,7 +348,7 @@ def sweep():
 
         current_logf=logf
         change_logf(logf)
-        status_var.set('Sweeping (' + str(round(10**logf))+ ' Hz) ...')
+        status_var.set('Sweeping (' + str(round(10**logf))+ ' Hz), Click on the graph to abort ...')
 
         root.update()
         root.after(100)
@@ -421,9 +420,6 @@ def audio_input_callback(indata, frames, time_info, status):
     except Exception as e:
         print("audio_input_callback_error:",e)
 
-def show_about():
-    pass
-
 def go_to_homepage():
     try:
         if windows:
@@ -435,8 +431,108 @@ def go_to_homepage():
     except Exception as e:
         print('go_to_homepage error:',e)
 
-def show_license():
-    pass
+dialog_shown=False
+
+def pre_show(new_widget=None):
+    global dialog_shown
+    dialog_shown=True
+
+def post_close():
+    global slower_update
+    slower_update=False
+
+    global dialog_shown
+    dialog_shown=False
+
+
+about_dialog_created = False
+def get_about_dialog():
+
+    global about_dialog
+
+    global about_dialog_created
+    if not about_dialog_created:
+
+        about_dialog = GenericDialog(root,main_icon_tuple,bg_color,'',pre_show=pre_show,post_close=post_close)
+
+        frame1 = LabelFrame(about_dialog.area_main,text='',bd=2,bg=bg_color,takefocus=False)
+        frame1.grid(row=0,column=0,sticky='news',padx=4,pady=(4,2))
+        about_dialog.area_main.grid_rowconfigure(1, weight=1)
+
+        text= f'\n\nSimple Audio Sweeper {VER_TIMESTAMP}\nAuthor: Piotr Jochymek\n\n{HOMEPAGE}\n\nPJ.soft.dev.x@gmail.com\n\n'
+
+        Label(frame1,text=text,bg=bg_color,justify='center').pack(expand=1,fill='both')
+
+        frame2 = LabelFrame(about_dialog.area_main,text='',bd=2,bg=bg_color,takefocus=False)
+        frame2.grid(row=1,column=0,sticky='news',padx=4,pady=(2,4))
+
+        lab_courier = Label(frame2,text='\n' + distro_info + '\n',bg=bg_color,justify='left')
+        lab_courier.pack(expand=1,fill='both')
+
+        try:
+            lab_courier.configure(font=('Courier', 10))
+        except:
+            try:
+                lab_courier.configure(font=('TkFixedFont', 10))
+            except:
+                pass
+
+        about_dialog_created = True
+
+    return about_dialog
+
+def about_wrapper():
+    global slower_update
+    slower_update=True
+
+    get_about_dialog().show()
+
+license_dialog_created=False
+def get_license_dialog():
+    global slower_update
+    slower_update=True
+
+    global license_dialog
+
+    global license_dialog_created
+    if not license_dialog_created:
+        try:
+            license_txt=Path(path_join(APP_DIR,'LICENSE')).read_text(encoding='ASCII')
+        except Exception as exception_lic:
+            print(exception_lic)
+            try:
+                license_txt=Path(path_join(dirname(APP_DIR),'LICENSE')).read_text(encoding='ASCII')
+            except Exception as exception_2:
+                print(exception_2)
+                sys_exit()
+
+        license_dialog = GenericDialog(root,(ico['license'],ico['license']),bg_color,'',pre_show=pre_show,post_close=post_close,min_width=700,min_height=400)
+
+        frame1 = LabelFrame(license_dialog.area_main,text='',bd=2,bg=bg_color,takefocus=False)
+        frame1.grid(row=0,column=0,sticky='news',padx=4,pady=4)
+        license_dialog.area_main.grid_rowconfigure(0, weight=1)
+
+        lab_courier=Label(frame1,text=license_txt,bg=bg_color,justify='center')
+        lab_courier.pack(expand=1,fill='both')
+
+        try:
+            lab_courier.configure(font=('Courier', 10))
+        except:
+            try:
+                lab_courier.configure(font=('TkFixedFont', 10))
+            except:
+                pass
+
+        license_dialog_created = True
+
+    return license_dialog
+
+def license_wrapper():
+    global slower_update
+    slower_update=True
+
+    get_license_dialog().show()
+
 
 VERSION_FILE='version.txt'
 
@@ -539,6 +635,29 @@ if windows:
     style_configure("TCombobox",padding=1)
 
 ######################################
+def widget_tooltip(widget,message,type_info_or_help=True):
+    widget.bind("<Motion>", lambda event : status_var.set(message))
+    widget.bind("<Leave>", lambda event : status_var.set(default_status))
+
+tooltip_show_after_widget=''
+
+#def motion_on_widget(message):
+#    status_var.set(message)
+
+#def widget_leave():
+
+######################################
+
+APP_FILE = normpath(__file__)
+APP_DIR = dirname(APP_FILE)
+
+try:
+    distro_info=Path(path_join(APP_DIR,'distro.info.txt')).read_text()
+except Exception as exception_1:
+    print(exception_1)
+    distro_info = 'Error. No distro.info.txt file.'
+else:
+    print(f'distro info:\n{distro_info}')
 
 #for initialization only
 scale_factor_logf_to_pixels=0
@@ -549,7 +668,8 @@ y=db2y(db)
 root.rowconfigure(1, weight=1)
 root.columnconfigure(0, weight=1)
 
-status_var = StringVar(value='Click and hold the mouse button on the spectrum graph...')
+default_status='Click and hold the mouse button on the spectrum graph...'
+status_var = StringVar(value=default_status)
 
 recording=False
 sweeping=False
@@ -568,17 +688,35 @@ btns = Frame(root,bg=bg_color)
 btns.grid(row=4, column=0, pady=4,padx=4,sticky="news")
 
 Label(btns,textvariable=status_var,relief='sunken').grid(row=0, column=0, padx=5,sticky='news')
-Button(btns,image=ico['play'], command=sweep).grid(row=0, column=1, padx=5)
 
+sweep_button=Button(btns,image=ico['play'], command=sweep)
+sweep_button.grid(row=0, column=1, padx=5)
 
-Button(btns,image=ico['csv'], command=save_csv).grid(row=0, column=2, padx=5)
-Button(btns,image=ico['save'], command=save_image).grid(row=0, column=3, padx=5)
+widget_tooltip(sweep_button,'Run frequency sweep.')
 
-Label(btns,text='',image=ico['empty'],relief='flat').grid(row=0, column=4, padx=5,sticky='news')
+Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=2, padx=5,sticky='news')
 
-Button(btns,image=ico['home'], command=go_to_homepage).grid(row=0, column=5, padx=5)
-Button(btns,image=ico['license'], command=show_license).grid(row=0, column=6, padx=5)
-Button(btns,image=ico['about'],  command=show_about).grid(row=0, column=7, padx=5)
+csv_button=Button(btns,image=ico['csv'], command=save_csv)
+csv_button.grid(row=0, column=3, padx=5)
+widget_tooltip(csv_button,'Save CSV file')
+
+image_button=Button(btns,image=ico['save'], command=save_image)
+image_button.grid(row=0, column=4, padx=5)
+widget_tooltip(image_button,'Save Image file')
+
+Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=5, padx=4,sticky='news')
+
+home_button=Button(btns,image=ico['home'], command=go_to_homepage)
+home_button.grid(row=0, column=6, padx=5)
+widget_tooltip(home_button,f'Visit project homepage ({HOMEPAGE})')
+
+license_button=Button(btns,image=ico['license'], command=license_wrapper )
+license_button.grid(row=0, column=7, padx=5)
+widget_tooltip(license_button,'Show License')
+
+about_button=Button(btns,image=ico['about'],  command=about_wrapper )
+about_button.grid(row=0, column=8, padx=5)
+widget_tooltip(about_button,'About')
 
 btns.columnconfigure(0,weight=1)
 
@@ -597,6 +735,7 @@ spectrum_buckets=[dbinit]*spectrum_buckets_quant
 spectrum_line_data=[0]*spectrum_buckets_quant*2
 
 root.bind('<Configure>', root_configure)
+root.bind('<F1>', lambda event : about_wrapper() )
 
 stream_in.start()
 

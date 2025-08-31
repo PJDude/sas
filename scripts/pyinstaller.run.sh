@@ -17,7 +17,10 @@ echo running-pyinstaller
 echo wd:`pwd`
 
 echo `python3 --version` > distro.info.txt
+echo '' >> distro.info.txt
 echo pyinstaller `pyinstaller --version` >> distro.info.txt
+echo "numpy       " `python3 -c "import numpy; print(numpy.__version__)"` >> distro.info.txt
+echo "sounddevice " `python3 -c "import sounddevice; print(sounddevice.__version__)"` >> distro.info.txt
 
 echo ''
 
