@@ -25,12 +25,13 @@
 #  SOFTWARE.
 #
 ####################################################################################
+
 from tkinter import Tk,Toplevel,Frame, StringVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Button,Checkbutton,Style,Entry
 from tkinter.filedialog import asksaveasfilename
 
-from numpy import mean as np_mean,square as np_square,float64, zeros, sin as np_sin
-from sounddevice import InputStream,RawOutputStream
+from numpy import mean as np_mean,square as np_square,float64,float32, zeros, sin as np_sin, arange, pi as np_pi
+from sounddevice import InputStream,OutputStream
 
 from math import pi, sin, log10
 from PIL import ImageGrab,Image
@@ -71,24 +72,20 @@ def recording_start():
     recording=True
 
 def on_mouse_press(event):
-    global sweeping
+    global sweeping,record_after
     sweeping=False
 
     start_out()
     status_set_frequency()
 
-    global record_after
     record_after=root.after(200,recording_start)
 
 def on_mouse_release(event):
-    global record_after
+    global record_after,recording,sweeping
     root.after_cancel(record_after)
 
-    global recording
     recording=False
 
-
-    global sweeping
     sweeping=False
 
     stop_out()
@@ -289,12 +286,11 @@ def scale_bucket_to_logf(i):
     return (i+0.5)/scale_factor_logf_to_buckets + logf_min_audio
 
 def change_logf(logf):
-    global current_logf
+    global current_logf, phase_step, generated_logf
     current_logf = logf
 
     f = 10**logf
 
-    global phase_step
     phase_step = two_pi_by_samplerate * f
 
     canvas.delete("freq")
@@ -304,47 +300,41 @@ def change_logf(logf):
 
     canvas.coords(cursor_f, x, 0, x, canvas_winfo_height)
 
+played_bucket=0
+played_bucket_callbacks=0
+
 def audio_output_callback(outdata, frames, time, status):
-    if status:
-        print("status:",status)
-
-    global phase
-    phase_local=phase
-
-    #print(blocksize_out,len(outdata))
-    #samples = zeros(blocksize_out,dtype="float64")
-    samples=zeros(blocksize_out,dtype="float32")
-
-    ##############################
+    global phase,phase_step
     for i in range(blocksize_out):
-        samples[i]=sin(phase_local)
+        outdata[i,0]=sin(phase)
+        phase += phase_step
+        phase %= two_pi
 
-        phase_local += phase_step
-        if phase_local > two_pi:
-            phase_local -= two_pi
+    bucket=scale_logf_to_buckets(log10(phase_step / two_pi_by_samplerate))
 
-    phase=phase_local
+    global played_bucket,played_bucket_callbacks
 
-    outdata[:] = samples.tobytes()
+    if bucket!=played_bucket:
+        played_bucket_callbacks=0
+        played_bucket=bucket
+
+    played_bucket_callbacks+=1
 
 def sweep():
     stop_out()
     start_out()
 
-    global current_logf
+    global current_logf,recording,sweeping,slower_update
     current_logf=logf_min
 
     change_logf(logf_min_audio)
 
     flog_bucket_width=logf_max_audio_m_logf_min_audio/spectrum_buckets_quant
 
-    global recording
     recording=True
 
-    global sweeping
     sweeping=True
 
-    global slower_update
     slower_update=True
     for i in range(spectrum_buckets_quant):
         logf=logf_min_audio+(i+0.3)*flog_bucket_width
@@ -354,7 +344,7 @@ def sweep():
         status_var.set('Sweeping (' + str(round(10**logf))+ ' Hz), Click on the graph to abort ...')
 
         root.update()
-        root.after(100)
+        root.after(int(1000*time_to_collect_sample*1.5))
 
         if not sweeping:
             break
@@ -397,28 +387,30 @@ def audio_input_callback(indata, frames, time_info, status):
     if status:
         return
     try:
-        global record_blocks_index_to_replace
+        global record_blocks,record_blocks_index_to_replace
+
         record_blocks[record_blocks_index_to_replace]=np_mean(np_square(indata[:, 0], dtype=float64))
+        record_blocks_index_to_replace+=1
+        record_blocks_index_to_replace%=record_blocks_len
 
         #db_curr = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
 
         global db_curr
         db_curr = 10 * log10( np_mean(record_blocks) + 1e-12)
-        global db_modified
 
+        global db_modified
         db_modified=True
 
         if recording:
-            i=round( scale_factor_logf_to_buckets * (current_logf - logf_min_audio) )
-            if i>=0 and i<spectrum_buckets_quant:
-                global spectrum_buckets
-                spectrum_buckets[i]=db_curr
+            if played_bucket_callbacks>record_blocks_len:
+                i=round( scale_factor_logf_to_buckets * (current_logf - logf_min_audio) )
+                if i>=0 and i<spectrum_buckets_quant:
+                    global spectrum_buckets
+                    spectrum_buckets[i]=db_curr
 
-                global dbarray_modified
-                dbarray_modified=True
+                    global dbarray_modified
+                    dbarray_modified=True
 
-        record_blocks_index_to_replace+=1
-        record_blocks_index_to_replace%=record_blocks_len
 
     except Exception as e:
         print("audio_input_callback_error:",e)
@@ -547,6 +539,8 @@ except Exception as e_ver:
     print(e_ver)
     VER_TIMESTAMP=''
 
+samplerate = 44100
+
 fmin,fini,fmax=10,442,40000
 fmin_audio,fmax_audio=20,20000
 
@@ -554,6 +548,8 @@ logf_min,logf_ini,logf_max=log10(fmin),log10(fini),log10(fmax)
 logf_min_audio,logf_max_audio=log10(fmin_audio),log10(fmax_audio)
 
 two_pi = pi+pi
+two_pi_np = np_pi+np_pi
+
 spectrum_buckets_quant=256
 
 logf_max_m_logf_min = logf_max-logf_min
@@ -571,10 +567,16 @@ dbrange_display=dbmax_display-dbmin_display
 canvas_winfo_height=1
 canvas_winfo_width=1
 
-blocksize_out = 512
+blocksize_out = 128
 blocksize_in = 128
 
-record_blocks_len=4
+time_to_collect_sample=0.125 #[s]
+#1/4s - 86 paczek
+#record_blocks_len=int((samplerate/4)/blocksize_in)
+
+# 43
+record_blocks_len=int((samplerate*time_to_collect_sample)/blocksize_in)
+
 record_blocks=[0]*record_blocks_len
 record_blocks_index_to_replace=0
 
@@ -637,19 +639,9 @@ if windows:
     #fix border problem ...
     style_configure("TCombobox",padding=1)
 
-######################################
 def widget_tooltip(widget,message,type_info_or_help=True):
     widget.bind("<Motion>", lambda event : status_var.set(message))
     widget.bind("<Leave>", lambda event : status_var.set(default_status))
-
-tooltip_show_after_widget=''
-
-#def motion_on_widget(message):
-#    status_var.set(message)
-
-#def widget_leave():
-
-######################################
 
 APP_FILE = normpath(__file__)
 APP_DIR = dirname(APP_FILE)
@@ -681,8 +673,10 @@ canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=bg_c
 canvas.grid(row=1, column=0, sticky="news", padx=4,pady=4)
 
 canvas.bind("<Motion>", on_mouse_move)
-canvas.bind("<ButtonPress>", on_mouse_press)
-canvas.bind("<ButtonRelease>", on_mouse_release)
+canvas.bind("<ButtonPress-1>", on_mouse_press)
+canvas.bind("<ButtonPress-3>", on_mouse_press)
+canvas.bind("<ButtonRelease-1>", on_mouse_release)
+#canvas.bind("<ButtonRelease-3>", on_mouse_release)
 
 cursor_f = canvas.create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
 cursor_db = canvas.create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
@@ -723,15 +717,14 @@ widget_tooltip(about_button,'About')
 
 btns.columnconfigure(0,weight=1)
 
-samplerate = 44100
 phase = 0.0
 
 two_pi_by_samplerate = two_pi/samplerate
 
 current_logf=logf_ini
 
+stream_out = OutputStream( samplerate=samplerate, channels=1, dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low" )
-stream_out = RawOutputStream( samplerate=samplerate, channels=1,dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_out_playing=False
 
 spectrum_buckets=[dbinit]*spectrum_buckets_quant
