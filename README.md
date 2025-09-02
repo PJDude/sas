@@ -10,7 +10,7 @@
 ![image info](./info/sas.gif)
 
 ## Usage:
-#####The microphone and speakers must be connected and configured. Audio from the speakers must be recorded by the microphone.#####
+#### The microphone and speakers must be connected and configured. Audio from the speakers must be recorded by the microphone. ####
 
 With mouse cursor on the frequency graph:
 
