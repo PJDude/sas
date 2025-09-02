@@ -33,7 +33,7 @@ from tkinter.filedialog import asksaveasfilename
 from numpy import mean as np_mean,square as np_square,float64,float32, zeros, sin as np_sin, arange, pi as np_pi
 from sounddevice import InputStream,OutputStream
 
-from math import pi, sin, log10
+from math import pi, sin, log10, ceil, floor
 from PIL import ImageGrab,Image
 from pathlib import Path
 from time import strftime, localtime
@@ -55,10 +55,13 @@ if windows:
 f_current=0
 
 def status_set_frequency():
-    status_var.set(str(round(f_current))+ ' Hz ' + ("🎵" if stream_out_playing else "") )
+    status_var.set(str(round(f_current))+ ' Hz')
+
+stream_out_playing=False
+lock_frequency=False
 
 def on_mouse_move(event):
-    if not sweeping:
+    if not sweeping and not lock_frequency:
         logf=xpixel_to_logf(event.x)
 
         if logf<logf_max_audio and logf>logf_min_audio:
@@ -71,25 +74,91 @@ def recording_start():
     global recording
     recording=True
 
-def on_mouse_press(event):
+def lock_frequency_on():
+    global lock_frequency
+    lock_frequency=True
+
+def lock_frequency_off():
+    global lock_frequency
+    lock_frequency=False
+
+record_after=None
+
+def on_mouse_press_1(event):
     global sweeping,record_after
     sweeping=False
 
-    start_out()
-    status_set_frequency()
+    if lock_frequency:
+        lock_frequency_off()
+        play_stop()
+        on_mouse_move(event)
+    else:
+        play_start()
+        status_set_frequency()
 
     record_after=root.after(200,recording_start)
 
-def on_mouse_release(event):
+def on_mouse_press_3(event):
+    global sweeping,record_after
+    sweeping=False
+
+    if lock_frequency:
+        lock_frequency_off()
+        play_stop()
+        on_mouse_move(event)
+    else:
+        lock_frequency_off()
+        on_mouse_move(event)
+        lock_frequency_on()
+
+        play_start()
+        status_set_frequency()
+
+        record_after=root.after(200,recording_start)
+
+def on_mouse_release_1(event):
+    global record_after,recording,sweeping
+    root.after_cancel(record_after)
+    lock_frequency_off()
+
+    recording=False
+    sweeping=False
+
+    play_stop()
+    status_set_frequency()
+
+def on_mouse_release_3(event):
     global record_after,recording,sweeping
     root.after_cancel(record_after)
 
     recording=False
-
     sweeping=False
 
-    stop_out()
-    status_set_frequency()
+def on_mouse_scroll_win(event):
+    fmod = int(-1 * (event.delta/120))
+    scroll_mod(fmod)
+
+def on_mouse_scroll_lin(event):
+    if event.num == 4:
+        fmod = -1
+    elif event.num == 5:
+        fmod = 1
+    scroll_mod(fmod)
+
+def scroll_mod(mod):
+    if lock_frequency:
+        global f_current
+        if mod>0:
+            f_new = ceil(f_current*1.01)
+        else:
+            f_new = floor(f_current*0.99)
+
+        if f_new>0:
+            log_f_new=log10(f_new)
+            if log_f_new<logf_max_audio and log_f_new>logf_min_audio:
+                change_logf(log_f_new)
+                status_set_frequency()
+                f_current=f_new
 
 def save_csv():
     global slower_update
@@ -101,6 +170,7 @@ def save_csv():
     if filename:
         try:
             with open(filename, 'w') as f:
+                f.write("# Created with " + title + " #\n")
                 f.write("frequency[Hz],level[dB]\n")
                 for i,db in enumerate(spectrum_buckets):
                     logf=scale_bucket_to_logf(i)
@@ -124,14 +194,34 @@ def save_image():
             name, ext = os.path.splitext(file)
 
             if ext.lower() in ['.gif', '.png']:
+                global no_update
+                no_update=True
+
                 x1 = root.winfo_rootx() + canvas.winfo_x()
                 y1 = root.winfo_rooty() + canvas.winfo_y()
                 x2 = x1 + canvas.winfo_width()
                 y2 = y1 + canvas.winfo_height()
 
+                canvas.delete("freq")
+
                 canvas.itemconfig('cursor', state='hidden')
+                canvas.itemconfig('cursor_freq', state='hidden')
+
+                canvas.delete("cursor_db_text")
+
                 root.lift()
                 root.attributes('-topmost', True)
+
+                canvas.create_text(39, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(39, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(39, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(41, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(41, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(41, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(40, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(40, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+
+                canvas.create_text(40, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill="black",tags=('mark'))
 
                 ###################################
                 root.update()
@@ -139,9 +229,14 @@ def save_image():
                 root.after(200)
 
                 ImageGrab.grab().crop((x1, y1, x2, y2)).save(filename)
+                canvas.delete('mark')
 
                 canvas.itemconfig('cursor', state='normal')
+
+                change_logf(current_logf)
+
                 root.attributes('-topmost', False)
+                no_update=False
                 ###################################
             else:
                 print("Unknown file type")
@@ -158,33 +253,25 @@ canvas_winfo_width_m20=1
 
 def root_configure(event=None):
     if not exiting:
-        global canvas_winfo_width
+        global canvas_winfo_width,x_min_audio,canvas_winfo_width_m20,scale_factor_logf_to_pixels,scale_factor_logf_to_buckets,scale_factor_canvas_width_to_buckets_quant,canvas_winfo_height,canvas_winfo_height_m20,dbarray_modified,db_modified
         canvas_winfo_width=canvas.winfo_width()
 
-        global x_min_audio
         x_min_audio=scale_logf_to_pixels(logf_min_audio)
         x_max_audio=scale_logf_to_pixels(logf_max_audio)
 
         canvas_winfo_width_audio=x_max_audio-x_min_audio
 
-        global canvas_winfo_width_m20
         canvas_winfo_width_m20=canvas_winfo_width-20
 
-        global scale_factor_logf_to_pixels
         scale_factor_logf_to_pixels=canvas_winfo_width/logf_max_m_logf_min
 
-        global scale_factor_logf_to_buckets
-        #scale_factor_logf_to_buckets=spectrum_buckets_quant/logf_max_m_logf_min
         scale_factor_logf_to_buckets=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
-        global scale_factor_canvas_width_to_buckets_quant
         scale_factor_canvas_width_to_buckets_quant=canvas_winfo_width_audio/spectrum_buckets_quant
 
         canvas.delete("grid")
 
-        global canvas_winfo_height
         canvas_winfo_height=canvas.winfo_height()
-        global canvas_winfo_height_m20
         canvas_winfo_height_m20=canvas_winfo_height-20
 
         canvas_create_line=canvas.create_line
@@ -196,10 +283,10 @@ def root_configure(event=None):
             x=scale_logf_to_pixels(log10(f))
 
             if bold==2:
-                canvas_create_line(x, 0, x, canvas_winfo_height, fill="black" , tags="grid",width=1, dash = (6, 4))
+                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray20" , tags="grid",width=1, dash = (6, 4))
                 canvas_create_text(x+2, canvas_winfo_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
             elif bold==1:
-                canvas_create_line(x, 0, x, canvas_winfo_height, fill="black" , tags="grid",width=1, dash = (6, 4))
+                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray20" , tags="grid",width=1, dash = (6, 4))
                 canvas_create_text(x+2, canvas_winfo_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
             else:
                 canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (2, 4))
@@ -209,14 +296,11 @@ def root_configure(event=None):
 
             canvas_create_text(6, y+4, text=str(db)+"dB", anchor="nw", font=("Arial", 8), tags="grid")
             if bold:
-                canvas_create_line(0, y, canvas_winfo_width,y, fill="black" , tags="grid",width=1)
+                canvas_create_line(0, y, canvas_winfo_width,y, fill="gray20" , tags="grid",width=1)
             else:
                 canvas_create_line(0, y, canvas_winfo_width,y, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
-        global dbarray_modified
         dbarray_modified=True
-
-        global db_modified
         db_modified=True
 
         change_logf(current_logf)
@@ -229,36 +313,36 @@ def gui_update():
     if exiting:
         stream_in.stop()
         stream_in.close()
-        stop_out()
+        play_stop()
         stream_out.close()
 
         root.withdraw()
         root.destroy()
         sys_exit(1)
+    elif no_update:
+        root.after(1,gui_update)
     else:
         try:
             canvas_width=canvas_winfo_width
 
-            global dbarray_modified
+            global dbarray_modified,db_modified
             if dbarray_modified:
-                global spectrum_line_data
-                #global spectrum_line
+                spectrum_line_data=[0]*spectrum_buckets_quant*2
 
                 for i,db in enumerate(spectrum_buckets):
                     i2=i+i
                     spectrum_line_data[i2:i2+2]=[x_min_audio+scale_factor_canvas_width_to_buckets_quant*i,db2y(db)]
 
                 canvas.delete("spectrum")
-                canvas.create_line(spectrum_line_data, fill="darkred" , width=2, smooth=1,tags="spectrum")
+                canvas.create_line(spectrum_line_data, fill="black" , width=1, smooth=1,tags="spectrum")
                 dbarray_modified=False
 
-            global db_modified
             if db_modified:
                 global db_curr
                 y=db2y(db_curr)
 
-                canvas.delete("db_text")
-                canvas.create_text(canvas_winfo_width_m20, y, text=str(round(db_curr))+"dB", anchor="center", font=("Arial", 8), tags=("db_text",'cursor'),fill="black")
+                canvas.delete("cursor_db_text")
+                canvas.create_text(canvas_winfo_width_m20, y, text=str(round(db_curr))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
 
                 canvas.coords(cursor_db,0, y, canvas_width, y)
 
@@ -282,7 +366,6 @@ def scale_logf_to_buckets(logf):
     return round(scale_factor_logf_to_buckets * (logf - logf_min_audio))
 
 def scale_bucket_to_logf(i):
-    #return i/scale_factor_logf_to_buckets + logf_min_audio
     return (i+0.5)/scale_factor_logf_to_buckets + logf_min_audio
 
 def change_logf(logf):
@@ -293,10 +376,11 @@ def change_logf(logf):
 
     phase_step = two_pi_by_samplerate * f
 
-    canvas.delete("freq")
+    canvas.delete("cursor_freq")
 
     x=scale_logf_to_pixels(logf)
-    cursor_f_text=canvas.create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags=('cursor','freq'))
+
+    cursor_f_text=canvas.create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags=('cursor_freq'))
 
     canvas.coords(cursor_f, x, 0, x, canvas_winfo_height)
 
@@ -321,8 +405,8 @@ def audio_output_callback(outdata, frames, time, status):
     played_bucket_callbacks+=1
 
 def sweep():
-    stop_out()
-    start_out()
+    play_stop()
+    play_start()
 
     global current_logf,recording,sweeping,slower_update
     current_logf=logf_min
@@ -332,7 +416,6 @@ def sweep():
     flog_bucket_width=logf_max_audio_m_logf_min_audio/spectrum_buckets_quant
 
     recording=True
-
     sweeping=True
 
     slower_update=True
@@ -352,65 +435,66 @@ def sweep():
     sweeping=False
     status_var.set('Sweeping done.')
 
-    stop_out()
+    play_stop()
 
     slower_update=False
 
     recording=False
 
-def start_out():
+def play_start():
     global stream_out_playing
     if not stream_out_playing:
         stream_out.start()
         stream_out_playing=True
+        canvas.itemconfig(cursor_f, fill='red')
 
-def stop_out():
+
+def play_stop():
     global stream_out_playing
     if stream_out_playing:
         stream_out.stop()
         stream_out_playing=False
+        canvas.itemconfig(cursor_f, fill='white')
 
 exiting=False
+no_update=False
+
 def close_app():
-    global recording
+    global recording,sweeping,exiting
     recording=False
-
-    global sweeping
     sweeping=False
-
-    global exiting
     exiting=True
 
 def audio_input_callback(indata, frames, time_info, status):
     #print("audio_input_callback",frames,time_info,status)
 
     if status:
+        print(status)
         return
+
     try:
-        global record_blocks,record_blocks_index_to_replace
+        global record_blocks,record_blocks_index_to_replace,db_curr,db_modified,spectrum_buckets,dbarray_modified
 
-        record_blocks[record_blocks_index_to_replace]=np_mean(np_square(indata[:, 0], dtype=float64))
-        record_blocks_index_to_replace+=1
-        record_blocks_index_to_replace%=record_blocks_len
+        this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
-        #db_curr = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
+        if recording or lock_frequency:
+            record_blocks[record_blocks_index_to_replace]=this_callback_mean
+            record_blocks_index_to_replace+=1
+            record_blocks_index_to_replace%=record_blocks_len
 
-        global db_curr
-        db_curr = 10 * log10( np_mean(record_blocks) + 1e-12)
+            #db_curr = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
+            db_curr = 10 * log10( np_mean(record_blocks) + 1e-12)
+        else:
+            db_curr = 10 * log10( this_callback_mean + 1e-12)
 
-        global db_modified
         db_modified=True
 
-        if recording:
+        if recording or lock_frequency:
             if played_bucket_callbacks>record_blocks_len:
                 i=round( scale_factor_logf_to_buckets * (current_logf - logf_min_audio) )
                 if i>=0 and i<spectrum_buckets_quant:
-                    global spectrum_buckets
                     spectrum_buckets[i]=db_curr
-
-                    global dbarray_modified
                     dbarray_modified=True
-
 
     except Exception as e:
         print("audio_input_callback_error:",e)
@@ -433,17 +517,12 @@ def pre_show(new_widget=None):
     dialog_shown=True
 
 def post_close():
-    global slower_update
+    global slower_update,dialog_shown
     slower_update=False
-
-    global dialog_shown
     dialog_shown=False
-
 
 about_dialog_created = False
 def get_about_dialog():
-
-    global about_dialog
 
     global about_dialog_created
     if not about_dialog_created:
@@ -487,8 +566,6 @@ def get_license_dialog():
     global slower_update
     slower_update=True
 
-    global license_dialog
-
     global license_dialog_created
     if not license_dialog_created:
         try:
@@ -527,7 +604,6 @@ def license_wrapper():
     slower_update=True
 
     get_license_dialog().show()
-
 
 VERSION_FILE='version.txt'
 
@@ -586,7 +662,8 @@ db_modified=True
 root = Tk()
 root.protocol("WM_DELETE_WINDOW", close_app)
 
-root.title(f"Simple Audio Sweeper {VER_TIMESTAMP}")
+title=f"Simple Audio Sweeper {VER_TIMESTAMP}"
+root.title(title)
 
 style = Style()
 
@@ -673,10 +750,17 @@ canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=bg_c
 canvas.grid(row=1, column=0, sticky="news", padx=4,pady=4)
 
 canvas.bind("<Motion>", on_mouse_move)
-canvas.bind("<ButtonPress-1>", on_mouse_press)
-canvas.bind("<ButtonPress-3>", on_mouse_press)
-canvas.bind("<ButtonRelease-1>", on_mouse_release)
-#canvas.bind("<ButtonRelease-3>", on_mouse_release)
+canvas.bind("<ButtonPress-1>", on_mouse_press_1)
+canvas.bind("<ButtonPress-3>", on_mouse_press_3)
+canvas.bind("<ButtonRelease-1>", on_mouse_release_1)
+canvas.bind("<ButtonRelease-3>", on_mouse_release_3)
+
+if windows:
+   canvas.bind("<MouseWheel>", on_mouse_scroll_win)
+else:
+    canvas.bind("<Button-4>", on_mouse_scroll_lin)
+    canvas.bind("<Button-5>", on_mouse_scroll_lin)
+
 
 cursor_f = canvas.create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
 cursor_db = canvas.create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
@@ -725,10 +809,8 @@ current_logf=logf_ini
 
 stream_out = OutputStream( samplerate=samplerate, channels=1, dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low" )
-stream_out_playing=False
 
 spectrum_buckets=[dbinit]*spectrum_buckets_quant
-spectrum_line_data=[0]*spectrum_buckets_quant*2
 
 root.bind('<Configure>', root_configure)
 root.bind('<F1>', lambda event : about_wrapper() )
