@@ -523,8 +523,9 @@ def post_close():
 
 about_dialog_created = False
 def get_about_dialog():
+    global slower_update,about_dialog_created,about_dialog
+    slower_update=True
 
-    global about_dialog_created
     if not about_dialog_created:
 
         about_dialog = GenericDialog(root,main_icon_tuple,bg_color,'',pre_show=pre_show,post_close=post_close)
@@ -563,10 +564,9 @@ def about_wrapper():
 
 license_dialog_created=False
 def get_license_dialog():
-    global slower_update
+    global slower_update, license_dialog, license_dialog_created
     slower_update=True
 
-    global license_dialog_created
     if not license_dialog_created:
         try:
             license_txt=Path(path_join(APP_DIR,'LICENSE')).read_text(encoding='ASCII')
