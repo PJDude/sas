@@ -9,6 +9,17 @@
 
 ![image info](./info/sas.gif)
 
+## Usage:
+#####The microphone and speakers must be connected and configured. Audio from the speakers must be recorded by the microphone.#####
+
+With mouse cursor on the frequency graph:
+
+- hold down the left mouse button to generate a specific frequency
+- right click (lock frequency)
+- use mouse wheel
+- run frequency sweep with action icon on the bottom
+
+
 ## Licensing
 - **Simple Audio Sweeper** is licensed under **[MIT license](./LICENSE)**
 
