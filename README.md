@@ -19,6 +19,7 @@ With mouse cursor on the frequency graph:
 - use mouse wheel
 - run frequency sweep with action icon on the bottom
 
+Ensure silence during analysis. Do not allow any sound other than that emitted by the speakers to be recorded. The obtained characteristics will be the result of the characteristics of the microphone, loudspeakers and other components in the audio path, so for example when analyzing an amplifier with loudspeakers, the microphone used must have better parameters than them.
 
 ## Licensing
 - **Simple Audio Sweeper** is licensed under **[MIT license](./LICENSE)**

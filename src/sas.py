@@ -30,7 +30,7 @@ from tkinter import Tk,Toplevel,Frame, StringVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Button,Checkbutton,Style,Entry
 from tkinter.filedialog import asksaveasfilename
 
-from numpy import mean as np_mean,square as np_square,float64,float32, zeros, sin as np_sin, arange, pi as np_pi
+from numpy import mean as np_mean,square as np_square,float64,float32
 from sounddevice import InputStream,OutputStream
 
 from math import pi, sin, log10, ceil, floor
@@ -473,7 +473,7 @@ def audio_input_callback(indata, frames, time_info, status):
         return
 
     try:
-        global record_blocks,record_blocks_index_to_replace,db_curr,db_modified,spectrum_buckets,dbarray_modified
+        global record_blocks,record_blocks_index_to_replace,record_blocks_short,record_blocks_index_to_replace_short,db_curr,db_modified,spectrum_buckets,dbarray_modified
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
@@ -485,7 +485,12 @@ def audio_input_callback(indata, frames, time_info, status):
             #db_curr = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
             db_curr = 10 * log10( np_mean(record_blocks) + 1e-12)
         else:
-            db_curr = 10 * log10( this_callback_mean + 1e-12)
+            record_blocks_short[record_blocks_index_to_replace_short]=this_callback_mean
+            record_blocks_index_to_replace_short+=1
+            record_blocks_index_to_replace_short%=record_blocks_len_short
+
+            #db_curr = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
+            db_curr = 10 * log10( np_mean(record_blocks_short) + 1e-12)
 
         db_modified=True
 
@@ -624,7 +629,6 @@ logf_min,logf_ini,logf_max=log10(fmin),log10(fini),log10(fmax)
 logf_min_audio,logf_max_audio=log10(fmin_audio),log10(fmax_audio)
 
 two_pi = pi+pi
-two_pi_np = np_pi+np_pi
 
 spectrum_buckets_quant=256
 
@@ -652,9 +656,13 @@ time_to_collect_sample=0.125 #[s]
 
 # 43
 record_blocks_len=int((samplerate*time_to_collect_sample)/blocksize_in)
+record_blocks_len_short=ceil(record_blocks_len/5)
 
 record_blocks=[0]*record_blocks_len
 record_blocks_index_to_replace=0
+
+record_blocks_short=[0]*record_blocks_len_short
+record_blocks_index_to_replace_short=0
 
 dbarray_modified=True
 db_modified=True
