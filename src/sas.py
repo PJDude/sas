@@ -212,16 +212,17 @@ def save_image():
                 root.lift()
                 root.attributes('-topmost', True)
 
-                canvas.create_text(39, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(39, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(39, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(41, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(41, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(41, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(40, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(40, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                x_offset=72
+                canvas.create_text(x_offset-1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(x_offset-1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(x_offset-1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(x_offset+1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(x_offset+1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(x_offset+1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(x_offset, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas.create_text(x_offset, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
 
-                canvas.create_text(40, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill="black",tags=('mark'))
+                canvas.create_text(x_offset, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill="black",tags=('mark'))
 
                 ###################################
                 root.update()
