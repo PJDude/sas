@@ -171,7 +171,7 @@ def save_csv():
         try:
             with open(filename, 'w') as f:
                 f.write("# Created with " + title + " #\n")
-                f.write("frequency[Hz],level[dB]\n")
+                f.write("frequency[Hz],level[dBFS]\n")
                 for i,db in enumerate(spectrum_buckets):
                     logf=scale_bucket_to_logf(i)
                     f.write(f"{round(100*(10**logf))/100},{round(1000*db)/1000}\n")
@@ -250,6 +250,7 @@ def clear():
 
 scale_factor_canvas_width_to_buckets_quant=1
 canvas_winfo_width_m20=1
+canvas_winfo_height_by_dbrange_display=0
 
 def root_configure(event=None):
     if not exiting:
@@ -274,6 +275,9 @@ def root_configure(event=None):
         canvas_winfo_height=canvas.winfo_height()
         canvas_winfo_height_m20=canvas_winfo_height-20
 
+        global canvas_winfo_height_by_dbrange_display
+        canvas_winfo_height_by_dbrange_display=canvas_winfo_height/dbrange_display
+
         canvas_create_line=canvas.create_line
         canvas_create_text=canvas.create_text
         for f,bold,lab in ((10,0,''),(20,2,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
@@ -291,10 +295,10 @@ def root_configure(event=None):
             else:
                 canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
-        for db,bold in ((10,0),(0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,1)):
+        for db,bold in ((10,0),(0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,0)):
             y=db2y(db)
 
-            canvas_create_text(6, y+4, text=str(db)+"dB", anchor="nw", font=("Arial", 8), tags="grid")
+            canvas_create_text(6, y+4, text=str(db)+"dBFS", anchor="nw", font=("Arial", 8), tags="grid")
             if bold:
                 canvas_create_line(0, y, canvas_winfo_width,y, fill="gray20" , tags="grid",width=1)
             else:
@@ -306,7 +310,7 @@ def root_configure(event=None):
         change_logf(current_logf)
 
 def db2y(db):
-    return canvas_winfo_height - ( canvas_winfo_height*(db-dbmin_display)/dbrange_display )
+    return canvas_winfo_height - ( canvas_winfo_height_by_dbrange_display*(db-dbmin_display) )
 
 slower_update=False
 def gui_update():
@@ -405,12 +409,13 @@ def audio_output_callback(outdata, frames, time, status):
     played_bucket_callbacks+=1
 
 def sweep():
-    play_stop()
-    play_start()
-
     global current_logf,recording,sweeping,slower_update
-    current_logf=logf_min
+    play_stop()
+    slower_update=True
 
+    root.update()
+
+    current_logf=logf_min
     change_logf(logf_min_audio)
 
     flog_bucket_width=logf_max_audio_m_logf_min_audio/spectrum_buckets_quant
@@ -418,7 +423,7 @@ def sweep():
     recording=True
     sweeping=True
 
-    slower_update=True
+    play_start()
     for i in range(spectrum_buckets_quant):
         logf=logf_min_audio+(i+0.3)*flog_bucket_width
 
@@ -447,7 +452,6 @@ def play_start():
         stream_out.start()
         stream_out_playing=True
         canvas.itemconfig(cursor_f, fill='red')
-
 
 def play_stop():
     global stream_out_playing
@@ -635,7 +639,7 @@ spectrum_buckets_quant=256
 logf_max_m_logf_min = logf_max-logf_min
 logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
-dbmin_display=dbmin=-90.0
+dbmin_display=dbmin=-100.0
 dbinit=-50.0
 dbmax_display=dbmax=0.0
 
@@ -712,9 +716,11 @@ style_configure("TCheckbutton", background = bg_color)
 style_configure("TScale", background=bg_color)
 style_configure('TScale.slider', background=bg_color)
 style_configure('TScale.Horizontal.TScale', background=bg_color)
+style.configure("TButton", relief="raised")
 
 style_map("TEntry",relief=[("disabled",'flat'),('','sunken')],borderwidth=[("disabled",0),('',2)])
-style_map("TButton",  relief=[('disabled',"flat"),('',"raised")] )
+style_map("TButton",  relief=[('disabled',"flat"),('pressed', 'sunken'),('active',"raised")] )
+
 style_map("TCheckbutton",relief=[('disabled',"flat"),('',"sunken")])
 
 style_configure("TButton", anchor = "center")
@@ -769,7 +775,6 @@ else:
     canvas.bind("<Button-4>", on_mouse_scroll_lin)
     canvas.bind("<Button-5>", on_mouse_scroll_lin)
 
-
 cursor_f = canvas.create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
 cursor_db = canvas.create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
 
@@ -778,32 +783,32 @@ btns.grid(row=4, column=0, pady=4,padx=4,sticky="news")
 
 Label(btns,textvariable=status_var,relief='sunken', anchor='nw',bd=1).grid(row=0, column=0, padx=5,sticky='news')
 
-sweep_button=Button(btns,image=ico['play'], command=sweep)
+sweep_button=Button(btns,image=ico['play'], command=sweep,takefocus=0)
 sweep_button.grid(row=0, column=1, padx=5)
 
 widget_tooltip(sweep_button,'Run frequency sweep.')
 
 Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=2, padx=5,sticky='news')
 
-csv_button=Button(btns,image=ico['csv'], command=save_csv)
+csv_button=Button(btns,image=ico['csv'], command=save_csv,takefocus=0)
 csv_button.grid(row=0, column=3, padx=5)
 widget_tooltip(csv_button,'Save CSV file')
 
-image_button=Button(btns,image=ico['save'], command=save_image)
+image_button=Button(btns,image=ico['save'], command=save_image,takefocus=0)
 image_button.grid(row=0, column=4, padx=5)
 widget_tooltip(image_button,'Save Image file')
 
 Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=5, padx=4,sticky='news')
 
-home_button=Button(btns,image=ico['home'], command=go_to_homepage)
+home_button=Button(btns,image=ico['home'], command=go_to_homepage,takefocus=0)
 home_button.grid(row=0, column=6, padx=5)
 widget_tooltip(home_button,f'Visit project homepage ({HOMEPAGE})')
 
-license_button=Button(btns,image=ico['license'], command=license_wrapper )
+license_button=Button(btns,image=ico['license'], command=license_wrapper,takefocus=0)
 license_button.grid(row=0, column=7, padx=5)
 widget_tooltip(license_button,'Show License')
 
-about_button=Button(btns,image=ico['about'],  command=about_wrapper )
+about_button=Button(btns,image=ico['about'],  command=about_wrapper,takefocus=0)
 about_button.grid(row=0, column=8, padx=5)
 widget_tooltip(about_button,'About')
 
