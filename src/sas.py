@@ -57,7 +57,13 @@ f_current=0
 def status_set_frequency():
     status_var.set(str(round(f_current))+ ' Hz')
 
-stream_out_playing=False
+stream_out_state=0
+'''
+2 - on
+1 - ramp on
+0 - off
+-1 - ramp off
+'''
 lock_frequency=False
 
 def on_mouse_move(event):
@@ -107,7 +113,6 @@ def on_mouse_press_3(event):
         play_stop()
         on_mouse_move(event)
     else:
-        lock_frequency_off()
         on_mouse_move(event)
         lock_frequency_on()
 
@@ -204,8 +209,8 @@ def save_image():
 
                 canvas.delete("freq")
 
-                canvas.itemconfig('cursor', state='hidden')
-                canvas.itemconfig('cursor_freq', state='hidden')
+                canvas_itemconfig('cursor', state='hidden')
+                canvas_itemconfig('cursor_freq', state='hidden')
 
                 canvas.delete("cursor_db_text")
 
@@ -232,7 +237,7 @@ def save_image():
                 ImageGrab.grab().crop((x1, y1, x2, y2)).save(filename)
                 canvas.delete('mark')
 
-                canvas.itemconfig('cursor', state='normal')
+                canvas_itemconfig('cursor', state='normal')
 
                 change_logf(current_logf)
 
@@ -373,6 +378,8 @@ def scale_logf_to_buckets(logf):
 def scale_bucket_to_logf(i):
     return (i+0.5)/scale_factor_logf_to_buckets + logf_min_audio
 
+phase_step=1
+
 def change_logf(logf):
     global current_logf, phase_step, generated_logf
     current_logf = logf
@@ -393,13 +400,15 @@ played_bucket=0
 played_bucket_callbacks=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,phase_step
+    global phase,phase_step, stream_out_state
+
+    phase_step_local=phase_step
     for i in range(blocksize_out):
-        outdata[i,0]=sin(phase)
-        phase += phase_step
+        outdata[i,0]=sin(phase) * (1.0 if stream_out_state==2 else 0.0 if stream_out_state==0 else volume_ramp[i] if stream_out_state==1 else volume_ramp[blocksize_out-1-i] if stream_out_state==-1 else 0.0)
+        phase += phase_step_local
         phase %= two_pi
 
-    bucket=scale_logf_to_buckets(log10(phase_step / two_pi_by_samplerate))
+    bucket=scale_logf_to_buckets(log10(phase_step_local / two_pi_by_samplerate))
 
     global played_bucket,played_bucket_callbacks
 
@@ -408,6 +417,11 @@ def audio_output_callback(outdata, frames, time, status):
         played_bucket=bucket
 
     played_bucket_callbacks+=1
+
+    if stream_out_state==-1:
+        stream_out_state=0
+    elif stream_out_state==1:
+        stream_out_state=2
 
 def sweep():
     global current_logf,recording,sweeping,slower_update
@@ -448,18 +462,14 @@ def sweep():
     recording=False
 
 def play_start():
-    global stream_out_playing
-    if not stream_out_playing:
-        stream_out.start()
-        stream_out_playing=True
-        canvas.itemconfig(cursor_f, fill='red')
+    global stream_out_state
+    stream_out_state=1
+    canvas_itemconfig(cursor_f, fill='red')
 
 def play_stop():
-    global stream_out_playing
-    if stream_out_playing:
-        stream_out.stop()
-        stream_out_playing=False
-        canvas.itemconfig(cursor_f, fill='white')
+    global stream_out_state
+    stream_out_state=-1
+    canvas_itemconfig(cursor_f, fill='white')
 
 exiting=False
 no_update=False
@@ -655,6 +665,8 @@ canvas_winfo_width=1
 blocksize_out = 128
 blocksize_in = 128
 
+volume_ramp = tuple([(i+1.0)/blocksize_out for i in range(blocksize_out)])
+
 time_to_collect_sample=0.125 #[s]
 #1/4s - 86 paczek
 #record_blocks_len=int((samplerate/4)/blocksize_in)
@@ -764,6 +776,8 @@ sweeping=False
 canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=bg_color)
 canvas.grid(row=1, column=0, sticky="news", padx=4,pady=4)
 
+canvas_itemconfig = canvas.itemconfig
+
 canvas.bind("<Motion>", on_mouse_move)
 canvas.bind("<ButtonPress-1>", on_mouse_press_1)
 canvas.bind("<ButtonPress-3>", on_mouse_press_3)
@@ -777,7 +791,9 @@ else:
     canvas.bind("<Button-5>", on_mouse_scroll_lin)
 
 cursor_f = canvas.create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
+canvas.lower(cursor_f)
 cursor_db = canvas.create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
+canvas.lower(cursor_db)
 
 btns = Frame(root,bg=bg_color)
 btns.grid(row=4, column=0, pady=4,padx=4,sticky="news")
@@ -829,7 +845,10 @@ spectrum_buckets=[dbinit]*spectrum_buckets_quant
 root.bind('<Configure>', root_configure)
 root.bind('<F1>', lambda event : about_wrapper() )
 
+root_configure()
+
 stream_in.start()
+stream_out.start()
 
 root.after(200,gui_update)
 
