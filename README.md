@@ -30,6 +30,8 @@ Portable executable packages for **Linux** and **Windows** created with [PyInsta
 
 ### [Review on MAJORGEEKS](https://www.majorgeeks.com/files/details/simple_audio_sweeper.html)
 
+### [Review on SOFTPEDIA](https://www.softpedia.com/get/Multimedia/Audio/Other-AUDIO-Tools/Simple-Audio-Sweeper.shtml)
+
 ### Supported platforms:
 
 - Linux
