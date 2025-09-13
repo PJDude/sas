@@ -83,19 +83,23 @@ def recording_start():
 record_after=None
 
 def on_mouse_press_1(event):
-    global sweeping,record_after,lock_frequency
-    sweeping=False
+    try:
+        global sweeping,record_after,lock_frequency
+        sweeping=False
 
-    if lock_frequency:
-        lock_frequency=False
-        play_stop()
-        #root_after(200,lambda : on_mouse_move(event) )
-        on_mouse_move(event)
-    else:
-        play_start()
-        status_set_frequency()
+        if lock_frequency:
+            lock_frequency=False
+            play_stop()
+            #root_after(200,lambda : on_mouse_move(event) )
+            on_mouse_move(event)
+        else:
+            play_start()
+            status_set_frequency()
 
-        record_after=root_after(200,recording_start)
+            record_after=root_after(200,recording_start)
+
+    except Exception as e:
+            print("on_mouse_press_1:",e)
 
 def on_mouse_press_3(event):
     global sweeping,record_after,lock_frequency
@@ -193,15 +197,27 @@ def load_csv():
                     line=line.strip()
                     if line:
                         if line[0]=='#':
+                            print("ignoring line:",line)
                             continue
                         try:
                             freq,db = line.split(',')
-                            logf=log10(float(freq))
-                            bucket = scale_logf_to_buckets(logf)
-                            spectrum_buckets[current_track][bucket]=float(db)
-
+                            float_freq,float_db=float(freq),float(db)
                         except Exception as el:
-                            print("Load_csv_error_line:",el)
+                            print("ignoring line:",line)
+                            continue
+
+                        if fmin_audio<=float_freq<=fmax_audio:
+                            logf=log10(float_freq)
+                            bucket = scale_logf_to_buckets(logf)
+                        else:
+                            print("wrong frequency:",float_freq)
+                            continue
+
+                        if dbmin<=float_db<=dbmax:
+                            spectrum_buckets[current_track][bucket]=float_db
+                        else:
+                            print("wrong db value:",float_db)
+                            continue
 
         except Exception as e:
             print("Load_csv_error:",e)
@@ -281,9 +297,6 @@ def save_image():
 
     slower_update=False
 
-def clear():
-    canvas_delete("fline")
-
 scale_factor_canvas_width_to_buckets_quant=1
 canvas_winfo_width_m20=1
 canvas_winfo_width_m10=1
@@ -291,7 +304,7 @@ canvas_winfo_height_by_dbrange_display=0
 
 def root_configure(event=None):
     if not exiting:
-        global canvas_winfo_width,x_min_audio,canvas_winfo_width_m10,canvas_winfo_width_m20,scale_factor_logf_to_pixels,scale_factor_logf_to_buckets,scale_factor_canvas_width_to_buckets_quant,canvas_winfo_height,canvas_winfo_height_m20,redraw_spectrum_line,current_sample_modified
+        global canvas_winfo_width,x_min_audio,canvas_winfo_width_m10,canvas_winfo_width_m20,scale_factor_logf_to_pixels,scale_factor_canvas_width_to_buckets_quant,canvas_winfo_height,canvas_winfo_height_m20,redraw_spectrum_line,current_sample_modified
         canvas_winfo_width=canvas.winfo_width()
 
         x_min_audio=scale_logf_to_pixels(logf_min_audio)
@@ -304,11 +317,7 @@ def root_configure(event=None):
 
         scale_factor_logf_to_pixels=canvas_winfo_width/logf_max_m_logf_min
 
-        scale_factor_logf_to_buckets=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
-
         scale_factor_canvas_width_to_buckets_quant=canvas_winfo_width_audio/spectrum_buckets_quant
-
-        canvas_delete("grid")
 
         canvas_winfo_height=canvas.winfo_height()
         canvas_winfo_height_m20=canvas_winfo_height-20
@@ -316,6 +325,7 @@ def root_configure(event=None):
         global canvas_winfo_height_by_dbrange_display
         canvas_winfo_height_by_dbrange_display=canvas_winfo_height/dbrange_display
 
+        canvas_delete("grid")
         for f,bold,lab in ((10,0,''),(20,2,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
                     (200,0,''),(300,0,''),(400,0,''),(500,0,''),(600,0,''),(700,0,''),(800,0,''),(900,0,''),(1000,1,'1kHz'),
                     (2000,0,''),(3000,0,''),(4000,0,''),(5000,0,''),(6000,0,''),(7000,0,''),(8000,0,''),(9000,0,''),(10000,1,'10kHz'),
@@ -349,8 +359,8 @@ def root_configure(event=None):
         change_logf(current_logf)
 
 def update_track_change():
-    canvas_delete("track")
-    { canvas_create_text(canvas_winfo_width_m10, 16+c*20, text=tracks_labels[bool(c in visible_tracks)][c], anchor="e", font=("Arial", 12), tags=("track"),fill="DarkRed" if c==current_track else "black") for c in range(tracks) }
+    for c in range(tracks):
+        trackbuttons[c].configure( image=ico[str(c+1) + '_' + ('sel' if c==current_track else 'on' if c in visible_tracks else 'off')])
 
 def db2y(db):
     return canvas_winfo_height - ( canvas_winfo_height_by_dbrange_display*(db-dbmin_display) )
@@ -409,12 +419,12 @@ def scale_logf_to_pixels(logf):
     return scale_factor_logf_to_pixels * (logf - logf_min)
 
 def scale_logf_to_buckets(logf):
-    return round(scale_factor_logf_to_buckets * (logf - logf_min_audio))
+    return floor(scale_factor_logf_to_buckets * (logf - logf_min_audio))
 
 def scale_bucket_to_logf(i):
     return (i+0.5)/scale_factor_logf_to_buckets + logf_min_audio
 
-phase_step=1
+phase_step=1.0
 
 def change_logf(logf):
     global current_logf, phase_step, generated_logf
@@ -424,10 +434,9 @@ def change_logf(logf):
 
     phase_step = two_pi_by_samplerate * f
 
-    canvas_delete("cursor_freq")
-
     x=scale_logf_to_pixels(logf)
 
+    canvas_delete("cursor_freq")
     cursor_f_text=canvas_create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags=('cursor_freq'))
 
     canvas_coords(cursor_f, x, 0, x, canvas_winfo_height)
@@ -660,41 +669,62 @@ def license_wrapper():
 
     get_license_dialog().show()
 
+def flatline():
+    global spectrum_buckets,redraw_spectrum_line
+    spectrum_buckets[current_track]=[dbinit]*spectrum_buckets_quant
+    redraw_spectrum_line=True
+
+def trackbutton_press(event,track):
+    control_pressed=bool('Control' in str(event))
+    track_pressed(track,control_pressed)
+
 def KeyPress(event):
+    control_pressed=bool('Control' in str(event))
+
     try:
         track=int(event.keysym)-1
+    except Exception as e_kp2:
+        pass
+    else:
         if track in range(tracks):
-            global current_track,visible_tracks,redraw_spectrum_line, recording, sweeping, lock_frequency
+            track_pressed(track,control_pressed)
 
-            prev_current_track=current_track
-            if 'Control' in str(event):
-                if track in visible_tracks:
+def track_pressed(track,control_pressed):
+    global current_track,visible_tracks,redraw_spectrum_line, recording, sweeping, lock_frequency
+
+    try:
+        prev_current_track=current_track
+        if control_pressed:
+            if track in visible_tracks:
+                if track==current_track:
                     visible_tracks.remove(track)
+
                     if not visible_tracks:
                         visible_tracks={track}
                 else:
-                    visible_tracks.add(track)
+                    current_track=track
             else:
-                visible_tracks={track}
+                visible_tracks.add(track)
+        else:
+            visible_tracks={track}
 
-            if track in visible_tracks:
-                current_track=track
-            elif prev_current_track in visible_tracks:
-                current_track=prev_current_track
-            else:
-                current_track=next(iter(visible_tracks))
+        if track in visible_tracks:
+            current_track=track
+        elif prev_current_track in visible_tracks:
+            current_track=prev_current_track
+        else:
+            current_track=next(iter(visible_tracks))
 
-            #print(ctrl_pressed,visible_tracks,current_track)
-            update_track_change()
+        update_track_change()
 
-            recording=False
-            sweeping=False
-            lock_frequency=False
-            play_stop()
+        recording=False
+        sweeping=False
+        lock_frequency=False
+        play_stop()
 
-            redraw_spectrum_line=True
+        redraw_spectrum_line=True
     except Exception as e_kp:
-        print("KeyPress:",str(event), e_kp)
+        print("track_pressed:",track,control_pressed, e_kp)
 
 VERSION_FILE='version.txt'
 
@@ -720,6 +750,8 @@ spectrum_buckets_quant=256
 
 logf_max_m_logf_min = logf_max-logf_min
 logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
+
+scale_factor_logf_to_buckets=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
 dbmin_display=dbmin=-120.0
 dbinit=-50.0
@@ -853,6 +885,9 @@ sweeping=False
 canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=bg_color)
 canvas.grid(row=1, column=0, sticky="news", padx=4,pady=4)
 
+buttons_right = Frame(root,bg=bg_color)
+buttons_right.grid( row=1, column=1, sticky="news", padx=(0,6),pady=4 )
+trackbuttons={}
 
 canvas.bind("<Motion>", on_mouse_move)
 canvas.bind("<ButtonPress-1>", on_mouse_press_1)
@@ -870,6 +905,7 @@ canvas_itemconfig = canvas.itemconfig
 canvas_delete = canvas.delete
 canvas_create_line = canvas.create_line
 canvas_create_text = canvas.create_text
+canvas_create_image = canvas.create_image
 canvas_coords = canvas.coords
 
 cursor_f = canvas_create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
@@ -877,45 +913,59 @@ canvas.lower(cursor_f)
 cursor_db = canvas_create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
 canvas.lower(cursor_db)
 
-btns = Frame(root,bg=bg_color)
-btns.grid(row=4, column=0, pady=4,padx=4,sticky="news")
+tracks=8
+for track in range(tracks):
+    buttontemp = trackbuttons[track]=Button(buttons_right)
+    buttontemp.grid(row=track,column=0,sticky='news',pady=(0,4))
+    buttontemp.bind("<Button-1>", lambda event,track_local=track : trackbutton_press(event,track=track_local) )
+    widget_tooltip(buttontemp,f'Choose buffer {track+1} (use Ctrl for multi-select or press number keys)')
 
-Label(btns,textvariable=status_var,relief='sunken', anchor='nw',bd=1).grid(row=0, column=0, padx=5,sticky='news')
+Label(buttons_right).grid(row=tracks,column=0,sticky='news')
+reset_button=Button(buttons_right,image=ico['reset'],command=flatline)
+reset_button.grid(row=tracks+1,column=0,sticky='news')
+widget_tooltip(reset_button,'Reset all samples in current buffer')
 
-sweep_button=Button(btns,image=ico['play'], command=sweep,takefocus=0)
+buttons_right.grid_rowconfigure(tracks,weight=1)
+
+buttons_bottom = Frame(root,bg=bg_color)
+buttons_bottom.grid(row=4, column=0, pady=4,padx=6,sticky="news",columnspan=2)
+
+Label(buttons_bottom,textvariable=status_var,relief='sunken', anchor='nw',bd=1).grid(row=0, column=0, padx=0,sticky='news')
+
+sweep_button=Button(buttons_bottom,image=ico['play'], command=sweep,takefocus=0)
 sweep_button.grid(row=0, column=1, padx=5)
 
 widget_tooltip(sweep_button,'Run frequency sweep.')
 
-Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=2, padx=5,sticky='news')
+Label(buttons_bottom,image=ico['empty'],relief='flat').grid(row=0, column=2, padx=5,sticky='news')
 
-image_button=Button(btns,image=ico['save_pic'], command=save_image,takefocus=0)
+image_button=Button(buttons_bottom,image=ico['save_pic'], command=save_image,takefocus=0)
 image_button.grid(row=0, column=3, padx=5)
 widget_tooltip(image_button,'Save Image file')
 
-csv_button=Button(btns,image=ico['save_csv'], command=save_csv,takefocus=0)
+csv_button=Button(buttons_bottom,image=ico['save_csv'], command=save_csv,takefocus=0)
 csv_button.grid(row=0, column=4, padx=5)
 widget_tooltip(csv_button,'Save CSV file')
 
-image_button=Button(btns,image=ico['load_csv'], command=load_csv,takefocus=0)
+image_button=Button(buttons_bottom,image=ico['load_csv'], command=load_csv,takefocus=0)
 image_button.grid(row=0, column=5, padx=5)
 widget_tooltip(image_button,'Load CSV file')
 
-Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=6, padx=4,sticky='news')
+Label(buttons_bottom,image=ico['empty'],relief='flat').grid(row=0, column=6, padx=4,sticky='news')
 
-home_button=Button(btns,image=ico['home'], command=go_to_homepage,takefocus=0)
+home_button=Button(buttons_bottom,image=ico['home'], command=go_to_homepage,takefocus=0)
 home_button.grid(row=0, column=7, padx=5)
 widget_tooltip(home_button,f'Visit project homepage ({HOMEPAGE})')
 
-license_button=Button(btns,image=ico['license'], command=license_wrapper,takefocus=0)
+license_button=Button(buttons_bottom,image=ico['license'], command=license_wrapper,takefocus=0)
 license_button.grid(row=0, column=8, padx=5)
 widget_tooltip(license_button,'Show License')
 
-about_button=Button(btns,image=ico['about'],  command=about_wrapper,takefocus=0)
-about_button.grid(row=0, column=9, padx=5)
+about_button=Button(buttons_bottom,image=ico['about'],  command=about_wrapper,takefocus=0)
+about_button.grid(row=0, column=9, padx=(5,0))
 widget_tooltip(about_button,'About')
 
-btns.columnconfigure(0,weight=1)
+buttons_bottom.columnconfigure(0,weight=1)
 
 phase = 0.0
 
@@ -926,14 +976,8 @@ current_logf=logf_ini
 stream_out = OutputStream( samplerate=samplerate, channels=1, dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low" )
 
-tracks=8
 current_track=0
-tracks_labels_alt=('①','②','③','④','⑤','⑥','⑦','⑧')
-tracks_labels_off=('⓵','⓶','⓷','⓸','⓹','⓺','⓻','⓼')
-tracks_labels_on=('❶','❷','❸','❹','❺','❻','❼','❽')
 visible_tracks={current_track}
-
-tracks_labels=(tracks_labels_off,tracks_labels_on)
 
 spectrum_buckets=[ [dbinit]*spectrum_buckets_quant for i in range(tracks) ]
 
