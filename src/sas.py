@@ -28,7 +28,7 @@
 
 from tkinter import Tk,Toplevel,Frame, StringVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Button,Checkbutton,Style,Entry
-from tkinter.filedialog import asksaveasfilename
+from tkinter.filedialog import asksaveasfilename, askopenfilename
 
 from numpy import mean as np_mean,square as np_square,float64,float32
 from sounddevice import InputStream,OutputStream
@@ -67,7 +67,7 @@ stream_out_state=0
 lock_frequency=False
 
 def on_mouse_move(event):
-    if not sweeping and not lock_frequency:
+    if not sweeping and not lock_frequency and not stream_out_state==-1:
         logf=xpixel_to_logf(event.x)
 
         if logf<logf_max_audio and logf>logf_min_audio:
@@ -80,51 +80,45 @@ def recording_start():
     global recording
     recording=True
 
-def lock_frequency_on():
-    global lock_frequency
-    lock_frequency=True
-
-def lock_frequency_off():
-    global lock_frequency
-    lock_frequency=False
-
 record_after=None
 
 def on_mouse_press_1(event):
-    global sweeping,record_after
+    global sweeping,record_after,lock_frequency
     sweeping=False
 
     if lock_frequency:
-        lock_frequency_off()
+        lock_frequency=False
         play_stop()
+        #root_after(200,lambda : on_mouse_move(event) )
         on_mouse_move(event)
     else:
         play_start()
         status_set_frequency()
 
-    record_after=root.after(200,recording_start)
+        record_after=root_after(200,recording_start)
 
 def on_mouse_press_3(event):
-    global sweeping,record_after
+    global sweeping,record_after,lock_frequency
     sweeping=False
 
     if lock_frequency:
-        lock_frequency_off()
+        lock_frequency=False
         play_stop()
+        #root_after(200,lambda : on_mouse_move(event) )
         on_mouse_move(event)
     else:
         on_mouse_move(event)
-        lock_frequency_on()
+        lock_frequency=True
 
         play_start()
         status_set_frequency()
 
-        record_after=root.after(200,recording_start)
+        record_after=root_after(200,recording_start)
 
 def on_mouse_release_1(event):
-    global record_after,recording,sweeping
-    root.after_cancel(record_after)
-    lock_frequency_off()
+    global record_after,recording,sweeping,lock_frequency
+    root_after_cancel(record_after)
+    lock_frequency=False
 
     recording=False
     sweeping=False
@@ -134,7 +128,7 @@ def on_mouse_release_1(event):
 
 def on_mouse_release_3(event):
     global record_after,recording,sweeping
-    root.after_cancel(record_after)
+    root_after_cancel(record_after)
 
     recording=False
     sweeping=False
@@ -177,11 +171,42 @@ def save_csv():
             with open(filename, 'w') as f:
                 f.write("# Created with " + title + " #\n")
                 f.write("frequency[Hz],level[dBFS]\n")
-                for i,db in enumerate(spectrum_buckets):
+                for i,db in enumerate(spectrum_buckets[current_track]):
                     logf=scale_bucket_to_logf(i)
                     f.write(f"{round(100*(10**logf))/100},{round(1000*db)/1000}\n")
         except Exception as e:
             print("save_csv_error:",e)
+
+    slower_update=False
+
+def load_csv():
+    global slower_update
+    slower_update=True
+
+    filename = askopenfilename(title = "Load CSV",initialfile = f'sas*.csv',defaultextension=".csv",filetypes=[("CSV Files","*.csv"),("All Files","*.*")])
+    global spectrum_buckets,redraw_spectrum_line
+
+    if filename:
+        try:
+            with open(filename, 'r') as f:
+                for line in f:
+                    line=line.strip()
+                    if line:
+                        if line[0]=='#':
+                            continue
+                        try:
+                            freq,db = line.split(',')
+                            logf=log10(float(freq))
+                            bucket = scale_logf_to_buckets(logf)
+                            spectrum_buckets[current_track][bucket]=float(db)
+
+                        except Exception as el:
+                            print("Load_csv_error_line:",el)
+
+        except Exception as e:
+            print("Load_csv_error:",e)
+
+        redraw_spectrum_line=True
 
     slower_update=False
 
@@ -207,37 +232,42 @@ def save_image():
                 x2 = x1 + canvas.winfo_width()
                 y2 = y1 + canvas.winfo_height()
 
-                canvas.delete("freq")
+                canvas_delete("freq")
+                canvas_delete("track")
 
                 canvas_itemconfig('cursor', state='hidden')
                 canvas_itemconfig('cursor_freq', state='hidden')
 
-                canvas.delete("cursor_db_text")
+                canvas_delete("cursor_db_text")
 
                 root.lift()
                 root.attributes('-topmost', True)
 
                 x_offset=72
-                canvas.create_text(x_offset-1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(x_offset-1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(x_offset-1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(x_offset+1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(x_offset+1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(x_offset+1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(x_offset, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas.create_text(x_offset, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset-1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset-1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset-1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset+1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset+1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset+1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
 
-                canvas.create_text(x_offset, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill="black",tags=('mark'))
+                canvas_create_text(x_offset, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill="black",tags=('mark'))
 
                 ###################################
                 root.update()
                 root.update_idletasks()
-                root.after(200)
+                root_after(200)
 
                 ImageGrab.grab().crop((x1, y1, x2, y2)).save(filename)
-                canvas.delete('mark')
+                canvas_delete('mark')
 
                 canvas_itemconfig('cursor', state='normal')
+                update_track_change()
+
+                global redraw_spectrum_line
+                redraw_spectrum_line=True
 
                 change_logf(current_logf)
 
@@ -252,15 +282,16 @@ def save_image():
     slower_update=False
 
 def clear():
-    canvas.delete("fline")
+    canvas_delete("fline")
 
 scale_factor_canvas_width_to_buckets_quant=1
 canvas_winfo_width_m20=1
+canvas_winfo_width_m10=1
 canvas_winfo_height_by_dbrange_display=0
 
 def root_configure(event=None):
     if not exiting:
-        global canvas_winfo_width,x_min_audio,canvas_winfo_width_m20,scale_factor_logf_to_pixels,scale_factor_logf_to_buckets,scale_factor_canvas_width_to_buckets_quant,canvas_winfo_height,canvas_winfo_height_m20,dbarray_modified,db_modified
+        global canvas_winfo_width,x_min_audio,canvas_winfo_width_m10,canvas_winfo_width_m20,scale_factor_logf_to_pixels,scale_factor_logf_to_buckets,scale_factor_canvas_width_to_buckets_quant,canvas_winfo_height,canvas_winfo_height_m20,redraw_spectrum_line,current_sample_modified
         canvas_winfo_width=canvas.winfo_width()
 
         x_min_audio=scale_logf_to_pixels(logf_min_audio)
@@ -269,6 +300,7 @@ def root_configure(event=None):
         canvas_winfo_width_audio=x_max_audio-x_min_audio
 
         canvas_winfo_width_m20=canvas_winfo_width-20
+        canvas_winfo_width_m10=canvas_winfo_width-10
 
         scale_factor_logf_to_pixels=canvas_winfo_width/logf_max_m_logf_min
 
@@ -276,7 +308,7 @@ def root_configure(event=None):
 
         scale_factor_canvas_width_to_buckets_quant=canvas_winfo_width_audio/spectrum_buckets_quant
 
-        canvas.delete("grid")
+        canvas_delete("grid")
 
         canvas_winfo_height=canvas.winfo_height()
         canvas_winfo_height_m20=canvas_winfo_height-20
@@ -284,12 +316,11 @@ def root_configure(event=None):
         global canvas_winfo_height_by_dbrange_display
         canvas_winfo_height_by_dbrange_display=canvas_winfo_height/dbrange_display
 
-        canvas_create_line=canvas.create_line
-        canvas_create_text=canvas.create_text
         for f,bold,lab in ((10,0,''),(20,2,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
                     (200,0,''),(300,0,''),(400,0,''),(500,0,''),(600,0,''),(700,0,''),(800,0,''),(900,0,''),(1000,1,'1kHz'),
                     (2000,0,''),(3000,0,''),(4000,0,''),(5000,0,''),(6000,0,''),(7000,0,''),(8000,0,''),(9000,0,''),(10000,1,'10kHz'),
                     (20000,2,'20kHz'),(40000,1,'')):
+
             x=scale_logf_to_pixels(log10(f))
 
             if bold==2:
@@ -301,7 +332,7 @@ def root_configure(event=None):
             else:
                 canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
-        for db,bold in ((10,0),(0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,0)):
+        for db,bold in ((0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,0),(-100,0),(-110,0)):
             y=db2y(db)
 
             canvas_create_text(6, y+4, text=str(db)+"dBFS", anchor="nw", font=("Arial", 8), tags="grid")
@@ -310,10 +341,16 @@ def root_configure(event=None):
             else:
                 canvas_create_line(0, y, canvas_winfo_width,y, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
-        dbarray_modified=True
-        db_modified=True
+        redraw_spectrum_line=True
+        current_sample_modified=True
+
+        update_track_change()
 
         change_logf(current_logf)
+
+def update_track_change():
+    canvas_delete("track")
+    { canvas_create_text(canvas_winfo_width_m10, 16+c*20, text=tracks_labels[bool(c in visible_tracks)][c], anchor="e", font=("Arial", 12), tags=("track"),fill="DarkRed" if c==current_track else "black") for c in range(tracks) }
 
 def db2y(db):
     return canvas_winfo_height - ( canvas_winfo_height_by_dbrange_display*(db-dbmin_display) )
@@ -330,41 +367,40 @@ def gui_update():
         root.destroy()
         sys_exit(1)
     elif no_update:
-        root.after(1,gui_update)
+        root_after(1,gui_update)
     else:
         try:
-            canvas_width=canvas_winfo_width
+            global current_sample_db,redraw_spectrum_line,current_sample_modified
+            if redraw_spectrum_line:
+                redraw_spectrum_line=False
 
-            global dbarray_modified,db_modified
-            if dbarray_modified:
                 spectrum_line_data=[0]*spectrum_buckets_quant*2
 
-                for i,db in enumerate(spectrum_buckets):
-                    i2=i+i
-                    spectrum_line_data[i2:i2+2]=[x_min_audio+scale_factor_canvas_width_to_buckets_quant*i,db2y(db)]
+                canvas_delete("spectrum")
+                for track in visible_tracks:
+                    for i,db in enumerate(spectrum_buckets[track]):
+                        i2=i+i
+                        spectrum_line_data[i2:i2+2]=[x_min_audio+scale_factor_canvas_width_to_buckets_quant*i,db2y(db)]
 
-                canvas.delete("spectrum")
-                canvas.create_line(spectrum_line_data, fill="black" , width=1, smooth=1,tags="spectrum")
-                dbarray_modified=False
+                    canvas_create_line(spectrum_line_data, fill="black" , width=1, smooth=1,tags="spectrum")
 
-            if db_modified:
-                global db_curr
-                y=db2y(db_curr)
+            if current_sample_modified:
+                current_sample_modified=False
 
-                canvas.delete("cursor_db_text")
-                canvas.create_text(canvas_winfo_width_m20, y, text=str(round(db_curr))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
+                y=db2y(current_sample_db)
 
-                canvas.coords(cursor_db,0, y, canvas_width, y)
+                canvas_delete("cursor_db_text")
+                canvas_create_text(canvas_winfo_width_m20, y, text=str(round(current_sample_db))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
 
-                db_modified=False
+                canvas_coords(cursor_db,0, y, canvas_winfo_width, y)
 
         except Exception as e:
             print("update_plot_error:",e)
 
         if slower_update:
-            root.after(1,gui_update)
+            root_after(1,gui_update)
         else:
-            root.after_idle(gui_update)
+            root_after_idle(gui_update)
 
 def xpixel_to_logf(x):
     return x /scale_factor_logf_to_pixels + logf_min
@@ -388,19 +424,19 @@ def change_logf(logf):
 
     phase_step = two_pi_by_samplerate * f
 
-    canvas.delete("cursor_freq")
+    canvas_delete("cursor_freq")
 
     x=scale_logf_to_pixels(logf)
 
-    cursor_f_text=canvas.create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags=('cursor_freq'))
+    cursor_f_text=canvas_create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags=('cursor_freq'))
 
-    canvas.coords(cursor_f, x, 0, x, canvas_winfo_height)
+    canvas_coords(cursor_f, x, 0, x, canvas_winfo_height)
 
 played_bucket=0
 played_bucket_callbacks=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,phase_step, stream_out_state
+    global phase,phase_step,stream_out_state
 
     phase_step_local=phase_step
     for i in range(blocksize_out):
@@ -447,7 +483,7 @@ def sweep():
         status_var.set('Sweeping (' + str(round(10**logf))+ ' Hz), Click on the graph to abort ...')
 
         root.update()
-        root.after(int(1000*time_to_collect_sample*1.5))
+        root_after(sweeping_after)
 
         if not sweeping:
             break
@@ -468,7 +504,9 @@ def play_start():
 
 def play_stop():
     global stream_out_state
-    stream_out_state=-1
+    if stream_out_state==2:
+        stream_out_state=-1
+
     canvas_itemconfig(cursor_f, fill='white')
 
 exiting=False
@@ -481,14 +519,12 @@ def close_app():
     exiting=True
 
 def audio_input_callback(indata, frames, time_info, status):
-    #print("audio_input_callback",frames,time_info,status)
-
     if status:
         print(status)
         return
 
     try:
-        global record_blocks,record_blocks_index_to_replace,record_blocks_short,record_blocks_index_to_replace_short,db_curr,db_modified,spectrum_buckets,dbarray_modified
+        global record_blocks,record_blocks_index_to_replace,record_blocks_short,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,spectrum_buckets,redraw_spectrum_line
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
@@ -497,24 +533,23 @@ def audio_input_callback(indata, frames, time_info, status):
             record_blocks_index_to_replace+=1
             record_blocks_index_to_replace%=record_blocks_len
 
-            #db_curr = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
-            db_curr = 10 * log10( np_mean(record_blocks) + 1e-12)
+            #current_sample_db = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
+            current_sample_db = 10 * log10( np_mean(record_blocks) + 1e-12)
         else:
             record_blocks_short[record_blocks_index_to_replace_short]=this_callback_mean
             record_blocks_index_to_replace_short+=1
             record_blocks_index_to_replace_short%=record_blocks_len_short
 
-            #db_curr = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
-            db_curr = 10 * log10( np_mean(record_blocks_short) + 1e-12)
+            current_sample_db = 10 * log10( np_mean(record_blocks_short) + 1e-12)
 
-        db_modified=True
+        current_sample_modified=True
 
         if recording or lock_frequency:
             if played_bucket_callbacks>record_blocks_len:
                 i=round( scale_factor_logf_to_buckets * (current_logf - logf_min_audio) )
-                if i>=0 and i<spectrum_buckets_quant:
-                    spectrum_buckets[i]=db_curr
-                    dbarray_modified=True
+                if i in range(spectrum_buckets_quant):
+                    spectrum_buckets[current_track][i]=current_sample_db
+                    redraw_spectrum_line=True
 
     except Exception as e:
         print("audio_input_callback_error:",e)
@@ -625,6 +660,42 @@ def license_wrapper():
 
     get_license_dialog().show()
 
+def KeyPress(event):
+    try:
+        track=int(event.keysym)-1
+        if track in range(tracks):
+            global current_track,visible_tracks,redraw_spectrum_line, recording, sweeping, lock_frequency
+
+            prev_current_track=current_track
+            if 'Control' in str(event):
+                if track in visible_tracks:
+                    visible_tracks.remove(track)
+                    if not visible_tracks:
+                        visible_tracks={track}
+                else:
+                    visible_tracks.add(track)
+            else:
+                visible_tracks={track}
+
+            if track in visible_tracks:
+                current_track=track
+            elif prev_current_track in visible_tracks:
+                current_track=prev_current_track
+            else:
+                current_track=next(iter(visible_tracks))
+
+            #print(ctrl_pressed,visible_tracks,current_track)
+            update_track_change()
+
+            recording=False
+            sweeping=False
+            lock_frequency=False
+            play_stop()
+
+            redraw_spectrum_line=True
+    except Exception as e_kp:
+        print("KeyPress:",str(event), e_kp)
+
 VERSION_FILE='version.txt'
 
 HOMEPAGE='https://github.com/PJDude/sas'
@@ -650,7 +721,7 @@ spectrum_buckets_quant=256
 logf_max_m_logf_min = logf_max-logf_min
 logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
-dbmin_display=dbmin=-100.0
+dbmin_display=dbmin=-120.0
 dbinit=-50.0
 dbmax_display=dbmax=0.0
 
@@ -671,6 +742,8 @@ time_to_collect_sample=0.125 #[s]
 #1/4s - 86 paczek
 #record_blocks_len=int((samplerate/4)/blocksize_in)
 
+sweeping_after=int(1000*time_to_collect_sample*1.5)
+
 # 43
 record_blocks_len=int((samplerate*time_to_collect_sample)/blocksize_in)
 record_blocks_len_short=ceil(record_blocks_len/5)
@@ -681,11 +754,15 @@ record_blocks_index_to_replace=0
 record_blocks_short=[0]*record_blocks_len_short
 record_blocks_index_to_replace_short=0
 
-dbarray_modified=True
-db_modified=True
+redraw_spectrum_line=True
+current_sample_modified=True
 
 root = Tk()
 root.protocol("WM_DELETE_WINDOW", close_app)
+
+root_after = root.after
+root_after_cancel = root.after_cancel
+root_after_idle = root.after_idle
 
 title=f"Simple Audio Sweeper {VER_TIMESTAMP}"
 root.title(title)
@@ -776,7 +853,6 @@ sweeping=False
 canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=bg_color)
 canvas.grid(row=1, column=0, sticky="news", padx=4,pady=4)
 
-canvas_itemconfig = canvas.itemconfig
 
 canvas.bind("<Motion>", on_mouse_move)
 canvas.bind("<ButtonPress-1>", on_mouse_press_1)
@@ -790,9 +866,15 @@ else:
     canvas.bind("<Button-4>", on_mouse_scroll_lin)
     canvas.bind("<Button-5>", on_mouse_scroll_lin)
 
-cursor_f = canvas.create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
+canvas_itemconfig = canvas.itemconfig
+canvas_delete = canvas.delete
+canvas_create_line = canvas.create_line
+canvas_create_text = canvas.create_text
+canvas_coords = canvas.coords
+
+cursor_f = canvas_create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
 canvas.lower(cursor_f)
-cursor_db = canvas.create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
+cursor_db = canvas_create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
 canvas.lower(cursor_db)
 
 btns = Frame(root,bg=bg_color)
@@ -807,26 +889,30 @@ widget_tooltip(sweep_button,'Run frequency sweep.')
 
 Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=2, padx=5,sticky='news')
 
-csv_button=Button(btns,image=ico['csv'], command=save_csv,takefocus=0)
-csv_button.grid(row=0, column=3, padx=5)
-widget_tooltip(csv_button,'Save CSV file')
-
-image_button=Button(btns,image=ico['save'], command=save_image,takefocus=0)
-image_button.grid(row=0, column=4, padx=5)
+image_button=Button(btns,image=ico['save_pic'], command=save_image,takefocus=0)
+image_button.grid(row=0, column=3, padx=5)
 widget_tooltip(image_button,'Save Image file')
 
-Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=5, padx=4,sticky='news')
+csv_button=Button(btns,image=ico['save_csv'], command=save_csv,takefocus=0)
+csv_button.grid(row=0, column=4, padx=5)
+widget_tooltip(csv_button,'Save CSV file')
+
+image_button=Button(btns,image=ico['load_csv'], command=load_csv,takefocus=0)
+image_button.grid(row=0, column=5, padx=5)
+widget_tooltip(image_button,'Load CSV file')
+
+Label(btns,image=ico['empty'],relief='flat').grid(row=0, column=6, padx=4,sticky='news')
 
 home_button=Button(btns,image=ico['home'], command=go_to_homepage,takefocus=0)
-home_button.grid(row=0, column=6, padx=5)
+home_button.grid(row=0, column=7, padx=5)
 widget_tooltip(home_button,f'Visit project homepage ({HOMEPAGE})')
 
 license_button=Button(btns,image=ico['license'], command=license_wrapper,takefocus=0)
-license_button.grid(row=0, column=7, padx=5)
+license_button.grid(row=0, column=8, padx=5)
 widget_tooltip(license_button,'Show License')
 
 about_button=Button(btns,image=ico['about'],  command=about_wrapper,takefocus=0)
-about_button.grid(row=0, column=8, padx=5)
+about_button.grid(row=0, column=9, padx=5)
 widget_tooltip(about_button,'About')
 
 btns.columnconfigure(0,weight=1)
@@ -840,16 +926,27 @@ current_logf=logf_ini
 stream_out = OutputStream( samplerate=samplerate, channels=1, dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low" )
 
-spectrum_buckets=[dbinit]*spectrum_buckets_quant
+tracks=8
+current_track=0
+tracks_labels_alt=('①','②','③','④','⑤','⑥','⑦','⑧')
+tracks_labels_off=('⓵','⓶','⓷','⓸','⓹','⓺','⓻','⓼')
+tracks_labels_on=('❶','❷','❸','❹','❺','❻','❼','❽')
+visible_tracks={current_track}
+
+tracks_labels=(tracks_labels_off,tracks_labels_on)
+
+spectrum_buckets=[ [dbinit]*spectrum_buckets_quant for i in range(tracks) ]
 
 root.bind('<Configure>', root_configure)
 root.bind('<F1>', lambda event : about_wrapper() )
+
+root.bind('<KeyPress>', KeyPress )
 
 root_configure()
 
 stream_in.start()
 stream_out.start()
 
-root.after(200,gui_update)
+root_after(200,gui_update)
 
 root.mainloop()
