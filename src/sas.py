@@ -127,7 +127,7 @@ def on_mouse_press_3(event):
         record_after=root_after(200,recording_start)
 
 def on_mouse_release_1(event):
-    global record_after,recording,sweeping,lock_frequency
+    global recording,sweeping,lock_frequency
     root_after_cancel(record_after)
     lock_frequency=False
 
@@ -138,7 +138,7 @@ def on_mouse_release_1(event):
     status_set_frequency()
 
 def on_mouse_release_3(event):
-    global record_after,recording,sweeping
+    global recording,sweeping
     root_after_cancel(record_after)
 
     recording=False
@@ -182,7 +182,7 @@ def save_csv():
 
     if filename:
         try:
-            with open(filename, 'w') as f:
+            with open(filename,'w',encoding='utf-8') as f:
                 f.write("# Created with " + title + " #\n")
                 f.write("frequency[Hz],level[dBFS]\n")
                 for i,db in enumerate(spectrum_buckets[current_track]):
@@ -198,11 +198,10 @@ def load_csv():
     slower_update=True
 
     filename = askopenfilename(title = "Load CSV",initialfile = 'sas*.csv',defaultextension=".csv",filetypes=[("CSV Files","*.csv"),("All Files","*.*")])
-    global spectrum_buckets,redraw_spectrum_line
 
     if filename:
         try:
-            with open(filename, 'r') as f:
+            with open(filename,'r',encoding='utf-8') as f:
                 for line in f:
                     line=line.strip()
                     if line:
@@ -232,6 +231,7 @@ def load_csv():
         except Exception as e:
             print("Load_csv_error:",e)
 
+        global redraw_spectrum_line
         redraw_spectrum_line=True
 
     slower_update=False
@@ -390,7 +390,7 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global redraw_spectrum_line,current_sample_modified,spectrum_line
+            global redraw_spectrum_line,current_sample_modified
             if redraw_spectrum_line:
                 redraw_spectrum_line=False
 
@@ -437,7 +437,7 @@ def bucket_to_logf(i):
 phase_step=1.0
 
 def change_logf(logf):
-    global current_logf,current_bucket,phase_step,generated_logf
+    global current_logf,current_bucket,phase_step
 
     current_logf=logf
     current_bucket=logf_to_bucket(current_logf)
@@ -473,10 +473,9 @@ def audio_output_callback(outdata, frames, time, status):
         if stream_out_state==1:
             for i in range(blocksize_out):
                 outdata[i,0]*=volume_ramp[i]
-
         elif stream_out_state==-1:
             for i in range(blocksize_out):
-                outdata[i,0]*=volume_ramp[blocksize_out-1-i]
+                outdata[i,0]*=volume_ramp[blocksize_out_m1-i]
 
         bucket=logf_to_bucket(log10(phase_step_local / two_pi_by_samplerate))
 
@@ -553,7 +552,7 @@ def audio_input_callback(indata, frames, time_info, status):
         return
 
     try:
-        global record_blocks,record_blocks_index_to_replace,record_blocks_short,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,spectrum_buckets,redraw_spectrum_line
+        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_spectrum_line
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
@@ -597,7 +596,7 @@ def go_to_homepage():
 
 dialog_shown=False
 
-def pre_show(new_widget=None):
+def pre_show():
     global dialog_shown
     dialog_shown=True
 
@@ -691,7 +690,7 @@ def license_wrapper():
     get_license_dialog().show()
 
 def flatline():
-    global spectrum_buckets,redraw_spectrum_line
+    global redraw_spectrum_line
     spectrum_buckets[current_track]=[dbinit]*spectrum_buckets_quant
     redraw_spectrum_line=True
 
@@ -819,6 +818,8 @@ canvas_width=1
 blocksize_out = 128
 blocksize_in = 128
 
+blocksize_out_m1=blocksize_out-1
+
 volume_ramp = tuple([(i+1.0)/blocksize_out for i in range(blocksize_out)])
 
 time_to_collect_sample=0.125 #[s]
@@ -905,7 +906,7 @@ if windows:
     #fix border problem ...
     style_configure("TCombobox",padding=1)
 
-def widget_tooltip(widget,message,type_info_or_help=True):
+def widget_tooltip(widget,message):
     widget.bind("<Motion>", lambda event : status_var_set(message))
     widget.bind("<Leave>", lambda event : status_var_set(default_status))
 
@@ -913,7 +914,7 @@ APP_FILE = normpath(__file__)
 APP_DIR = dirname(APP_FILE)
 
 try:
-    distro_info=Path(path_join(APP_DIR,'distro.info.txt')).read_text()
+    distro_info=Path(path_join(APP_DIR,'distro.info.txt')).read_text(encoding='utf-8')
 except Exception as exception_1:
     print(exception_1)
     distro_info = 'Error. No distro.info.txt file.'

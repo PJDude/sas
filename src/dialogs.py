@@ -122,7 +122,7 @@ class GenericDialog:
         widget = self.widget
 
         if self.pre_show:
-            self.pre_show(new_widget=widget)
+            self.pre_show()
 
         widget.wm_transient(self.parent)
 
