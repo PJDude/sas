@@ -55,7 +55,13 @@ if windows:
 f_current=0
 
 def status_set_frequency():
-    status_var.set(str(round(f_current))+ ' Hz')
+    res_list = [str(round(f_current))+ ' Hz (']
+    for track in visible_tracks:
+        db_temp = round(spectrum_buckets[track][current_bucket])
+        res_list.append(str(track+1) + ':' + str(db_temp))
+
+    res_list.append(') [#buffer:dBFS]')
+    status_var_set(' '.join(res_list))
 
 stream_out_state=0
 '''
@@ -75,6 +81,14 @@ def on_mouse_move(event):
             status_set_frequency()
             global f_current
             f_current=10**logf
+
+        widgets=canvas_find_withtag("current")
+
+        for track in visible_tracks:
+            if spectrum_line[track] in widgets:
+                trackbutton_motion(track)
+            else:
+                trackbutton_leave(track)
 
 def recording_start():
     global recording
@@ -208,7 +222,7 @@ def load_csv():
 
                         if fmin_audio<=float_freq<=fmax_audio:
                             logf=log10(float_freq)
-                            bucket = scale_logf_to_buckets(logf)
+                            bucket = scale_logf_to_bucket(logf)
                         else:
                             print("wrong frequency:",float_freq)
                             continue
@@ -245,8 +259,8 @@ def save_image():
 
                 x1 = root.winfo_rootx() + canvas.winfo_x()
                 y1 = root.winfo_rooty() + canvas.winfo_y()
-                x2 = x1 + canvas.winfo_width()
-                y2 = y1 + canvas.winfo_height()
+                x2 = x1 + canvas_width
+                y2 = y1 + canvas_height
 
                 canvas_delete("freq")
                 canvas_delete("track")
@@ -297,33 +311,33 @@ def save_image():
 
     slower_update=False
 
-scale_factor_canvas_width_to_buckets_quant=1
-canvas_winfo_width_m20=1
-canvas_winfo_width_m10=1
-canvas_winfo_height_by_dbrange_display=0
+scale_factor_canvas_width_to_bucket_quant=1
+canvas_width_m20=1
+canvas_width_m10=1
+canvas_height_by_dbrange_display=0
 
 def root_configure(event=None):
     if not exiting:
-        global canvas_winfo_width,x_min_audio,canvas_winfo_width_m10,canvas_winfo_width_m20,scale_factor_logf_to_pixels,scale_factor_canvas_width_to_buckets_quant,canvas_winfo_height,canvas_winfo_height_m20,redraw_spectrum_line,current_sample_modified
-        canvas_winfo_width=canvas.winfo_width()
+        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_pixels,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_spectrum_line,current_sample_modified
+        canvas_width=canvas_winfo_width()
 
         x_min_audio=scale_logf_to_pixels(logf_min_audio)
         x_max_audio=scale_logf_to_pixels(logf_max_audio)
 
-        canvas_winfo_width_audio=x_max_audio-x_min_audio
+        canvas_width_audio=x_max_audio-x_min_audio
 
-        canvas_winfo_width_m20=canvas_winfo_width-20
-        canvas_winfo_width_m10=canvas_winfo_width-10
+        canvas_width_m20=canvas_width-20
+        canvas_width_m10=canvas_width-10
 
-        scale_factor_logf_to_pixels=canvas_winfo_width/logf_max_m_logf_min
+        scale_factor_logf_to_pixels=canvas_width/logf_max_m_logf_min
 
-        scale_factor_canvas_width_to_buckets_quant=canvas_winfo_width_audio/spectrum_buckets_quant
+        scale_factor_canvas_width_to_bucket_quant=canvas_width_audio/spectrum_buckets_quant
 
-        canvas_winfo_height=canvas.winfo_height()
-        canvas_winfo_height_m20=canvas_winfo_height-20
+        canvas_height=canvas_winfo_height()
+        canvas_height_m20=canvas_height-20
 
-        global canvas_winfo_height_by_dbrange_display
-        canvas_winfo_height_by_dbrange_display=canvas_winfo_height/dbrange_display
+        global canvas_height_by_dbrange_display
+        canvas_height_by_dbrange_display=canvas_height/dbrange_display
 
         canvas_delete("grid")
         for f,bold,lab in ((10,0,''),(20,2,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
@@ -334,22 +348,22 @@ def root_configure(event=None):
             x=scale_logf_to_pixels(log10(f))
 
             if bold==2:
-                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray20" , tags="grid",width=1, dash = (6, 4))
-                canvas_create_text(x+2, canvas_winfo_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
+                canvas_create_line(x, 0, x, canvas_height, fill="gray20" , tags="grid",width=1, dash = (6, 4))
+                canvas_create_text(x+2, canvas_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
             elif bold==1:
-                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray20" , tags="grid",width=1, dash = (6, 4))
-                canvas_create_text(x+2, canvas_winfo_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
+                canvas_create_line(x, 0, x, canvas_height, fill="gray20" , tags="grid",width=1, dash = (6, 4))
+                canvas_create_text(x+2, canvas_height_m20, text=lab, anchor="nw", font=("Arial", 8), tags="grid")
             else:
-                canvas_create_line(x, 0, x, canvas_winfo_height, fill="gray" , tags="grid",width=1,dash = (2, 4))
+                canvas_create_line(x, 0, x, canvas_height, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
         for db,bold in ((0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,0),(-100,0),(-110,0)):
             y=db2y(db)
 
             canvas_create_text(6, y+4, text=str(db)+"dBFS", anchor="nw", font=("Arial", 8), tags="grid")
             if bold:
-                canvas_create_line(0, y, canvas_winfo_width,y, fill="gray20" , tags="grid",width=1)
+                canvas_create_line(0, y, canvas_width,y, fill="gray20" , tags="grid",width=1)
             else:
-                canvas_create_line(0, y, canvas_winfo_width,y, fill="gray" , tags="grid",width=1,dash = (2, 4))
+                canvas_create_line(0, y, canvas_width,y, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
         redraw_spectrum_line=True
         current_sample_modified=True
@@ -363,7 +377,7 @@ def update_track_change():
         trackbuttons[c].configure( image=ico[str(c+1) + '_' + ('sel' if c==current_track else 'on' if c in visible_tracks else 'off')])
 
 def db2y(db):
-    return canvas_winfo_height - ( canvas_winfo_height_by_dbrange_display*(db-dbmin_display) )
+    return canvas_height - ( canvas_height_by_dbrange_display*(db-dbmin_display) )
 
 slower_update=False
 def gui_update():
@@ -380,7 +394,7 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global current_sample_db,redraw_spectrum_line,current_sample_modified
+            global current_sample_db,redraw_spectrum_line,current_sample_modified,spectrum_line
             if redraw_spectrum_line:
                 redraw_spectrum_line=False
 
@@ -390,9 +404,9 @@ def gui_update():
                 for track in visible_tracks:
                     for i,db in enumerate(spectrum_buckets[track]):
                         i2=i+i
-                        spectrum_line_data[i2:i2+2]=[x_min_audio+scale_factor_canvas_width_to_buckets_quant*i,db2y(db)]
+                        spectrum_line_data[i2:i2+2]=[x_min_audio+scale_factor_canvas_width_to_bucket_quant*i,db2y(db)]
 
-                    canvas_create_line(spectrum_line_data, fill="black" , width=1, smooth=1,tags="spectrum")
+                    spectrum_line[track]=canvas_create_line(spectrum_line_data, fill="black" , width=1, smooth=1,tags="spectrum" )
 
             if current_sample_modified:
                 current_sample_modified=False
@@ -400,9 +414,9 @@ def gui_update():
                 y=db2y(current_sample_db)
 
                 canvas_delete("cursor_db_text")
-                canvas_create_text(canvas_winfo_width_m20, y, text=str(round(current_sample_db))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
+                canvas_create_text(canvas_width_m20, y, text=str(round(current_sample_db))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
 
-                canvas_coords(cursor_db,0, y, canvas_winfo_width, y)
+                canvas_coords(cursor_db,0, y, canvas_width, y)
 
         except Exception as e:
             print("update_plot_error:",e)
@@ -418,17 +432,19 @@ def xpixel_to_logf(x):
 def scale_logf_to_pixels(logf):
     return scale_factor_logf_to_pixels * (logf - logf_min)
 
-def scale_logf_to_buckets(logf):
-    return floor(scale_factor_logf_to_buckets * (logf - logf_min_audio))
+def scale_logf_to_bucket(logf):
+    return floor(scale_factor_logf_to_bucket * (logf - logf_min_audio))
 
 def scale_bucket_to_logf(i):
-    return (i+0.5)/scale_factor_logf_to_buckets + logf_min_audio
+    return (i+0.5)/scale_factor_logf_to_bucket + logf_min_audio
 
 phase_step=1.0
 
 def change_logf(logf):
-    global current_logf, phase_step, generated_logf
-    current_logf = logf
+    global current_logf,current_bucket,phase_step,generated_logf
+
+    current_logf=logf
+    current_bucket=scale_logf_to_bucket(current_logf)
 
     f = 10**logf
 
@@ -437,9 +453,9 @@ def change_logf(logf):
     x=scale_logf_to_pixels(logf)
 
     canvas_delete("cursor_freq")
-    cursor_f_text=canvas_create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags=('cursor_freq'))
+    canvas_create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags=('cursor_freq'))
 
-    canvas_coords(cursor_f, x, 0, x, canvas_winfo_height)
+    canvas_coords(cursor_f, x, 0, x, canvas_height)
 
 played_bucket=0
 played_bucket_callbacks=0
@@ -453,7 +469,7 @@ def audio_output_callback(outdata, frames, time, status):
         phase += phase_step_local
         phase %= two_pi
 
-    bucket=scale_logf_to_buckets(log10(phase_step_local / two_pi_by_samplerate))
+    bucket=scale_logf_to_bucket(log10(phase_step_local / two_pi_by_samplerate))
 
     global played_bucket,played_bucket_callbacks
 
@@ -475,21 +491,18 @@ def sweep():
 
     root.update()
 
-    current_logf=logf_min
     change_logf(logf_min_audio)
-
-    flog_bucket_width=logf_max_audio_m_logf_min_audio/spectrum_buckets_quant
+    logf_sweep_step=logf_max_audio_m_logf_min_audio/sweep_steps
 
     recording=True
     sweeping=True
 
     play_start()
-    for i in range(spectrum_buckets_quant):
-        logf=logf_min_audio+(i+0.3)*flog_bucket_width
+    for i in range(sweep_steps):
+        logf=logf_min_audio+i*logf_sweep_step
 
-        current_logf=logf
         change_logf(logf)
-        status_var.set('Sweeping (' + str(round(10**logf))+ ' Hz), Click on the graph to abort ...')
+        status_var_set('Sweeping (' + str(round(10**logf))+ ' Hz), Click on the graph to abort ...')
 
         root.update()
         root_after(sweeping_after)
@@ -498,7 +511,7 @@ def sweep():
             break
 
     sweeping=False
-    status_var.set('Sweeping done.')
+    status_var_set('Sweeping done.')
 
     play_stop()
 
@@ -555,7 +568,7 @@ def audio_input_callback(indata, frames, time_info, status):
 
         if recording or lock_frequency:
             if played_bucket_callbacks>record_blocks_len:
-                i=round( scale_factor_logf_to_buckets * (current_logf - logf_min_audio) )
+                i=round( scale_factor_logf_to_bucket * (current_logf - logf_min_audio) )
                 if i in range(spectrum_buckets_quant):
                     spectrum_buckets[current_track][i]=current_sample_db
                     redraw_spectrum_line=True
@@ -566,10 +579,10 @@ def audio_input_callback(indata, frames, time_info, status):
 def go_to_homepage():
     try:
         if windows:
-            status_var.set('opening: %s' % HOMEPAGE)
+            status_var_set('opening: %s' % HOMEPAGE)
             startfile(HOMEPAGE)
         else:
-            status_var.set('executing: xdg-open %s' % HOMEPAGE)
+            status_var_set('executing: xdg-open %s' % HOMEPAGE)
             system("xdg-open " + HOMEPAGE)
     except Exception as e:
         print('go_to_homepage error:',e)
@@ -674,6 +687,13 @@ def flatline():
     spectrum_buckets[current_track]=[dbinit]*spectrum_buckets_quant
     redraw_spectrum_line=True
 
+def trackbutton_motion(track):
+    canvas_itemconfig(spectrum_line[track], fill="red")
+    status_var_set(f'Choose buffer {track+1} (use Ctrl for multi-select or press number keys)')
+
+def trackbutton_leave(track):
+    canvas_itemconfig(spectrum_line[track], fill="black")
+
 def trackbutton_press(event,track):
     control_pressed=bool('Control' in str(event))
     track_pressed(track,control_pressed)
@@ -690,7 +710,7 @@ def KeyPress(event):
             track_pressed(track,control_pressed)
 
 def track_pressed(track,control_pressed):
-    global current_track,visible_tracks,redraw_spectrum_line, recording, sweeping, lock_frequency
+    global current_track,visible_tracks,redraw_spectrum_line,recording,sweeping,lock_frequency
 
     try:
         prev_current_track=current_track
@@ -723,6 +743,8 @@ def track_pressed(track,control_pressed):
         play_stop()
 
         redraw_spectrum_line=True
+        status_set_frequency()
+
     except Exception as e_kp:
         print("track_pressed:",track,control_pressed, e_kp)
 
@@ -747,23 +769,24 @@ logf_min_audio,logf_max_audio=log10(fmin_audio),log10(fmax_audio)
 two_pi = pi+pi
 
 spectrum_buckets_quant=256
+spectrum_sub_bucket_samples=4
+sweep_steps=spectrum_buckets_quant*spectrum_sub_bucket_samples
 
 logf_max_m_logf_min = logf_max-logf_min
 logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
-scale_factor_logf_to_buckets=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
+scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
 dbmin_display=dbmin=-120.0
-dbinit=-50.0
+dbinit=dbmin
 dbmax_display=dbmax=0.0
 
 dbrange=dbmax-dbmin
-db_margin=dbrange/4.0
 
 dbrange_display=dbmax_display-dbmin_display
 
-canvas_winfo_height=1
-canvas_winfo_width=1
+canvas_height=1
+canvas_width=1
 
 blocksize_out = 128
 blocksize_in = 128
@@ -774,7 +797,7 @@ time_to_collect_sample=0.125 #[s]
 #1/4s - 86 paczek
 #record_blocks_len=int((samplerate/4)/blocksize_in)
 
-sweeping_after=int(1000*time_to_collect_sample*1.5)
+sweeping_after=int(1000*time_to_collect_sample*1.5/spectrum_sub_bucket_samples)
 
 # 43
 record_blocks_len=int((samplerate*time_to_collect_sample)/blocksize_in)
@@ -853,8 +876,8 @@ if windows:
     style_configure("TCombobox",padding=1)
 
 def widget_tooltip(widget,message,type_info_or_help=True):
-    widget.bind("<Motion>", lambda event : status_var.set(message))
-    widget.bind("<Leave>", lambda event : status_var.set(default_status))
+    widget.bind("<Motion>", lambda event : status_var_set(message))
+    widget.bind("<Leave>", lambda event : status_var_set(default_status))
 
 APP_FILE = normpath(__file__)
 APP_DIR = dirname(APP_FILE)
@@ -878,6 +901,7 @@ root.columnconfigure(0, weight=1)
 
 default_status='Click and hold the mouse button on the spectrum graph...'
 status_var = StringVar(value=default_status)
+status_var_set = status_var.set
 
 recording=False
 sweeping=False
@@ -907,6 +931,9 @@ canvas_create_line = canvas.create_line
 canvas_create_text = canvas.create_text
 canvas_create_image = canvas.create_image
 canvas_coords = canvas.coords
+canvas_find_withtag=canvas.find_withtag
+canvas_winfo_width=canvas.winfo_width
+canvas_winfo_height=canvas.winfo_height
 
 cursor_f = canvas_create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
 canvas.lower(cursor_f)
@@ -914,11 +941,16 @@ cursor_db = canvas_create_line(0, y, logf_max, y, width=10, fill="white", tags="
 canvas.lower(cursor_db)
 
 tracks=8
+
+spectrum_line={track:None for track in range(tracks)}
+
 for track in range(tracks):
     buttontemp = trackbuttons[track]=Button(buttons_right)
     buttontemp.grid(row=track,column=0,sticky='news',pady=(0,4))
     buttontemp.bind("<Button-1>", lambda event,track_local=track : trackbutton_press(event,track=track_local) )
-    widget_tooltip(buttontemp,f'Choose buffer {track+1} (use Ctrl for multi-select or press number keys)')
+    buttontemp.bind("<Motion>", lambda event,track_local=track : trackbutton_motion(track=track_local) )
+    buttontemp.bind("<Leave>", lambda event,track_local=track : trackbutton_leave(track=track_local) )
+    #widget_tooltip(buttontemp,f'Choose buffer {track+1} (use Ctrl for multi-select or press number keys)')
 
 Label(buttons_right).grid(row=tracks,column=0,sticky='news')
 reset_button=Button(buttons_right,image=ico['reset'],command=flatline)
@@ -972,6 +1004,7 @@ phase = 0.0
 two_pi_by_samplerate = two_pi/samplerate
 
 current_logf=logf_ini
+current_bucket=scale_logf_to_bucket(current_logf)
 
 stream_out = OutputStream( samplerate=samplerate, channels=1, dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low" )
