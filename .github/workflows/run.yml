@@ -259,8 +259,8 @@ jobs:
       with:
         tag_name: ${{ steps.version.outputs.version }}
         name: sas ${{ steps.version.outputs.version }}
-        draft: false
-        prerelease: false
+        draft: true
+        prerelease: true
         files: |
             sas.${{ steps.version.outputs.version }}.lin.zip
             sas.${{ steps.version.outputs.version }}.win.zip
