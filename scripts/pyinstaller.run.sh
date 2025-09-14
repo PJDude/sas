@@ -30,10 +30,13 @@ echo running-pyinstaller
 pyinstaller --onefile --noconsole --noconfirm --clean --optimize 2 --strip \
     --exclude-module=numpy.random \
     --exclude-module=numpy.fft \
-    --exclude-module=numpy.linalg \
     --exclude-module=numpy.polynomial \
     --exclude-module=numpy.ma \
-    --exclude-module=numpy.lib \
+    --exclude-module=numpy.tests \
+    --exclude-module=numpy.testing \
+    --exclude-module=numpy.doc \
+    --exclude-module scipy.sparse \
+    --exclude-module numpy.polynomial \
     --add-data="distro.info.txt:." --add-data="version.txt:." --add-data="../LICENSE:." \
     --contents-directory=internal --distpath=$outdir --additional-hooks-dir=. \
     ./sas.py

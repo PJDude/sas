@@ -30,10 +30,13 @@
 pyinstaller --onefile --windowed --noconfirm --clean --optimize 2^
     --exclude-module=numpy.random ^
     --exclude-module=numpy.fft ^
-    --exclude-module=numpy.linalg ^
     --exclude-module=numpy.polynomial ^
     --exclude-module=numpy.ma ^
-    --exclude-module=numpy.lib ^
+    --exclude-module=numpy.tests ^
+    --exclude-module=numpy.testing ^
+    --exclude-module=numpy.doc ^
+    --exclude-module scipy.sparse ^
+    --exclude-module numpy.polynomial ^
     --version-file=version.pi.txt ^
     --add-data="distro.info.txt:." --add-data="version.txt;." --add-data="../LICENSE;." ^
     --contents-directory=internal  --distpath=%OUTDIR%  --additional-hooks-dir=. ^
