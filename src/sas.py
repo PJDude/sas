@@ -778,6 +778,7 @@ logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
 dbmin_display=dbmin=-120.0
+dbmin_display=-121.0
 dbinit=dbmin
 dbmax_display=dbmax=0.0
 
