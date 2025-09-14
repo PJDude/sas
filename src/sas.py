@@ -188,7 +188,7 @@ def save_csv():
                 f.write("# Created with " + title + " #\n")
                 f.write("frequency[Hz],level[dBFS]\n")
                 for i,db in enumerate(spectrum_buckets[current_track]):
-                    logf=scale_bucket_to_logf(i)
+                    logf=bucket_to_logf(i)
                     f.write(f"{round(100*(10**logf))/100},{round(1000*db)/1000}\n")
         except Exception as e:
             print("save_csv_error:",e)
@@ -220,7 +220,7 @@ def load_csv():
 
                         if fmin_audio<=float_freq<=fmax_audio:
                             logf=log10(float_freq)
-                            bucket = scale_logf_to_bucket(logf)
+                            bucket = logf_to_bucket(logf)
                         else:
                             print("wrong frequency:",float_freq)
                             continue
@@ -316,18 +316,18 @@ canvas_height_by_dbrange_display=0
 
 def root_configure(event=None):
     if not exiting:
-        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_pixels,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_spectrum_line,current_sample_modified
+        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_spectrum_line,current_sample_modified
         canvas_width=canvas_winfo_width()
 
-        x_min_audio=scale_logf_to_pixels(logf_min_audio)
-        x_max_audio=scale_logf_to_pixels(logf_max_audio)
+        x_min_audio=logf_to_xpixel(logf_min_audio)
+        x_max_audio=logf_to_xpixel(logf_max_audio)
 
         canvas_width_audio=x_max_audio-x_min_audio
 
         canvas_width_m20=canvas_width-20
         canvas_width_m10=canvas_width-10
 
-        scale_factor_logf_to_pixels=canvas_width/logf_max_m_logf_min
+        scale_factor_logf_to_xpixel=canvas_width/logf_max_m_logf_min
 
         scale_factor_canvas_width_to_bucket_quant=canvas_width_audio/spectrum_buckets_quant
 
@@ -343,7 +343,7 @@ def root_configure(event=None):
                     (2000,0,''),(3000,0,''),(4000,0,''),(5000,0,''),(6000,0,''),(7000,0,''),(8000,0,''),(9000,0,''),(10000,1,'10kHz'),
                     (20000,2,'20kHz'),(40000,1,'')):
 
-            x=scale_logf_to_pixels(log10(f))
+            x=logf_to_xpixel(log10(f))
 
             if bold==2:
                 canvas_create_line(x, 0, x, canvas_height, fill="gray20" , tags="grid",width=1, dash = (6, 4))
@@ -425,15 +425,15 @@ def gui_update():
             root_after_idle(gui_update)
 
 def xpixel_to_logf(x):
-    return x /scale_factor_logf_to_pixels + logf_min
+    return x /scale_factor_logf_to_xpixel + logf_min
 
-def scale_logf_to_pixels(logf):
-    return scale_factor_logf_to_pixels * (logf - logf_min)
+def logf_to_xpixel(logf):
+    return scale_factor_logf_to_xpixel * (logf - logf_min)
 
-def scale_logf_to_bucket(logf):
+def logf_to_bucket(logf):
     return floor(scale_factor_logf_to_bucket * (logf - logf_min_audio))
 
-def scale_bucket_to_logf(i):
+def bucket_to_logf(i):
     return (i+0.5)/scale_factor_logf_to_bucket + logf_min_audio
 
 phase_step=1.0
@@ -442,13 +442,13 @@ def change_logf(logf):
     global current_logf,current_bucket,phase_step,generated_logf
 
     current_logf=logf
-    current_bucket=scale_logf_to_bucket(current_logf)
+    current_bucket=logf_to_bucket(current_logf)
 
     f = 10**logf
 
     phase_step = two_pi_by_samplerate * f
 
-    x=scale_logf_to_pixels(logf)
+    x=logf_to_xpixel(logf)
 
     canvas_delete('cursor_freq')
     canvas_create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags='cursor_freq')
@@ -459,7 +459,7 @@ played_bucket=0
 played_bucket_callbacks=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,phase_step,stream_out_state
+    global phase,stream_out_state
 
     phase_step_local=phase_step
     for i in range(blocksize_out):
@@ -467,7 +467,7 @@ def audio_output_callback(outdata, frames, time, status):
         phase += phase_step_local
         phase %= two_pi
 
-    bucket=scale_logf_to_bucket(log10(phase_step_local / two_pi_by_samplerate))
+    bucket=logf_to_bucket(log10(phase_step_local / two_pi_by_samplerate))
 
     global played_bucket,played_bucket_callbacks
 
@@ -483,7 +483,7 @@ def audio_output_callback(outdata, frames, time, status):
         stream_out_state=2
 
 def sweep():
-    global current_logf,recording,sweeping,slower_update
+    global recording,sweeping,slower_update
     play_stop()
     slower_update=True
 
@@ -566,7 +566,7 @@ def audio_input_callback(indata, frames, time_info, status):
 
         if recording or lock_frequency:
             if played_bucket_callbacks>record_blocks_len:
-                i=scale_logf_to_bucket(current_logf)
+                i=logf_to_bucket(current_logf)
 
                 if i in range(spectrum_buckets_quant):
                     spectrum_buckets[current_track][i]=current_sample_db
@@ -791,7 +791,7 @@ logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
 scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
-current_bucket=scale_logf_to_bucket(current_logf)
+current_bucket=logf_to_bucket(current_logf)
 
 dbmin=-120.0
 dbmin_display=-123.0
@@ -912,10 +912,7 @@ else:
     print(f'distro info:\n{distro_info}')
 
 #for initialization only
-scale_factor_logf_to_pixels=0
-
-db=-24
-y=db2y(db)
+scale_factor_logf_to_xpixel=0
 
 root.rowconfigure(1, weight=1)
 root.columnconfigure(0, weight=1)
@@ -956,19 +953,19 @@ canvas_find_withtag=canvas.find_withtag
 canvas_winfo_width=canvas.winfo_width
 canvas_winfo_height=canvas.winfo_height
 
-cursor_f = canvas_create_line(logf_ini, 0, logf_ini, y, width=2, fill="white", tags="cursor")
+cursor_f = canvas_create_line(logf_ini, 0, logf_ini, 0, width=2, fill="white", tags="cursor")
 canvas.lower(cursor_f)
-cursor_db = canvas_create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
+cursor_db = canvas_create_line(0, 0, logf_max, 0, width=10, fill="white", tags="cursor")
 canvas.lower(cursor_db)
 
 spectrum_line={track:None for track in range(tracks)}
 
-for track in range(tracks):
-    buttontemp = trackbuttons[track]=Button(buttons_right)
-    buttontemp.grid(row=track,column=0,sticky='news',pady=(0,4))
-    buttontemp.bind("<Button-1>", lambda event,track_local=track : trackbutton_press(event,track=track_local) )
-    buttontemp.bind("<Motion>", lambda event,track_local=track : trackbutton_motion(track=track_local) )
-    buttontemp.bind("<Leave>", lambda event,track_local=track : trackbutton_leave(track=track_local) )
+for track_temp in range(tracks):
+    buttontemp = trackbuttons[track_temp]=Button(buttons_right)
+    buttontemp.grid(row=track_temp,column=0,sticky='news',pady=(0,4))
+    buttontemp.bind("<Button-1>", lambda event,track_local=track_temp : trackbutton_press(event,track=track_local) )
+    buttontemp.bind("<Motion>", lambda event,track_local=track_temp : trackbutton_motion(track=track_local) )
+    buttontemp.bind("<Leave>", lambda event,track_local=track_temp : trackbutton_leave(track=track_local) )
 
 Label(buttons_right).grid(row=tracks,column=0,sticky='news')
 reset_button=Button(buttons_right,image=ico['reset'],command=flatline)
