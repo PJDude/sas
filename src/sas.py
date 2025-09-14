@@ -99,7 +99,6 @@ def on_mouse_press_1(event):
         if lock_frequency:
             lock_frequency=False
             play_stop()
-            #root_after(200,lambda : on_mouse_move(event) )
             on_mouse_move(event)
         else:
             play_start()
@@ -117,7 +116,6 @@ def on_mouse_press_3(event):
     if lock_frequency:
         lock_frequency=False
         play_stop()
-        #root_after(200,lambda : on_mouse_move(event) )
         on_mouse_move(event)
     else:
         on_mouse_move(event)
@@ -459,17 +457,16 @@ played_bucket=0
 played_bucket_callbacks=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,stream_out_state
+    global phase,stream_out_state,played_bucket,played_bucket_callbacks
 
     phase_step_local=phase_step
+    two_pi_local=two_pi
     for i in range(blocksize_out):
         outdata[i,0]=sin(phase) * (1.0 if stream_out_state==2 else 0.0 if stream_out_state==0 else volume_ramp[i] if stream_out_state==1 else volume_ramp[blocksize_out-1-i] if stream_out_state==-1 else 0.0)
         phase += phase_step_local
-        phase %= two_pi
+        phase %= two_pi_local
 
     bucket=logf_to_bucket(log10(phase_step_local / two_pi_by_samplerate))
-
-    global played_bucket,played_bucket_callbacks
 
     if bucket!=played_bucket:
         played_bucket_callbacks=0
