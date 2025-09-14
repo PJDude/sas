@@ -459,25 +459,37 @@ played_bucket_callbacks=0
 def audio_output_callback(outdata, frames, time, status):
     global phase,stream_out_state,played_bucket,played_bucket_callbacks
 
-    phase_step_local=phase_step
-    two_pi_local=two_pi
-    for i in range(blocksize_out):
-        outdata[i,0]=sin(phase) * (1.0 if stream_out_state==2 else 0.0 if stream_out_state==0 else volume_ramp[i] if stream_out_state==1 else volume_ramp[blocksize_out-1-i] if stream_out_state==-1 else 0.0)
-        phase += phase_step_local
-        phase %= two_pi_local
+    if stream_out_state==0:
+        for i in range(blocksize_out):
+            outdata[i,0]=0
+    else:
+        phase_step_local=phase_step
+        two_pi_local=two_pi
+        for i in range(blocksize_out):
+            outdata[i,0]=sin(phase)
+            phase += phase_step_local
+            phase %= two_pi_local
 
-    bucket=logf_to_bucket(log10(phase_step_local / two_pi_by_samplerate))
+        if stream_out_state==1:
+            for i in range(blocksize_out):
+                outdata[i,0]*=volume_ramp[i]
 
-    if bucket!=played_bucket:
-        played_bucket_callbacks=0
-        played_bucket=bucket
+        elif stream_out_state==-1:
+            for i in range(blocksize_out):
+                outdata[i,0]*=volume_ramp[blocksize_out-1-i]
 
-    played_bucket_callbacks+=1
+        bucket=logf_to_bucket(log10(phase_step_local / two_pi_by_samplerate))
 
-    if stream_out_state==-1:
-        stream_out_state=0
-    elif stream_out_state==1:
-        stream_out_state=2
+        if bucket!=played_bucket:
+            played_bucket_callbacks=0
+            played_bucket=bucket
+
+        played_bucket_callbacks+=1
+
+        if stream_out_state==-1:
+            stream_out_state=0
+        elif stream_out_state==1:
+            stream_out_state=2
 
 def sweep():
     global recording,sweeping,slower_update
