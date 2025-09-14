@@ -356,7 +356,7 @@ def root_configure(event=None):
             else:
                 canvas_create_line(x, 0, x, canvas_height, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
-        for db,bold in ((0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,0),(-100,0),(-110,0)):
+        for db,bold in ((0,1),(-10,0),(-20,0),(-30,0),(-40,0),(-50,0),(-60,0),(-70,0),(-80,0),(-90,0),(-100,0),(-110,0),(-120,0)):
             y=db2y(db)
 
             canvas_create_text(6, y+4, text=str(db)+"dBFS", anchor="nw", font=("Arial", 8), tags="grid")
@@ -777,8 +777,8 @@ logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
 scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
-dbmin_display=dbmin=-120.0
-dbmin_display=-121.0
+dbmin=-120.0
+dbmin_display=-123.0
 dbinit=dbmin
 dbmax_display=dbmax=0.0
 
