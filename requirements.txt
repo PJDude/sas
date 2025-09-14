@@ -1,4 +1,4 @@
-pyinstaller==6.15.0
+pyinstaller==6.16.0
 numpy==2.3.3
 sounddevice==0.5.2
 pillow==11.3.0
