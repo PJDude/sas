@@ -26,8 +26,19 @@
 
 @echo.
 @echo running-pyinstaller
+
 pyinstaller --onefile --windowed --noconfirm --clean --optimize 2^
-     --version-file=version.pi.txt --add-data="distro.info.txt:." --add-data="version.txt;." --add-data="../LICENSE;." --icon=icon.ico --distpath=%OUTDIR% --contents-directory=internal --additional-hooks-dir=. sas.py  || exit /b 2
+    --exclude-module=numpy.random ^
+    --exclude-module=numpy.fft ^
+    --exclude-module=numpy.linalg ^
+    --exclude-module=numpy.polynomial ^
+    --exclude-module=numpy.ma ^
+    --exclude-module=numpy.lib ^
+    --version-file=version.pi.txt ^
+    --add-data="distro.info.txt:." --add-data="version.txt;." --add-data="../LICENSE;." ^
+    --contents-directory=internal  --distpath=%OUTDIR%  --additional-hooks-dir=. ^
+    --icon=icon.ico ^
+    sas.py  || exit /b 2
 
 @echo.
 @echo packing
