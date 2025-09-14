@@ -26,15 +26,17 @@
 #
 ####################################################################################
 
-from tkinter import Tk,Toplevel,Frame, StringVar, Canvas, PhotoImage, LabelFrame
-from tkinter.ttk import Button,Checkbutton,Style,Entry
+from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame
+from tkinter.ttk import Button,Style
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 
-from numpy import mean as np_mean,square as np_square,float64,float32
+from numpy import mean as np_mean,square as np_square,float64
 from sounddevice import InputStream,OutputStream
 
 from math import pi, sin, log10, ceil, floor
-from PIL import ImageGrab,Image
+from PIL import ImageGrab
+ImageGrab_grab=ImageGrab.grab
+
 from pathlib import Path
 from time import strftime, localtime
 
@@ -47,12 +49,14 @@ from sys import exit as sys_exit
 from images import image
 from dialogs import *
 
+VERSION_FILE='version.txt'
+
+HOMEPAGE='https://github.com/PJDude/sas'
+
 windows = bool(os_name=='nt')
 
 if windows:
     from os import startfile
-
-f_current=0
 
 def status_set_frequency():
     res_list = [str(round(f_current))+ ' Hz (']
@@ -63,20 +67,11 @@ def status_set_frequency():
     res_list.append(') [#buffer:dBFS]')
     status_var_set(' '.join(res_list))
 
-stream_out_state=0
-'''
-2 - on
-1 - ramp on
-0 - off
--1 - ramp off
-'''
-lock_frequency=False
-
 def on_mouse_move(event):
     if not sweeping and not lock_frequency and not stream_out_state==-1:
         logf=xpixel_to_logf(event.x)
 
-        if logf<logf_max_audio and logf>logf_min_audio:
+        if  logf_min_audio<logf<logf_max_audio:
             change_logf(logf)
             status_set_frequency()
             global f_current
@@ -113,7 +108,7 @@ def on_mouse_press_1(event):
             record_after=root_after(200,recording_start)
 
     except Exception as e:
-            print("on_mouse_press_1:",e)
+        print("on_mouse_press_1:",e)
 
 def on_mouse_press_3(event):
     global sweeping,record_after,lock_frequency
@@ -160,6 +155,9 @@ def on_mouse_scroll_lin(event):
         fmod = -1
     elif event.num == 5:
         fmod = 1
+    else:
+        return
+
     scroll_mod(fmod)
 
 def scroll_mod(mod):
@@ -172,7 +170,7 @@ def scroll_mod(mod):
 
         if f_new>0:
             log_f_new=log10(f_new)
-            if log_f_new<logf_max_audio and log_f_new>logf_min_audio:
+            if logf_min_audio<log_f_new<logf_max_audio:
                 change_logf(log_f_new)
                 status_set_frequency()
                 f_current=f_new
@@ -201,7 +199,7 @@ def load_csv():
     global slower_update
     slower_update=True
 
-    filename = askopenfilename(title = "Load CSV",initialfile = f'sas*.csv',defaultextension=".csv",filetypes=[("CSV Files","*.csv"),("All Files","*.*")])
+    filename = askopenfilename(title = "Load CSV",initialfile = 'sas*.csv',defaultextension=".csv",filetypes=[("CSV Files","*.csv"),("All Files","*.*")])
     global spectrum_buckets,redraw_spectrum_line
 
     if filename:
@@ -274,23 +272,23 @@ def save_image():
                 root.attributes('-topmost', True)
 
                 x_offset=72
-                canvas_create_text(x_offset-1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas_create_text(x_offset-1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas_create_text(x_offset-1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas_create_text(x_offset+1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas_create_text(x_offset+1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas_create_text(x_offset+1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas_create_text(x_offset, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
-                canvas_create_text(x_offset, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags=('mark'))
+                canvas_create_text(x_offset-1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset-1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset-1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset+1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset+1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset+1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
 
-                canvas_create_text(x_offset, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill="black",tags=('mark'))
+                canvas_create_text(x_offset, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill="black",tags='mark')
 
                 ###################################
-                root.update()
-                root.update_idletasks()
+                root_update()
+                root_update_idletasks()
                 root_after(200)
 
-                ImageGrab.grab().crop((x1, y1, x2, y2)).save(filename)
+                ImageGrab_grab().crop((x1, y1, x2, y2)).save(filename)
                 canvas_delete('mark')
 
                 canvas_itemconfig('cursor', state='normal')
@@ -394,19 +392,19 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global current_sample_db,redraw_spectrum_line,current_sample_modified,spectrum_line
+            global redraw_spectrum_line,current_sample_modified,spectrum_line
             if redraw_spectrum_line:
                 redraw_spectrum_line=False
 
-                spectrum_line_data=[0]*spectrum_buckets_quant*2
-
                 canvas_delete("spectrum")
                 for track in visible_tracks:
+                    spectrum_line_data=[0]*spectrum_buckets_quant*2
+
                     for i,db in enumerate(spectrum_buckets[track]):
                         i2=i+i
                         spectrum_line_data[i2:i2+2]=[x_min_audio+scale_factor_canvas_width_to_bucket_quant*i,db2y(db)]
 
-                    spectrum_line[track]=canvas_create_line(spectrum_line_data, fill="black" , width=1, smooth=1,tags="spectrum" )
+                    spectrum_line[track]=canvas_create_line(spectrum_line_data, fill="black" , width=1, smooth=True,tags="spectrum" )
 
             if current_sample_modified:
                 current_sample_modified=False
@@ -452,8 +450,8 @@ def change_logf(logf):
 
     x=scale_logf_to_pixels(logf)
 
-    canvas_delete("cursor_freq")
-    canvas_create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags=('cursor_freq'))
+    canvas_delete('cursor_freq')
+    canvas_create_text(x+2, 2, text=str(round(f))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags='cursor_freq')
 
     canvas_coords(cursor_f, x, 0, x, canvas_height)
 
@@ -489,7 +487,7 @@ def sweep():
     play_stop()
     slower_update=True
 
-    root.update()
+    root_update()
 
     change_logf(logf_min_audio)
     logf_sweep_step=logf_max_audio_m_logf_min_audio/sweep_steps
@@ -504,7 +502,7 @@ def sweep():
         change_logf(logf)
         status_var_set('Sweeping (' + str(round(10**logf))+ ' Hz), Click on the graph to abort ...')
 
-        root.update()
+        root_update()
         root_after(sweeping_after)
 
         if not sweeping:
@@ -568,7 +566,8 @@ def audio_input_callback(indata, frames, time_info, status):
 
         if recording or lock_frequency:
             if played_bucket_callbacks>record_blocks_len:
-                i=round( scale_factor_logf_to_bucket * (current_logf - logf_min_audio) )
+                i=scale_logf_to_bucket(current_logf)
+
                 if i in range(spectrum_buckets_quant):
                     spectrum_buckets[current_track][i]=current_sample_db
                     redraw_spectrum_line=True
@@ -748,9 +747,16 @@ def track_pressed(track,control_pressed):
     except Exception as e_kp:
         print("track_pressed:",track,control_pressed, e_kp)
 
-VERSION_FILE='version.txt'
-
-HOMEPAGE='https://github.com/PJDude/sas'
+f_current=0
+tracks=8
+stream_out_state=0
+'''
+2 - on
+1 - ramp on
+0 - off
+-1 - ramp off
+'''
+lock_frequency=False
 
 try:
     VER_TIMESTAMP=Path(os.path.join(os.path.dirname(__file__),VERSION_FILE)).read_text(encoding='ASCII').strip()
@@ -760,13 +766,21 @@ except Exception as e_ver:
 
 samplerate = 44100
 
+phase = 0.0
+
 fmin,fini,fmax=10,442,40000
 fmin_audio,fmax_audio=20,20000
 
 logf_min,logf_ini,logf_max=log10(fmin),log10(fini),log10(fmax)
 logf_min_audio,logf_max_audio=log10(fmin_audio),log10(fmax_audio)
 
+current_logf=logf_ini
+
+current_track=0
+visible_tracks={current_track}
+
 two_pi = pi+pi
+two_pi_by_samplerate = two_pi/samplerate
 
 spectrum_buckets_quant=256
 spectrum_sub_bucket_samples=4
@@ -777,12 +791,16 @@ logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
 scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
+current_bucket=scale_logf_to_bucket(current_logf)
+
 dbmin=-120.0
 dbmin_display=-123.0
 dbinit=dbmin
 dbmax_display=dbmax=0.0
 
 dbrange=dbmax-dbmin
+
+spectrum_buckets=[ [dbinit]*spectrum_buckets_quant for i in range(tracks) ]
 
 dbrange_display=dbmax_display-dbmin_display
 
@@ -819,6 +837,8 @@ root.protocol("WM_DELETE_WINDOW", close_app)
 root_after = root.after
 root_after_cancel = root.after_cancel
 root_after_idle = root.after_idle
+root_update = root.update
+root_update_idletasks = root.update_idletasks
 
 title=f"Simple Audio Sweeper {VER_TIMESTAMP}"
 root.title(title)
@@ -834,7 +854,7 @@ main_icon_tuple = (ico_sas,ico_sas_small)
 
 root.iconphoto(True, *main_icon_tuple)
 
-theme_name='vista' if windows else 'clam',
+theme_name='vista' if windows else 'clam'
 try:
     style.theme_create( "dummy", parent=theme_name )
 except Exception as e:
@@ -921,7 +941,7 @@ canvas.bind("<ButtonRelease-1>", on_mouse_release_1)
 canvas.bind("<ButtonRelease-3>", on_mouse_release_3)
 
 if windows:
-   canvas.bind("<MouseWheel>", on_mouse_scroll_win)
+    canvas.bind("<MouseWheel>", on_mouse_scroll_win)
 else:
     canvas.bind("<Button-4>", on_mouse_scroll_lin)
     canvas.bind("<Button-5>", on_mouse_scroll_lin)
@@ -941,8 +961,6 @@ canvas.lower(cursor_f)
 cursor_db = canvas_create_line(0, y, logf_max, y, width=10, fill="white", tags="cursor")
 canvas.lower(cursor_db)
 
-tracks=8
-
 spectrum_line={track:None for track in range(tracks)}
 
 for track in range(tracks):
@@ -951,7 +969,6 @@ for track in range(tracks):
     buttontemp.bind("<Button-1>", lambda event,track_local=track : trackbutton_press(event,track=track_local) )
     buttontemp.bind("<Motion>", lambda event,track_local=track : trackbutton_motion(track=track_local) )
     buttontemp.bind("<Leave>", lambda event,track_local=track : trackbutton_leave(track=track_local) )
-    #widget_tooltip(buttontemp,f'Choose buffer {track+1} (use Ctrl for multi-select or press number keys)')
 
 Label(buttons_right).grid(row=tracks,column=0,sticky='news')
 reset_button=Button(buttons_right,image=ico['reset'],command=flatline)
@@ -1000,20 +1017,8 @@ widget_tooltip(about_button,'About')
 
 buttons_bottom.columnconfigure(0,weight=1)
 
-phase = 0.0
-
-two_pi_by_samplerate = two_pi/samplerate
-
-current_logf=logf_ini
-current_bucket=scale_logf_to_bucket(current_logf)
-
 stream_out = OutputStream( samplerate=samplerate, channels=1, dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low" )
-
-current_track=0
-visible_tracks={current_track}
-
-spectrum_buckets=[ [dbinit]*spectrum_buckets_quant for i in range(tracks) ]
 
 root.bind('<Configure>', root_configure)
 root.bind('<F1>', lambda event : about_wrapper() )
