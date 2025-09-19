@@ -31,7 +31,7 @@ from tkinter.ttk import Button,Style
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 
 from numpy import mean as np_mean,square as np_square,float64
-from sounddevice import InputStream,OutputStream
+from sounddevice import InputStream,OutputStream,query_devices
 
 from math import pi, sin, log10, ceil, floor
 from PIL import ImageGrab
@@ -435,14 +435,17 @@ def bucket_to_logf(i):
     return (i+0.5)/scale_factor_logf_to_bucket + logf_min_audio
 
 phase_step=1.0
+f=0
+f_bucket=0
 
 def change_logf(logf):
-    global current_logf,current_bucket,phase_step
+    global current_logf,current_bucket,phase_step,f,f_bucket
 
     current_logf=logf
     current_bucket=logf_to_bucket(current_logf)
 
     f = 10**logf
+    f_bucket=logf_to_bucket(log10(f))
 
     phase_step = two_pi_by_samplerate * f
 
@@ -457,38 +460,32 @@ played_bucket=0
 played_bucket_callbacks=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,stream_out_state,played_bucket,played_bucket_callbacks
+    global phase,stream_out_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,f_bucket
 
+    out_channell_index=0
     if stream_out_state==0:
         for i in range(blocksize_out):
-            outdata[i,0]=0
+            outdata[i,out_channell_index]=0
     else:
-        phase_step_local=phase_step
-        two_pi_local=two_pi
         for i in range(blocksize_out):
-            outdata[i,0]=sin(phase)
-            phase += phase_step_local
-            phase %= two_pi_local
+            outdata[i,out_channell_index]=sin(phase)
+            phase += phase_step
+            phase %= two_pi
 
         if stream_out_state==1:
-            for i in range(blocksize_out):
-                outdata[i,0]*=volume_ramp[i]
-        elif stream_out_state==-1:
-            for i in range(blocksize_out):
-                outdata[i,0]*=volume_ramp[blocksize_out_m1-i]
-
-        bucket=logf_to_bucket(log10(phase_step_local / two_pi_by_samplerate))
-
-        if bucket!=played_bucket:
-            played_bucket_callbacks=0
-            played_bucket=bucket
-
-        played_bucket_callbacks+=1
-
-        if stream_out_state==-1:
-            stream_out_state=0
-        elif stream_out_state==1:
             stream_out_state=2
+            for i in range(blocksize_out):
+                outdata[i,out_channell_index]*=volume_ramp[i]
+        elif stream_out_state==-1:
+            stream_out_state=0
+            for i in range(blocksize_out):
+                outdata[i,out_channell_index]*=volume_ramp[blocksize_out_m1-i]
+
+        if f_bucket!=played_bucket:
+            played_bucket_callbacks=1
+            played_bucket=f_bucket
+        else:
+            played_bucket_callbacks+=1
 
 def sweep():
     global recording,sweeping,slower_update
@@ -1024,8 +1021,23 @@ widget_tooltip(about_button,'About')
 
 buttons_bottom.columnconfigure(0,weight=1)
 
+#stream_out = OutputStream( samplerate=samplerate, channels=2, dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_out = OutputStream( samplerate=samplerate, channels=1, dtype='float32', blocksize=blocksize_out, callback=audio_output_callback, latency="low" )
 stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low" )
+
+devices=query_devices()
+
+if False:
+    print("\nOutput devices:")
+    for i, dev in enumerate(devices):
+        if dev['max_output_channels'] > 0:
+            print(f"  {i}: {dev['name']} (kanały: {dev['max_output_channels']})")
+
+    print("\nInput devices:")
+    for i, dev in enumerate(devices):
+        if dev['max_input_channels'] > 0:
+            print(f"  {i}: {dev['name']} (kanały: {dev['max_input_channels']})")
+
 
 root.bind('<Configure>', root_configure)
 root.bind('<F1>', lambda event : about_wrapper() )
