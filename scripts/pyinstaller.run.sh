@@ -29,7 +29,6 @@ echo running-pyinstaller
 
 pyinstaller --onefile --noconsole --noconfirm --clean --optimize 2 --strip --noupx \
     --exclude-module=numpy.random \
-    --exclude-module=numpy.fft \
     --exclude-module=numpy.polynomial \
     --exclude-module=numpy.ma \
     --exclude-module=numpy.tests \
