@@ -442,10 +442,14 @@ def db2y(db):
 slower_update=False
 def gui_update():
     if exiting:
-        stream_in.stop()
-        stream_in.close()
+        if stream_in:
+            stream_in.stop()
+            stream_in.close()
+
         play_stop()
-        stream_out.close()
+
+        if stream_out:
+            stream_out.close()
 
         root.withdraw()
         root.destroy()
@@ -903,7 +907,8 @@ def license_wrapper():
 def fft_toggle():
     global fft_on,stream_in
 
-    stream_in.stop()
+    if stream_in:
+        stream_in.stop()
 
     if fft_on:
         fft_on=False
@@ -919,7 +924,8 @@ def fft_toggle():
         canvas.itemconfig("cursor_db_text", state='hidden')
         fft_button.configure(image=ico["fft_off"])
 
-    stream_in.start()
+    if stream_in:
+        stream_in.start()
 
 def flatline():
     global redraw_spectrum_line
