@@ -575,10 +575,6 @@ def audio_output_callback(outdata, frames, time, status):
         else:
             played_bucket_callbacks+=1
 
-#def noise():
-#    fft_on=True
-#    fft_toggle()
-
 def sweep():
     fft_on=False
     fft_toggle()
@@ -756,8 +752,8 @@ def dev_out_cmd():
         stream_out = OutputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_out, callback=audio_output_callback, latency="low",device=dev_dict[dev_out_str.get()]['index'] )
     except Exception as e:
         print(e)
-
-    stream_out.start()
+    else:
+        stream_out.start()
 
 def dev_in_cmd():
     global stream_in,dev_in_str,dev_dict
@@ -772,8 +768,8 @@ def dev_in_cmd():
         stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize, callback=callback, latency="low",device=dev_dict[dev_in_str.get()]['index'] )
     except Exception as e:
         print(e)
-
-    stream_in.start()
+    else:
+        stream_in.start()
 
 settings_dialog_created = False
 def get_settings_dialog():
@@ -1252,10 +1248,6 @@ Label(buttons_bottom,textvariable=status_var,relief='sunken', anchor='nw',bd=1).
 sweep_button=Button(buttons_bottom,image=ico['play'], command=sweep,takefocus=0)
 sweep_button.grid(row=0, column=1, padx=5)
 widget_tooltip(sweep_button,'Run frequency sweep.')
-
-#noise_button=Button(buttons_bottom,image=ico['play'], command=noise,takefocus=0)
-#noise_button.grid(row=0, column=2, padx=5)
-#widget_tooltip(noise_button,'Run white noise add FFT.')
 
 Label(buttons_bottom,image=ico['empty'],relief='flat').grid(row=0, column=3, padx=5,sticky='news')
 
