@@ -31,7 +31,7 @@ from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 
 from numpy import mean as np_mean,square as np_square,float64,hanning,abs as np_abs,fft as np_fft,log10 as np_log10
-from sounddevice import InputStream,OutputStream,query_devices
+from sounddevice import InputStream,OutputStream,query_devices,default as sd_default
 
 from math import pi, sin, log10, ceil, floor
 from PIL import ImageGrab
@@ -327,7 +327,7 @@ def init_lines():
     for track in range(tracks):
         spectrum_line_data.append(list(curr_line_data))
 
-    curr_line_data_fft=[0.0]*(blocksize_in_fft*2)
+    curr_line_data_fft=[db2y(dbmin)]*(blocksize_in_fft*2)
     for i_fft in range(blocksize_in_fft):
         f_fft = i_fft * samplerate / blocksize_in_fft + 1e-12
         logf_fft=log10(f_fft)
@@ -466,32 +466,8 @@ def gui_update():
 
                 if fft_on:
                     for track in visible_tracks:
-
-                        #actual_line=[]
-                        #actual_line_append=actual_line.append
-
-                        #prev_x=0
-                        #it=iter(spectrum_line_data_fft[track])
-
-                        #while True:
-                        #    try:
-                        #        x=next(it)
-                        #        y=next(it)
-
-                        #        int_x=int(x)
-                        #        if prev_x!=int_x:
-                        #            prev_x=int_x
-                        #            actual_line_append(int_x)
-                        #            actual_line_append(y)
-                        #    except:
-                        #        break
-
-                        #spectrum_line[track]=canvas_create_line( spectrum_line_data_fft[track] , fill="black" , width=1, smooth=True,tags="spectrum" )
-
                         spectrum_line_data_fft_track = spectrum_line_data_fft[track]
                         spectrum_line[track]=canvas_create_line( [spectrum_line_data_fft_track[i] for i in spectrum_line_data_fft_indexes] , fill="black" , width=1, smooth=True,tags="spectrum" )
-                        #spectrum_line[track]=canvas_create_line( actual_line , fill="black" , width=1, smooth=True,tags="spectrum" )
-
                 else:
                     for track in visible_tracks:
                         spectrum_line[track]=canvas_create_line( spectrum_line_data[track] , fill="black" , width=1, smooth=True,tags="spectrum" )
@@ -654,9 +630,11 @@ def audio_input_callback_fft(indata, frames, time_info, status):
         magnitude_dbfs = 20 * np_log10(np_abs( np_fft_rfft( indata[:, 0] * np_hanning ) ) / blocksize_in_fft + 1e-12)
 
         curr_line_data_fft=spectrum_line_data_fft[current_track]
+        #for i_fft in range(int(floor(blocksize_in_fft)/2+1)):
         for i_fft in range(int(floor(blocksize_in_fft)/2+1)):
             curr_line_data_fft[i_fft*2+1]=db2y(magnitude_dbfs[i_fft])
 
+        #print('\n',curr_line_data_fft)
         redraw_spectrum_line=True
 
     except Exception as e:
@@ -724,11 +702,17 @@ def post_close():
 
 dev_dict={}
 def refresh_devices():
-    global devices,dev_dict
+    global devices,dev_dict,device_default_input,device_default_output,device_default_input_index,device_default_output_index
 
     devices=query_devices()
+    device_default_input_index,device_default_output_index = sd_default.device
+
     for dev in devices:
         dev_dict[dev['name']]=dev
+        if dev['index']==device_default_input_index:
+            device_default_input=dev
+        if dev['index']==device_default_output_index:
+            device_default_output=dev
 
     def print_device(dev):
         print("")
@@ -792,13 +776,13 @@ def get_settings_dialog():
         frame1.grid(row=0,column=0,sticky='news',padx=4,pady=(4,2))
         frame1.grid_columnconfigure(1, weight=1)
 
-        dev_out_str=StringVar(value='default')
+        dev_out_str=StringVar(value=device_default_output['name'])
         Label(frame1,text='Output').grid(row=0, column=0, sticky='news',padx=4,pady=4)
         dev_out_cb = Combobox(frame1,textvariable=dev_out_str,state='readonly',width=16)
         dev_out_cb.grid(row=0, column=1, sticky='news',padx=4,pady=4)
         dev_out_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_cmd())
 
-        dev_in_str=StringVar(value='default')
+        dev_in_str=StringVar(value=device_default_input['name'])
         Label(frame1,text='Input').grid(row=1, column=0, sticky='news',padx=4,pady=4)
         dev_in_cb = Combobox(frame1,textvariable=dev_in_str,state='readonly',width=16)
         dev_in_cb.grid(row=1, column=1, sticky='news',padx=4,pady=4)
@@ -916,13 +900,13 @@ def fft_toggle():
         dev_in_cmd()
         canvas.itemconfig(cursor_db, state='normal')
         canvas.itemconfig("cursor_db_text", state='normal')
-        fft_button.configure(image=ico["fft_on"])
+        fft_button.configure(image=ico["fft_off"])
     else:
         fft_on=True
         dev_in_cmd()
         canvas.itemconfig(cursor_db, state='hidden')
         canvas.itemconfig("cursor_db_text", state='hidden')
-        fft_button.configure(image=ico["fft_off"])
+        fft_button.configure(image=ico["fft_on"])
 
     if stream_in:
         stream_in.start()
