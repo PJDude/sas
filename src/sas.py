@@ -30,11 +30,12 @@ from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 
-from numpy import mean as np_mean,square as np_square,float64,hanning,abs as np_abs,fft as np_fft,log10 as np_log10
+from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,array as np_array
 from sounddevice import InputStream,OutputStream,query_devices,default as sd_default
 
 from math import pi, sin, log10, ceil, floor
-from PIL import ImageGrab
+from PIL import ImageGrab, ImageTk, Image
+
 ImageGrab_grab=ImageGrab.grab
 
 from pathlib import Path
@@ -56,6 +57,11 @@ HOMEPAGE='https://github.com/PJDude/sas'
 windows = bool(os_name=='nt')
 
 np_fft_rfft=np_fft.rfft
+
+blocksize_out = 128
+blocksize_in = 128
+
+fft_size = blocksize_in*8*2
 
 if windows:
     from os import startfile
@@ -234,8 +240,9 @@ def load_csv():
         except Exception as e:
             print("Load_csv_error:",e)
 
-        global redraw_spectrum_line
+        global redraw_spectrum_line,redraw_fft_line
         redraw_spectrum_line=True
+        redraw_fft_line=True
 
     slower_update=False
 
@@ -295,8 +302,9 @@ def save_image():
                 canvas_itemconfig('cursor', state='normal')
                 update_track_change()
 
-                global redraw_spectrum_line
+                global redraw_spectrum_line,redraw_fft_line
                 redraw_spectrum_line=True
+                redraw_fft_line=True
 
                 change_logf(current_logf)
 
@@ -327,21 +335,20 @@ def init_lines():
     for track in range(tracks):
         spectrum_line_data.append(list(curr_line_data))
 
-    curr_line_data_fft=[db2y(dbmin)]*(blocksize_in_fft*2)
-    for i_fft in range(blocksize_in_fft):
-        f_fft = i_fft * samplerate / blocksize_in_fft + 1e-12
+    #spectrum_line_data_fft=[db2y(dbmin)]*(fft_size*2)
+    spectrum_line_data_fft=[db2y(dbmin)]*(fft_size*2)
+    #for i_fft in range(fft_size):
+    for i_fft in range(fft_size):
+        #f_fft = i_fft * samplerate / fft_size + 1e-12
+        f_fft = i_fft * samplerate / fft_size + 1e-12
         logf_fft=log10(f_fft)
         x_fft=logf_to_xpixel(logf_fft)
 
-        curr_line_data_fft[i_fft*2]=x_fft
-
-    spectrum_line_data_fft=[]
-    for track in range(tracks):
-        spectrum_line_data_fft.append(list(curr_line_data_fft))
+        spectrum_line_data_fft[i_fft*2]=x_fft
 
 def root_configure(event=None):
     if not exiting:
-        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_spectrum_line,current_sample_modified,canvas_height_by_dbrange_display,spectrum_line_data,spectrum_line_data_fft,spectrum_line_data_fft_indexes
+        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_spectrum_line,redraw_fft_line,current_sample_modified,canvas_height_by_dbrange_display,spectrum_line_data,spectrum_line_data_fft,spectrum_line_data_fft_indexes
         canvas_width=canvas_winfo_width()
 
         x_min_audio=logf_to_xpixel(logf_min_audio)
@@ -360,6 +367,10 @@ def root_configure(event=None):
         canvas_height_m20=canvas_height-20
 
         canvas_height_by_dbrange_display=canvas_height/dbrange_display
+
+        global new_bg
+        new_bg=bg_org.zoom(ceil(2*canvas_width/10),ceil(2*canvas_height/100))
+        canvas.itemconfigure(canv_bg,image=new_bg)
 
         canvas_delete("grid")
         for f,bold,lab in ((10,0,''),(20,2,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
@@ -388,6 +399,7 @@ def root_configure(event=None):
                 canvas_create_line(0, y, canvas_width,y, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
         redraw_spectrum_line=True
+        redraw_fft_line=True
         current_sample_modified=True
 
         update_track_change()
@@ -403,16 +415,15 @@ def root_configure(event=None):
                 curr_line_data[i*2]= x_min_audio+scale_factor_canvas_width_to_bucket_quant * i
                 curr_line_data[i*2+1]=db2y(curr_spectrum_buckets[i])
 
-            curr_line_data_fft=spectrum_line_data_fft[track]
-            for i_fft in range(blocksize_in_fft):
-                curr_line_data_fft[i_fft*2]=logf_to_xpixel(log10(i_fft * samplerate_by_blocksize_in_fft + 1e-12))
+        for i_fft in range(fft_size):
+            spectrum_line_data_fft[i_fft*2]=logf_to_xpixel(log10(i_fft * samplerate_by_fft_size + 1e-12))
 
         track=0
         spectrum_line_data_fft_indexes=[]
         spectrum_line_data_fft_indexes_append=spectrum_line_data_fft_indexes.append
 
         prev_x=0
-        it=iter(spectrum_line_data_fft[track])
+        it=iter(spectrum_line_data_fft)
         i=0
         while True:
             try:
@@ -458,19 +469,20 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global redraw_spectrum_line,current_sample_modified
+            global redraw_spectrum_line,redraw_fft_line,current_sample_modified
+
+            if redraw_fft_line:
+                redraw_fft_line=False
+                canvas_delete("spectrum_fft")
+                if fft_on:
+                    linedata=[spectrum_line_data_fft[i] for i in spectrum_line_data_fft_indexes]
+                    fft_line=canvas_create_line( [spectrum_line_data_fft[i] for i in spectrum_line_data_fft_indexes] , fill="black" , width=1, smooth=True,tags="spectrum_fft" )
+
             if redraw_spectrum_line:
                 redraw_spectrum_line=False
-
                 canvas_delete("spectrum")
-
-                if fft_on:
-                    for track in visible_tracks:
-                        spectrum_line_data_fft_track = spectrum_line_data_fft[track]
-                        spectrum_line[track]=canvas_create_line( [spectrum_line_data_fft_track[i] for i in spectrum_line_data_fft_indexes] , fill="black" , width=1, smooth=True,tags="spectrum" )
-                else:
-                    for track in visible_tracks:
-                        spectrum_line[track]=canvas_create_line( spectrum_line_data[track] , fill="black" , width=1, smooth=True,tags="spectrum" )
+                for track in visible_tracks:
+                    spectrum_line[track]=canvas_create_line( spectrum_line_data[track] , fill="black" , width=1, smooth=True,tags="spectrum" )
 
             if current_sample_modified:
                 current_sample_modified=False
@@ -619,26 +631,11 @@ def fft_sample_to_freq():
 
 current_sample_db=-120
 
-def audio_input_callback_fft(indata, frames, time_info, status):
-    if status:
-        print(status)
-        return
 
-    try:
-        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_spectrum_line,spectrum_line_data_fft
-
-        magnitude_dbfs = 20 * np_log10(np_abs( np_fft_rfft( indata[:, 0] * np_hanning ) ) / blocksize_in_fft + 1e-12)
-
-        curr_line_data_fft=spectrum_line_data_fft[current_track]
-        #for i_fft in range(int(floor(blocksize_in_fft)/2+1)):
-        for i_fft in range(int(floor(blocksize_in_fft)/2+1)):
-            curr_line_data_fft[i_fft*2+1]=db2y(magnitude_dbfs[i_fft])
-
-        #print('\n',curr_line_data_fft)
-        redraw_spectrum_line=True
-
-    except Exception as e:
-        print("audio_input_callback_error fft:",e)
+from collections import deque
+fft_fifo = deque(maxlen=fft_size)
+fft_fifo_extend=fft_fifo.extend
+#import numpy as np
 
 def audio_input_callback(indata, frames, time_info, status):
     if status:
@@ -646,7 +643,7 @@ def audio_input_callback(indata, frames, time_info, status):
         return
 
     try:
-        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_spectrum_line
+        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_spectrum_line,spectrum_line_data_fft,redraw_fft_line
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
@@ -674,6 +671,16 @@ def audio_input_callback(indata, frames, time_info, status):
                     spectrum_buckets[current_track][i]=current_sample_db
                     spectrum_line_data[current_track][i*2+1]=db2y(current_sample_db)
                     redraw_spectrum_line=True
+
+        if fft_on:
+            fft_fifo_extend(indata[:, 0])
+
+            if len(fft_fifo) == fft_size:
+                magnitude_dbfs = 20 * np_log10( np_abs( np_fft_rfft( fft_fifo * fft_window) ) / fft_size + 1e-12)
+
+                for i_fft in range(int(floor(fft_size)/2+1)):
+                    spectrum_line_data_fft[i_fft*2+1]=db2y(magnitude_dbfs[i_fft])
+                    redraw_fft_line=True
 
     except Exception as e:
         print("audio_input_callback_error:",e)
@@ -749,15 +756,16 @@ def dev_in_cmd():
     if stream_in:
         stream_in.stop()
 
-    blocksize = blocksize_in_fft if fft_on else blocksize_in
-    callback = audio_input_callback_fft if fft_on else audio_input_callback
-
     try:
-        stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize, callback=callback, latency="low",device=dev_dict[dev_in_str.get()]['index'] )
+        stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low",device=dev_dict[dev_in_str.get()]['index'] )
     except Exception as e:
         print(e)
     else:
         stream_in.start()
+
+def fft_window_cmd():
+    global fft_window,fft_window_str
+    fft_window = eval(f'{fft_window_str.get()}({fft_size})')
 
 settings_dialog_created = False
 def get_settings_dialog():
@@ -770,7 +778,7 @@ def get_settings_dialog():
     if not settings_dialog_created:
         settings_dialog = GenericDialog(root,main_icon_tuple,bg_color,'',pre_show=pre_show,post_close=post_close)
 
-        global dev_in_str,dev_out_str,dev_in_cb,dev_out_cb
+        global dev_in_str,dev_out_str,dev_in_cb,dev_out_cb,fft_window_str
 
         frame1 = LabelFrame(settings_dialog.area_main,text='',bd=2,bg=bg_color,takefocus=False)
         frame1.grid(row=0,column=0,sticky='news',padx=4,pady=(4,2))
@@ -787,6 +795,12 @@ def get_settings_dialog():
         dev_in_cb = Combobox(frame1,textvariable=dev_in_str,state='readonly',width=16)
         dev_in_cb.grid(row=1, column=1, sticky='news',padx=4,pady=4)
         dev_in_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_cmd())
+
+        fft_window_str=StringVar(value='blackman')
+        Label(frame1,text='FFT Window').grid(row=2, column=0, sticky='news',padx=4,pady=4)
+        fft_window_cb = Combobox(frame1,textvariable=fft_window_str,state='readonly',width=16,values=('ones','hanning','hamming','blackman','bartlett'))
+        fft_window_cb.grid(row=2, column=1, sticky='news',padx=4,pady=4)
+        fft_window_cb.bind("<<ComboboxSelected>>", lambda event : fft_window_cmd())
 
         settings_dialog_created = True
 
@@ -897,13 +911,14 @@ def fft_toggle():
     if fft_on:
         fft_on=False
         dev_in_cmd()
-        dev_in_cmd()
+        fft_window_cmd()
         canvas.itemconfig(cursor_db, state='normal')
         canvas.itemconfig("cursor_db_text", state='normal')
         fft_button.configure(image=ico["fft_off"])
     else:
         fft_on=True
         dev_in_cmd()
+        fft_window_cmd()
         canvas.itemconfig(cursor_db, state='hidden')
         canvas.itemconfig("cursor_db_text", state='hidden')
         fft_button.configure(image=ico["fft_on"])
@@ -1051,14 +1066,7 @@ dbrange_display=dbmax_display-dbmin_display
 canvas_height=1
 canvas_width=1
 
-blocksize_out = 128
-blocksize_in = 128
-
-blocksize_in_fft = 1024
-
-samplerate_by_blocksize_in_fft = samplerate / blocksize_in_fft
-
-np_hanning = hanning(blocksize_in_fft)
+samplerate_by_fft_size = samplerate / fft_size
 
 blocksize_out_m1=blocksize_out-1
 
@@ -1081,6 +1089,7 @@ record_blocks_short=[0]*record_blocks_len_short
 record_blocks_index_to_replace_short=0
 
 redraw_spectrum_line=True
+redraw_fft_line=True
 current_sample_modified=True
 
 root = Tk()
@@ -1101,6 +1110,7 @@ ico = { img:PhotoImage(data = img_data) for img,img_data in image.items() }
 
 ico_sas = ico['sas']
 ico_sas_small = ico['sas_small']
+bg_org=ico['bg']
 
 main_icon_tuple = (ico_sas,ico_sas_small)
 
@@ -1164,7 +1174,7 @@ else:
     print(f'distro info:\n{distro_info}')
 
 #for initialization only
-scale_factor_logf_to_xpixel=0
+scale_factor_logf_to_xpixel=1
 
 root.rowconfigure(1, weight=1)
 root.columnconfigure(0, weight=1)
@@ -1211,6 +1221,9 @@ cursor_db = canvas_create_line(0, 0, logf_max, 0, width=10, fill="white", tags="
 canvas.lower(cursor_db)
 
 spectrum_line={track:None for track in range(tracks)}
+
+canv_bg = canvas.create_image(0,0,image=bg_org)
+canvas.lower(canv_bg)
 
 for track_temp in range(tracks):
     buttontemp = trackbuttons[track_temp]=Button(buttons_right)
@@ -1283,6 +1296,7 @@ get_settings_dialog()
 
 dev_out_cmd()
 dev_in_cmd()
+fft_window_cmd()
 
 root.bind('<Configure>', root_configure)
 root.bind('<F1>', lambda event : about_wrapper() )
