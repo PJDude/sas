@@ -8,6 +8,8 @@
 - Importing csv file
 - 8 separate buffers for comparing results
 - Portability
+- Live FFT graph with window function selection
+- Input and output device selection
 
 
 ![image info](./info/sas.gif)
