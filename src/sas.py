@@ -551,7 +551,7 @@ def audio_output_callback(outdata, frames, time, status):
             played_bucket_callbacks+=1
 
 def sweep():
-    global recording,sweeping,slower_update,fft_on,rec_on
+    global recording,sweeping,slower_update,fft_on,rec_on,redraw_fft_line
 
     fft_on=False
     redraw_fft_line=True
@@ -893,12 +893,13 @@ def rec_set():
     rec_button.configure(image=ico["rec_on" if rec_on else "rec_off"])
 
 def fft_toggle():
-    global fft_on,stream_in
+    global fft_on,stream_in,redraw_fft_line
 
     if stream_in:
         stream_in.stop()
 
     fft_on=False if fft_on else True
+    redraw_fft_line=True
 
     fft_set()
 
