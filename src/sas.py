@@ -61,8 +61,8 @@ np_fft_rfft=np_fft.rfft
 blocksize_out = 128
 blocksize_in = 128
 
-fft_size = blocksize_in*8*2*2
-fft_points=int(floor(fft_size/2)+1)
+fft_size = blocksize_in*8*2
+fft_points=int(fft_size/2+1)
 
 if windows:
     from os import startfile
@@ -326,32 +326,18 @@ canvas_height_by_dbrange_display=0
 canvas_height=0
 
 def init_lines():
-    global spectrum_line_data
-
     curr_line_data=[0.0]*(spectrum_buckets_quant*2)
     for i in range(spectrum_buckets_quant):
         curr_line_data[i*2]= 0
 
+    global spectrum_line_data
     spectrum_line_data=[]
     for track in range(tracks):
         spectrum_line_data.append(list(curr_line_data))
 
-    init_fft_line()
-
-def init_fft_line():
-    global spectrum_line_data_fft
-
-    #line coords -> *2
-    spectrum_line_data_fft=[db2y(dbmin)]*fft_points*2
-    for i_fft in range(fft_points):
-        spectrum_line_data_fft[i_fft*2]=logf_to_xpixel(log10(i_fft * samplerate_by_fft_size + 1e-12))
-
-    spectrum_line_data_fft[0]=logf_to_xpixel(log10(1))
-    spectrum_line_data_fft[1]=db2y(dbmin)
-
 def root_configure(event=None):
     if not exiting:
-        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_spectrum_line,redraw_fft_line,current_sample_modified,canvas_height_by_dbrange_display,spectrum_line_data,spectrum_line_data_fft,spectrum_line_data_fft_indexes
+        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_spectrum_line,redraw_fft_line,current_sample_modified,canvas_height_by_dbrange_display,spectrum_line_data,fft_line_data_x,fft_line_data_y,fft_line_data_indexes
         canvas_width=canvas_winfo_width()
 
         x_min_audio=logf_to_xpixel(logf_min_audio)
@@ -415,35 +401,30 @@ def root_configure(event=None):
             curr_line_data=spectrum_line_data[track]
             curr_spectrum_buckets=spectrum_buckets[track]
             for i in range(spectrum_buckets_quant):
-                curr_line_data[i*2]= x_min_audio+scale_factor_canvas_width_to_bucket_quant * i
-                curr_line_data[i*2+1]=db2y(curr_spectrum_buckets[i])
+                i2=i*2
+                curr_line_data[i2]= x_min_audio+scale_factor_canvas_width_to_bucket_quant * i
+                curr_line_data[i2+1]=db2y(curr_spectrum_buckets[i])
 
-        init_fft_line()
+        fft_line_data_x=[-1]*fft_points
+        fft_line_data_y=[db2y(dbmin)]*fft_points
 
-        track=0
-        spectrum_line_data_fft_indexes_temp=[]
-        spectrum_line_data_fft_indexes_temp_append=spectrum_line_data_fft_indexes_temp.append
+        for i_fft in range(fft_points):
+            x=logf_to_xpixel(log10(i_fft * samplerate_by_fft_size + 1e-12))
+            fft_line_data_x[i_fft]=x
+
+        fft_line_data_x[0]=logf_to_xpixel(log10(1))
+        fft_line_data_y[0]=db2y(dbmin)
 
         prev_x=-1
-        it=iter(spectrum_line_data_fft)
-        i=0
-        while True:
-            try:
-                x=next(it)
-                a=i
-                i+=1
-                y=next(it)
-                b=i
-                i+=1
+        fft_line_data_indexes_temp=[]
+        fft_line_data_indexes_temp_append=fft_line_data_indexes_temp.append
+        for i_fft in range(fft_points):
+            x=fft_line_data_x[i_fft]
+            if prev_x!=x:
+                prev_x=x
+                fft_line_data_indexes_temp_append(i_fft)
 
-                int_x=int(x)
-                if prev_x!=int_x:
-                    prev_x=int_x
-                    spectrum_line_data_fft_indexes_temp_append(a)
-                    spectrum_line_data_fft_indexes_temp_append(b)
-            except:
-                break
-        spectrum_line_data_fft_indexes=tuple(spectrum_line_data_fft_indexes_temp)
+        fft_line_data_indexes=tuple(fft_line_data_indexes_temp)
 
 def update_track_change():
     for c in range(tracks):
@@ -477,12 +458,7 @@ def gui_update():
                 redraw_fft_line=False
                 canvas_delete("spectrum_fft")
                 if fft_on:
-                    linedata=[spectrum_line_data_fft[i] for i in spectrum_line_data_fft_indexes]
-
-                    #print('spectrum_line_data_fft:',spectrum_line_data_fft)
-                    #print('spectrum_line_data_fft_indexes:',spectrum_line_data_fft_indexes)
-                    #print('linedata:',linedata)
-                    fft_line=canvas_create_line( [spectrum_line_data_fft[i] for i in spectrum_line_data_fft_indexes] , fill="gray36" , width=1, smooth=True,tags="spectrum_fft" )
+                    fft_line=canvas_create_line( [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index]))] , fill="gray36" , width=1, smooth=True,tags="spectrum_fft" )
 
             if redraw_spectrum_line:
                 redraw_spectrum_line=False
@@ -496,9 +472,10 @@ def gui_update():
                 y=db2y(current_sample_db)
 
                 canvas_delete("cursor_db_text")
-                canvas_create_text(canvas_width_m20, y, text=str(round(current_sample_db))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
+                if not fft_on:
+                    canvas_create_text(canvas_width_m20, y, text=str(round(current_sample_db))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
 
-                canvas_coords(cursor_db,0, y, canvas_width, y)
+                canvas_coords(cursor_db,canvas_width-40, y, canvas_width, y)
 
         except Exception as e:
             print("update_plot_error:",e)
@@ -577,6 +554,7 @@ def sweep():
     global recording,sweeping,slower_update,fft_on,rec_on
 
     fft_on=False
+    redraw_fft_line=True
     fft_set()
 
     rec_on=True
@@ -648,7 +626,7 @@ def audio_input_callback(indata, frames, time_info, status):
         return
 
     try:
-        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_spectrum_line,spectrum_line_data_fft,redraw_fft_line,rec_on
+        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_spectrum_line,fft_line_data_x,fft_line_data_y,redraw_fft_line,rec_on,fft_line_data_indexes
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
@@ -682,12 +660,7 @@ def audio_input_callback(indata, frames, time_info, status):
             fft_fifo_extend(indata[:, 0])
 
             if len(fft_fifo) == fft_size:
-                magnitude_dbfs = 20 * np_log10( np_abs( np_fft_rfft( fft_fifo * fft_window) ) / fft_size + 1e-12)
-
-                #dont touch first point
-                for i_fft in range(1,fft_points):
-                    spectrum_line_data_fft[i_fft*2+1]=db2y(magnitude_dbfs[i_fft])
-
+                fft_line_data_y = tuple(np_log10( np_abs( (np_fft_rfft( fft_fifo*fft_window))[0:fft_points] ) / fft_size + 1e-12))
                 redraw_fft_line=True
 
     except Exception as e:
@@ -937,7 +910,7 @@ def fft_toggle():
 
 def fft_set():
     fft_button.configure(image=ico["fft_on" if fft_on else "fft_off"] )
-
+    canvas_itemconfig(cursor_db, state='hidden' if fft_on else 'normal')
 
 def flatline():
     global redraw_spectrum_line
@@ -1238,7 +1211,7 @@ canvas_winfo_height=canvas.winfo_height
 
 cursor_f = canvas_create_line(logf_ini, 0, logf_ini, 0, width=2, fill="white", tags="cursor")
 canvas.lower(cursor_f)
-cursor_db = canvas_create_line(0, 0, logf_max, 0, width=10, fill="white", tags="cursor")
+cursor_db = canvas_create_line(logf_max, 0, logf_max, 0, width=10, fill="white", tags="cursor")
 canvas.lower(cursor_db)
 
 spectrum_line={track:None for track in range(tracks)}
