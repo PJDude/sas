@@ -689,8 +689,13 @@ def post_close():
     dialog_shown=False
 
 dev_dict={}
+device_default_input={}
+device_default_output={}
 def refresh_devices():
     global devices,dev_dict,device_default_input,device_default_output,device_default_input_index,device_default_output_index
+
+    device_default_input['name']=None
+    device_default_output['name']=None
 
     devices=query_devices()
     device_default_input_index,device_default_output_index = sd_default.device
@@ -717,6 +722,11 @@ def refresh_devices():
         for i, dev in enumerate(devices):
             if dev['max_input_channels'] > 0:
                 print_device(dev)
+
+    print(f'{device_default_input_index=}')
+    print(f'{device_default_input=}')
+    print(f'{device_default_output_index=}')
+    print(f'{device_default_output=}')
 
 def dev_out_cmd():
     global stream_out,dev_out_str,dev_dict
@@ -891,6 +901,13 @@ def rec_toggle():
 
 def rec_set():
     rec_button.configure(image=ico["rec_on" if rec_on else "rec_off"])
+
+    if not rec_on:
+        global visible_tracks
+        visible_tracks=set()
+        global redraw_spectrum_line
+        redraw_spectrum_line=True
+        update_track_change()
 
 def fft_toggle():
     global fft_on,stream_in,redraw_fft_line
