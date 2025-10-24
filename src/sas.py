@@ -695,7 +695,7 @@ def refresh_devices():
 
     for dev in query_devices():
         try:
-            with Stream(device=dev['index'], samplerate=samplerate, channels=1):
+            if windows:
                 devices.append(dev)
 
                 dev_dict[dev['name']]=dev
@@ -703,6 +703,15 @@ def refresh_devices():
                     device_default_input=dev
                 if dev['index']==device_default_output_index:
                     device_default_output=dev
+            else:
+                with Stream(device=dev['index'], samplerate=samplerate, channels=1):
+                    devices.append(dev)
+
+                    dev_dict[dev['name']]=dev
+                    if dev['index']==device_default_input_index:
+                        device_default_input=dev
+                    if dev['index']==device_default_output_index:
+                        device_default_output=dev
 
         except Exception:
             print('skippping:',dev['name'])
