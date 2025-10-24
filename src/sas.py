@@ -31,7 +31,7 @@ from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 
 from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,array as np_array
-from sounddevice import InputStream,OutputStream,query_devices,default as sd_default
+from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default
 
 from math import pi, sin, log10, ceil, floor
 from PIL import ImageGrab, ImageTk, Image
@@ -141,6 +141,7 @@ def on_mouse_release_1(event):
     lock_frequency=False
 
     recording=False
+    update_tracks_buttons()
     sweeping=False
 
     play_stop()
@@ -151,6 +152,7 @@ def on_mouse_release_3(event):
     root_after_cancel(record_after)
 
     recording=False
+    update_tracks_buttons()
     sweeping=False
 
 def on_mouse_scroll_win(event):
@@ -183,9 +185,6 @@ def scroll_mod(mod,factor=0.01):
                 f_current=f_new
 
 def save_csv():
-    global slower_update
-    slower_update=True
-
     time_postfix=strftime('%Y_%m_%d_%H_%M_%S',localtime())
     filename = asksaveasfilename(title = "Save CSV",initialfile = f'sas_{time_postfix}.csv',defaultextension=".csv",filetypes=[("All Files","*.*"),("CSV Files","*.csv")])
 
@@ -200,12 +199,7 @@ def save_csv():
         except Exception as e:
             print("save_csv_error:",e)
 
-    slower_update=False
-
 def load_csv():
-    global slower_update
-    slower_update=True
-
     filename = askopenfilename(title = "Load CSV",initialfile = 'sas*.csv',defaultextension=".csv",filetypes=[("CSV Files","*.csv"),("All Files","*.*")])
 
     if filename:
@@ -233,7 +227,7 @@ def load_csv():
 
                         if dbmin<=float_db<=dbmax:
                             spectrum_buckets[current_track][bucket]=float_db
-                            spectrum_line_data[current_track][bucket*2+1]=db2y(float_db)
+                            track_line_data[current_track][bucket*2+1]=db2y(float_db)
                         else:
                             print("wrong db value:",float_db)
                             continue
@@ -241,15 +235,11 @@ def load_csv():
         except Exception as e:
             print("Load_csv_error:",e)
 
-        global redraw_spectrum_line,redraw_fft_line
-        redraw_spectrum_line=True
+        global redraw_tracks_lines,redraw_fft_line
+        redraw_tracks_lines=True
         redraw_fft_line=True
 
-    slower_update=False
-
 def save_image():
-    global slower_update
-    slower_update=True
     time_postfix=strftime('%Y_%m_%d_%H_%M_%S',localtime())
     filename = asksaveasfilename(title = "Save Image",initialfile = f'sas_{time_postfix}.png',defaultextension=".png",filetypes=[("All Files","*.*"),("PNG Files","*.png")])
 
@@ -281,16 +271,17 @@ def save_image():
                 root.attributes('-topmost', True)
 
                 x_offset=72
-                canvas_create_text(x_offset-1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset-1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset-1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset+1, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset+1, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset+1, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset, 3, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset, 5, text="Created with " + title, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                text="Created with " + title
+                canvas_create_text(x_offset-1, 3, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset-1, 4, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset-1, 5, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset+1, 3, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset+1, 4, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset+1, 5, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset, 3, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                canvas_create_text(x_offset, 5, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
 
-                canvas_create_text(x_offset, 4, text="Created with " + title, anchor="nw", font=("Arial", 8), fill="black",tags='mark')
+                canvas_create_text(x_offset, 4, text=text, anchor="nw", font=("Arial", 8), fill="black",tags='mark')
 
                 ###################################
                 root_update()
@@ -301,10 +292,10 @@ def save_image():
                 canvas_delete('mark')
 
                 canvas_itemconfig('cursor', state='normal')
-                update_track_change()
+                update_tracks_buttons()
 
-                global redraw_spectrum_line,redraw_fft_line
-                redraw_spectrum_line=True
+                global redraw_tracks_lines,redraw_fft_line
+                redraw_tracks_lines=True
                 redraw_fft_line=True
 
                 change_logf(current_logf)
@@ -317,8 +308,6 @@ def save_image():
     else:
         print("Cancel")
 
-    slower_update=False
-
 scale_factor_canvas_width_to_bucket_quant=1
 canvas_width_m20=1
 canvas_width_m10=1
@@ -330,14 +319,14 @@ def init_lines():
     for i in range(spectrum_buckets_quant):
         curr_line_data[i*2]= 0
 
-    global spectrum_line_data
-    spectrum_line_data=[]
+    global track_line_data
+    track_line_data=[]
     for track in range(tracks):
-        spectrum_line_data.append(list(curr_line_data))
+        track_line_data.append(list(curr_line_data))
 
 def root_configure(event=None):
     if not exiting:
-        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_spectrum_line,redraw_fft_line,current_sample_modified,canvas_height_by_dbrange_display,spectrum_line_data,fft_line_data_x,fft_line_data_y,fft_line_data_indexes
+        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_tracks_lines,redraw_fft_line,current_sample_modified,canvas_height_by_dbrange_display,track_line_data,fft_line_data_x,fft_line_data_y,fft_line_data_indexes
         canvas_width=canvas_winfo_width()
 
         x_min_audio=logf_to_xpixel(logf_min_audio)
@@ -387,18 +376,16 @@ def root_configure(event=None):
             else:
                 canvas_create_line(0, y, canvas_width,y, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
-        redraw_spectrum_line=True
+        redraw_tracks_lines=True
         redraw_fft_line=True
         current_sample_modified=True
-
-        update_track_change()
 
         change_logf(current_logf)
 
         y_initval = db2y(dbinit)
 
         for track in range(tracks):
-            curr_line_data=spectrum_line_data[track]
+            curr_line_data=track_line_data[track]
             curr_spectrum_buckets=spectrum_buckets[track]
             for i in range(spectrum_buckets_quant):
                 i2=i*2
@@ -426,14 +413,15 @@ def root_configure(event=None):
 
         fft_line_data_indexes=tuple(fft_line_data_indexes_temp)
 
-def update_track_change():
+def update_tracks_buttons():
+    global rec_on,current_track
+
     for c in range(tracks):
-        trackbuttons[c].configure( image=ico[str(c+1) + '_' + ('sel' if c==current_track else 'on' if c in visible_tracks else 'off')])
+        trackbuttons[c].configure( image=ico[str(c+1) + '_' + ('sel' if c==current_track and rec_on else 'on' if c in visible_tracks else 'off')])
 
 def db2y(db):
     return int(canvas_height - ( canvas_height_by_dbrange_display*(db-dbmin_display) ) )
 
-slower_update=False
 def gui_update():
     if exiting:
         if stream_in:
@@ -452,7 +440,7 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global redraw_spectrum_line,redraw_fft_line,current_sample_modified
+            global redraw_tracks_lines,redraw_fft_line,current_sample_modified
 
             if redraw_fft_line:
                 redraw_fft_line=False
@@ -460,11 +448,11 @@ def gui_update():
                 if fft_on:
                     fft_line=canvas_create_line( [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index]))] , fill="gray36" , width=1, smooth=True,tags="spectrum_fft" )
 
-            if redraw_spectrum_line:
-                redraw_spectrum_line=False
+            if redraw_tracks_lines:
+                redraw_tracks_lines=False
                 canvas_delete("spectrum")
                 for track in visible_tracks:
-                    spectrum_line[track]=canvas_create_line( spectrum_line_data[track] , fill=spectrum_line_color[track] , width=1, smooth=True,tags="spectrum" )
+                    spectrum_line[track]=canvas_create_line( track_line_data[track] , fill=spectrum_line_color[track] , width=1, smooth=True,tags="spectrum" )
 
             if current_sample_modified:
                 current_sample_modified=False
@@ -480,10 +468,7 @@ def gui_update():
         except Exception as e:
             print("update_plot_error:",e)
 
-        if slower_update:
-            root_after(1,gui_update)
-        else:
-            root_after_idle(gui_update)
+        root_after(1,gui_update)
 
 def xpixel_to_logf(x):
     return x /scale_factor_logf_to_xpixel + logf_min
@@ -551,24 +536,29 @@ def audio_output_callback(outdata, frames, time, status):
             played_bucket_callbacks+=1
 
 def sweep():
-    global recording,sweeping,slower_update,fft_on,rec_on,redraw_fft_line
+    global recording,sweeping,fft_on,rec_on,redraw_fft_line
 
     fft_on=False
     redraw_fft_line=True
     fft_set()
 
     rec_on=True
-    rec_set()
+    recording=True
+
+    track_auto_enable()
+    update_tracks_buttons()
+    update_rec_button()
+
+    global redraw_tracks_lines
+    redraw_tracks_lines=True
 
     play_stop()
-    slower_update=True
 
     root_update()
 
     change_logf(logf_min_audio)
     logf_sweep_step=logf_max_audio_m_logf_min_audio/sweep_steps
 
-    recording=True
     sweeping=True
 
     play_start()
@@ -589,9 +579,8 @@ def sweep():
 
     play_stop()
 
-    slower_update=False
-
     recording=False
+    #update_tracks_buttons()
 
 def play_start():
     global stream_out_state
@@ -626,7 +615,7 @@ def audio_input_callback(indata, frames, time_info, status):
         return
 
     try:
-        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_spectrum_line,fft_line_data_x,fft_line_data_y,redraw_fft_line,rec_on,fft_line_data_indexes
+        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_tracks_lines,fft_line_data_x,fft_line_data_y,redraw_fft_line,rec_on,fft_line_data_indexes,recording,current_track
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
@@ -649,12 +638,12 @@ def audio_input_callback(indata, frames, time_info, status):
         if rec_on:
             if recording or lock_frequency:
                 if played_bucket_callbacks>record_blocks_len:
-                    i=logf_to_bucket(current_logf)
-
-                    if i in range(spectrum_buckets_quant):
-                        spectrum_buckets[current_track][i]=current_sample_db
-                        spectrum_line_data[current_track][i*2+1]=db2y(current_sample_db)
-                        redraw_spectrum_line=True
+                    i=current_bucket
+                    if i<spectrum_buckets_quant:
+                        if current_track is not None:
+                            spectrum_buckets[current_track][i]=current_sample_db
+                            track_line_data[current_track][i*2+1]=db2y(current_sample_db)
+                            redraw_tracks_lines=True
 
         if fft_on:
             fft_fifo_extend(indata[:, 0])
@@ -684,8 +673,7 @@ def pre_show():
     dialog_shown=True
 
 def post_close():
-    global slower_update,dialog_shown
-    slower_update=False
+    global dialog_shown
     dialog_shown=False
 
 dev_dict={}
@@ -697,36 +685,27 @@ def refresh_devices():
     device_default_input['name']=None
     device_default_output['name']=None
 
-    devices=query_devices()
     device_default_input_index,device_default_output_index = sd_default.device
-
-    for dev in devices:
-        dev_dict[dev['name']]=dev
-        if dev['index']==device_default_input_index:
-            device_default_input=dev
-        if dev['index']==device_default_output_index:
-            device_default_output=dev
+    devices=[]
 
     def print_device(dev):
         print("")
         for key,val in dev.items():
             print(f"  {key}:{val}")
 
-    if True:
-        print("\nOutput devices:")
-        for dev in devices:
-            if dev['max_output_channels'] > 0:
-                print_device(dev)
+    for dev in query_devices():
+        try:
+            with Stream(device=dev['index'], samplerate=samplerate, channels=1):
+                devices.append(dev)
 
-        print("\nInput devices:")
-        for i, dev in enumerate(devices):
-            if dev['max_input_channels'] > 0:
-                print_device(dev)
+                dev_dict[dev['name']]=dev
+                if dev['index']==device_default_input_index:
+                    device_default_input=dev
+                if dev['index']==device_default_output_index:
+                    device_default_output=dev
 
-    print(f'{device_default_input_index=}')
-    print(f'{device_default_input=}')
-    print(f'{device_default_output_index=}')
-    print(f'{device_default_output=}')
+        except Exception:
+            print('skippping:',dev['name'])
 
 def dev_out_cmd():
     global stream_out,dev_out_str,dev_dict
@@ -756,54 +735,12 @@ def dev_in_cmd():
 
 def fft_window_cmd():
     global fft_window,fft_window_str
+
     fft_window = eval(f'{fft_window_str.get()}({fft_size})')
-
-settings_dialog_created = False
-def get_settings_dialog():
-    global slower_update,settings_dialog_created,settings_dialog
-    slower_update=True
-
-    dev_out_vals=[dev['name'] for dev in devices if dev['max_output_channels'] > 0]
-    dev_in_vals=[dev['name'] for dev in devices if dev['max_input_channels'] > 0]
-
-    if not settings_dialog_created:
-        settings_dialog = GenericDialog(root,main_icon_tuple,bg_color,'',pre_show=pre_show,post_close=post_close)
-
-        global dev_in_str,dev_out_str,dev_in_cb,dev_out_cb,fft_window_str
-
-        frame1 = LabelFrame(settings_dialog.area_main,text='',bd=2,bg=bg_color,takefocus=False)
-        frame1.grid(row=0,column=0,sticky='news',padx=4,pady=(4,2))
-        frame1.grid_columnconfigure(1, weight=1)
-
-        dev_out_str=StringVar(value=device_default_output['name'])
-        Label(frame1,text='Output').grid(row=0, column=0, sticky='news',padx=4,pady=4)
-        dev_out_cb = Combobox(frame1,textvariable=dev_out_str,state='readonly',width=16)
-        dev_out_cb.grid(row=0, column=1, sticky='news',padx=4,pady=4)
-        dev_out_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_cmd())
-
-        dev_in_str=StringVar(value=device_default_input['name'])
-        Label(frame1,text='Input').grid(row=1, column=0, sticky='news',padx=4,pady=4)
-        dev_in_cb = Combobox(frame1,textvariable=dev_in_str,state='readonly',width=16)
-        dev_in_cb.grid(row=1, column=1, sticky='news',padx=4,pady=4)
-        dev_in_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_cmd())
-
-        fft_window_str=StringVar(value='blackman')
-        Label(frame1,text='FFT Window').grid(row=2, column=0, sticky='news',padx=4,pady=4)
-        fft_window_cb = Combobox(frame1,textvariable=fft_window_str,state='readonly',width=16,values=('ones','hanning','hamming','blackman','bartlett'))
-        fft_window_cb.grid(row=2, column=1, sticky='news',padx=4,pady=4)
-        fft_window_cb.bind("<<ComboboxSelected>>", lambda event : fft_window_cmd())
-
-        settings_dialog_created = True
-
-    dev_out_cb.configure(values=dev_out_vals)
-    dev_in_cb.configure(values=dev_in_vals)
-
-    return settings_dialog
 
 about_dialog_created = False
 def get_about_dialog():
-    global slower_update,about_dialog_created,about_dialog
-    slower_update=True
+    global about_dialog_created,about_dialog
 
     if not about_dialog_created:
 
@@ -837,23 +774,22 @@ def get_about_dialog():
     return about_dialog
 
 def about_wrapper():
-    global slower_update
-    slower_update=True
-
     get_about_dialog().show()
 
+settings_shown=False
 def settings_wrapper():
-    global slower_update
-    slower_update=True
+    global settings_shown,frame_options,settings,dev_out_cb,dev_in_cb
 
-    refresh_devices()
-
-    get_settings_dialog().show()
+    if settings_shown:
+        settings_shown=False
+        frame_options.grid_forget()
+    else:
+        settings_shown=True
+        frame_options.grid(sticky='news')
 
 license_dialog_created=False
 def get_license_dialog():
-    global slower_update, license_dialog, license_dialog_created
-    slower_update=True
+    global license_dialog, license_dialog_created
 
     if not license_dialog_created:
         try:
@@ -888,26 +824,19 @@ def get_license_dialog():
     return license_dialog
 
 def license_wrapper():
-    global slower_update
-    slower_update=True
-
     get_license_dialog().show()
 
 def rec_toggle():
-    global rec_on
+    global rec_on,redraw_tracks_lines
 
     rec_on=False if rec_on else True
-    rec_set()
+    redraw_tracks_lines=True
+    update_rec_button()
+    track_auto_enable()
+    update_tracks_buttons()
 
-def rec_set():
+def update_rec_button():
     rec_button.configure(image=ico["rec_on" if rec_on else "rec_off"])
-
-    if not rec_on:
-        global visible_tracks
-        visible_tracks=set()
-        global redraw_spectrum_line
-        redraw_spectrum_line=True
-        update_track_change()
 
 def fft_toggle():
     global fft_on,stream_in,redraw_fft_line
@@ -931,20 +860,21 @@ def fft_set():
     canvas_itemconfig(cursor_db, state='hidden' if fft_on else 'normal')
 
 def flatline():
-    global redraw_spectrum_line
+    global redraw_tracks_lines,current_track
 
-    spectrum_buckets[current_track]=[dbinit]*spectrum_buckets_quant
+    if current_track:
+        spectrum_buckets[current_track]=[dbinit]*spectrum_buckets_quant
 
-    for i in range(spectrum_buckets_quant):
-        spectrum_line_data[current_track][i*2+1]=[db2y(dbinit)]
+        for i in range(spectrum_buckets_quant):
+            track_line_data[current_track][i*2+1]=[db2y(dbinit)]
 
-    redraw_spectrum_line=True
+        redraw_tracks_lines=True
 
 def trackbutton_motion(track):
     canvas_itemconfig(spectrum_line[track], fill='red')
     global spectrum_line_color
     spectrum_line_color[track]='red'
-    status_var_set(f'Choose buffer {track+1} (use Ctrl for multi-select or press number keys)')
+    status_var_set(f'Choose buffer {track+1} (use Ctrl to select active track or press number keys)')
 
 def trackbutton_leave(track):
     canvas_itemconfig(spectrum_line[track], fill='black')
@@ -964,6 +894,10 @@ def KeyPress(event):
 
     try:
         track=int(event.keysym)-1
+        if control_pressed:
+            global rec_on
+            rec_on=True
+
     except Exception as e_kp2:
         if event.keysym=="Left":
             scroll_mod(-1,0.001)
@@ -979,40 +913,47 @@ def KeyPress(event):
         if track in range(tracks):
             track_pressed(track,control_pressed)
 
+def track_auto_enable():
+    global current_track,visible_tracks,redraw_tracks_lines
+
+    if not visible_tracks:
+        visible_tracks.add(0)
+
+    if not current_track:
+        current_track=next(iter(visible_tracks))
+
 def track_pressed(track,control_pressed):
-    global current_track,visible_tracks,redraw_spectrum_line,recording,sweeping,lock_frequency
+    global current_track,visible_tracks,redraw_tracks_lines,sweeping,lock_frequency,rec_on
 
     try:
         prev_current_track=current_track
+
         if control_pressed:
-            if track in visible_tracks:
-                if track==current_track:
-                    visible_tracks.remove(track)
-
-                    if not visible_tracks:
-                        visible_tracks={track}
-                else:
-                    current_track=track
-            else:
-                visible_tracks.add(track)
-        else:
-            visible_tracks={track}
-
-        if track in visible_tracks:
+            visible_tracks.add(track)
             current_track=track
-        elif prev_current_track in visible_tracks:
-            current_track=prev_current_track
+        elif track in visible_tracks:
+            visible_tracks.remove(track)
         else:
+            visible_tracks.add(track)
+            current_track=prev_current_track
+
+        if current_track in visible_tracks:
+            pass
+        elif visible_tracks:
             current_track=next(iter(visible_tracks))
+        else:
+            current_track=None
+            rec_on=False
 
-        update_track_change()
+        update_tracks_buttons()
+        update_rec_button()
 
-        recording=False
+        #recording=False
         sweeping=False
         lock_frequency=False
         play_stop()
 
-        redraw_spectrum_line=True
+        redraw_tracks_lines=True
         status_set_frequency()
 
     except Exception as e_kp:
@@ -1100,7 +1041,7 @@ record_blocks_index_to_replace=0
 record_blocks_short=[0]*record_blocks_len_short
 record_blocks_index_to_replace_short=0
 
-redraw_spectrum_line=True
+redraw_tracks_lines=True
 redraw_fft_line=True
 current_sample_modified=True
 
@@ -1299,18 +1240,45 @@ widget_tooltip(about_button,'About')
 
 settings_button=Button(buttons_bottom,image=ico['settings'],  command=settings_wrapper,takefocus=0)
 settings_button.grid(row=0, column=10   , padx=(5,0))
-widget_tooltip(settings_button,'About')
+widget_tooltip(settings_button,'Settings')
 
 buttons_bottom.columnconfigure(0,weight=1)
 
 fft_on=True
-rec_on=True
+rec_on=False
 
 refresh_devices()
 stream_in=None
 stream_out=None
 
-get_settings_dialog()
+global dev_in_str,dev_out_str,dev_in_cb,dev_out_cb,fft_window_str
+
+frame_options = LabelFrame(root,text='',bd=2,bg=bg_color,takefocus=False)
+frame_options.grid(row=5,column=0,sticky='news',padx=4,pady=(4,2),columnspan=3)
+
+dev_out_str=StringVar(value=device_default_output['name'])
+Label(frame_options,text='Output:',anchor='w').grid(row=0, column=0, sticky='wens',padx=4,pady=4)
+dev_out_cb = Combobox(frame_options,textvariable=dev_out_str,state='readonly',width=16)
+dev_out_cb.grid(row=0, column=1, sticky='news',padx=4,pady=4)
+dev_out_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_cmd())
+
+dev_in_str=StringVar(value=device_default_input['name'])
+Label(frame_options,text='Input:',anchor='w').grid(row=0, column=2, sticky='wens',padx=4,pady=4)
+dev_in_cb = Combobox(frame_options,textvariable=dev_in_str,state='readonly',width=16)
+dev_in_cb.grid(row=0, column=3, sticky='news',padx=4,pady=4)
+dev_in_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_cmd())
+
+fft_window_str=StringVar(value='blackman')
+Label(frame_options,text='FFT Window:',anchor='w').grid(row=0, column=4, sticky='wens',padx=4,pady=4)
+fft_window_cb = Combobox(frame_options,textvariable=fft_window_str,state='readonly',width=16,values=('ones','hanning','hamming','blackman','bartlett'))
+fft_window_cb.grid(row=0, column=5, sticky='news',padx=4,pady=4)
+fft_window_cb.bind("<<ComboboxSelected>>", lambda event : fft_window_cmd())
+
+frame_options.grid_columnconfigure((1,3,5), weight=1)
+frame_options.grid_forget()
+
+dev_out_cb.configure(values=[dev['name'] for dev in devices if dev['max_output_channels'] > 0])
+dev_in_cb.configure(values=[dev['name'] for dev in devices if dev['max_input_channels'] > 0])
 
 dev_out_cmd()
 dev_in_cmd()
@@ -1323,10 +1291,10 @@ root.bind('<KeyPress>', KeyPress )
 
 init_lines()
 root_configure()
+update_rec_button()
+update_tracks_buttons()
 
 fft_set()
-
-rec_set()
 
 root_after(200,gui_update)
 
