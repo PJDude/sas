@@ -726,7 +726,7 @@ def refresh_devices():
             print('    -> skippping')
 
     apis = query_hostapis()
-    print(f'\napis:')
+    print(f'\nApis:')
     for api in apis:
         print('')
         for key,val in api.items():
