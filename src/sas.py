@@ -31,7 +31,7 @@ from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 
 from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,array as np_array
-from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default
+from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis
 
 from math import pi, sin, log10, ceil, floor
 from PIL import ImageGrab, ImageTk, Image
@@ -259,8 +259,8 @@ def save_image():
                 x2 = x1 + canvas_width
                 y2 = y1 + canvas_height
 
-                canvas_delete("freq")
-                canvas_delete("track")
+                #canvas_delete("freq")
+                #canvas_delete("track")
 
                 canvas_itemconfig('cursor', state='hidden')
                 canvas_itemconfig('cursor_freq', state='hidden')
@@ -348,7 +348,7 @@ def root_configure(event=None):
 
         global new_bg
         new_bg=bg_org.zoom(ceil(2*canvas_width/10),ceil(2*canvas_height/100))
-        canvas.itemconfigure(canv_bg,image=new_bg)
+        canvas_itemconfigure(canv_bg,image=new_bg)
 
         canvas_delete("grid")
         for f,bold,lab in ((10,0,''),(20,2,'20Hz'),(30,0,''),(40,0,''),(50,0,''),(60,0,''),(70,0,''),(80,0,''),(90,0,''),(100,1,'100Hz'),
@@ -443,20 +443,24 @@ def gui_update():
             global redraw_tracks_lines,redraw_fft_line,current_sample_modified
 
             if redraw_fft_line:
-                redraw_fft_line=False
-                canvas_delete("spectrum_fft")
                 if fft_on:
-                    fft_line=canvas_create_line( [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index]))] , fill="gray36" , width=1, smooth=True,tags="spectrum_fft" )
+                    canvas_coords(fft_line, *(v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ) )
+                    redraw_fft_line=False
 
             if redraw_tracks_lines:
+                #canvas_delete("spectrum")
+                for track in range(tracks):
+                    if track in visible_tracks:
+                        #spectrum_line[track]=canvas_create_line( track_line_data[track] , fill=spectrum_line_color[track] , width=1, smooth=True,tags="spectrum" )
+                        canvas_coords( spectrum_line[track], *(track_line_data[track]) )
+                        #print(spectrum_line[track] )
+                        canvas_itemconfigure( spectrum_line[track], fill=spectrum_line_color[track], state='normal' )
+                    else:
+                        canvas_itemconfigure( spectrum_line[track], state='hidden' )
+
                 redraw_tracks_lines=False
-                canvas_delete("spectrum")
-                for track in visible_tracks:
-                    spectrum_line[track]=canvas_create_line( track_line_data[track] , fill=spectrum_line_color[track] , width=1, smooth=True,tags="spectrum" )
 
             if current_sample_modified:
-                current_sample_modified=False
-
                 y=db2y(current_sample_db)
 
                 canvas_delete("cursor_db_text")
@@ -464,6 +468,7 @@ def gui_update():
                     canvas_create_text(canvas_width_m20, y, text=str(round(current_sample_db))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
 
                 canvas_coords(cursor_db,canvas_width-40, y, canvas_width, y)
+                current_sample_modified=False
 
         except Exception as e:
             print("update_plot_error:",e)
@@ -538,6 +543,7 @@ def audio_output_callback(outdata, frames, time, status):
 def sweep():
     global recording,sweeping,fft_on,rec_on,redraw_fft_line
 
+    prev_fft=fft_on
     fft_on=False
     redraw_fft_line=True
     fft_set()
@@ -580,7 +586,10 @@ def sweep():
     play_stop()
 
     recording=False
-    #update_tracks_buttons()
+
+    fft_on=prev_fft
+    redraw_fft_line=True
+    fft_set()
 
 def play_start():
     global stream_out_state
@@ -688,12 +697,12 @@ def refresh_devices():
     device_default_input_index,device_default_output_index = sd_default.device
     devices=[]
 
-    def print_device(dev):
-        print("")
-        for key,val in dev.items():
-            print(f"  {key}:{val}")
-
+    print('Devices:')
     for dev in query_devices():
+        print('')
+        for key,val in dev.items():
+            print('  ',key,':',val)
+
         try:
             if windows:
                 devices.append(dev)
@@ -714,7 +723,14 @@ def refresh_devices():
                         device_default_output=dev
 
         except Exception:
-            print('skippping:',dev['name'])
+            print('    -> skippping')
+
+    apis = query_hostapis()
+    print(f'\napis:')
+    for api in apis:
+        print('')
+        for key,val in api.items():
+            print('  ',key,':',val)
 
 def dev_out_cmd():
     global stream_out,dev_out_str,dev_dict
@@ -848,7 +864,10 @@ def update_rec_button():
     rec_button.configure(image=ico["rec_on" if rec_on else "rec_off"])
 
 def fft_toggle():
-    global fft_on,stream_in,redraw_fft_line
+    global fft_on,stream_in,redraw_fft_line,sweeping
+
+    sweeping=False
+    redraw_tracks_lines=True
 
     if stream_in:
         stream_in.stop()
@@ -868,10 +887,12 @@ def fft_set():
     fft_button.configure(image=ico["fft_on" if fft_on else "fft_off"] )
     canvas_itemconfig(cursor_db, state='hidden' if fft_on else 'normal')
 
+    canvas_itemconfig(fft_line, state='normal' if fft_on else 'hidden')
+
 def flatline():
     global redraw_tracks_lines,current_track
 
-    if current_track:
+    if current_track is not None:
         spectrum_buckets[current_track]=[dbinit]*spectrum_buckets_quant
 
         for i in range(spectrum_buckets_quant):
@@ -928,7 +949,7 @@ def track_auto_enable():
     if not visible_tracks:
         visible_tracks.add(0)
 
-    if not current_track:
+    if current_track is None:
         current_track=next(iter(visible_tracks))
 
 def track_pressed(track,control_pressed):
@@ -938,6 +959,8 @@ def track_pressed(track,control_pressed):
         prev_current_track=current_track
 
         if control_pressed:
+            rec_on=True
+
             visible_tracks.add(track)
             current_track=track
         elif track in visible_tracks:
@@ -1173,6 +1196,7 @@ canvas_create_line = canvas.create_line
 canvas_create_text = canvas.create_text
 canvas_create_image = canvas.create_image
 canvas_coords = canvas.coords
+canvas_itemconfigure=canvas.itemconfigure
 canvas_find_withtag=canvas.find_withtag
 canvas_winfo_width=canvas.winfo_width
 canvas_winfo_height=canvas.winfo_height
@@ -1182,8 +1206,13 @@ canvas.lower(cursor_f)
 cursor_db = canvas_create_line(logf_max, 0, logf_max, 0, width=10, fill="white", tags="cursor")
 canvas.lower(cursor_db)
 
-spectrum_line={track:None for track in range(tracks)}
-spectrum_line_color={track:'Black' for track in range(tracks)}
+fft_line=canvas_create_line( (0,0,0,0) , fill="gray36" , width=1, smooth=True,state='normal' )
+
+spectrum_line_color={}
+spectrum_line={}
+for track in range(tracks):
+    spectrum_line_color[track]='Black'
+    spectrum_line[track]=canvas_create_line( (0,0,0,0) , width=1, smooth=True,state="normal", fill='Black',dash=() )
 
 canv_bg = canvas.create_image(0,0,image=bg_org)
 canvas.lower(canv_bg)
