@@ -1224,7 +1224,7 @@ default_status='Click and hold the mouse button on the spectrum graph...'
 status_var = StringVar(value=default_status)
 status_var_set = status_var.set
 
-recording=True
+recording=False
 sweeping=False
 
 canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=bg_color)
