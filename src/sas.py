@@ -271,17 +271,20 @@ def save_image():
                 root.attributes('-topmost', True)
 
                 x_offset=72
+                y_offset=4
                 text="Created with " + title
-                canvas_create_text(x_offset-1, 3, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset-1, 4, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset-1, 5, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset+1, 3, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset+1, 4, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset+1, 5, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset, 3, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
-                canvas_create_text(x_offset, 5, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
 
-                canvas_create_text(x_offset, 4, text=text, anchor="nw", font=("Arial", 8), fill="black",tags='mark')
+                for x,y in ((x_offset-1, y_offset-1),
+                            (x_offset-1, y_offset),
+                            (x_offset-1, y_offset+1),
+                            (x_offset+1, y_offset-1),
+                            (x_offset+1, y_offset),
+                            (x_offset+1, y_offset+1),
+                            (x_offset, y_offset-1),
+                            (x_offset, y_offset+1)):
+                        canvas_create_text(x, y, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+
+                canvas_create_text(x_offset, y_offset, text=text, anchor="nw", font=("Arial", 8), fill="black",tags='mark')
 
                 ###################################
                 root_update()
@@ -685,83 +688,129 @@ def post_close():
     global dialog_shown
     dialog_shown=False
 
-dev_dict={}
-device_default_input={}
-device_default_output={}
-def refresh_devices():
-    global devices,dev_dict,device_default_input,device_default_output,device_default_input_index,device_default_output_index
+default_api_nr=0
 
-    device_default_input['name']=None
-    device_default_output['name']=None
+device_default_input=None
+device_default_output=None
+
+def refresh_devices():
+    global apis,default_api_nr,api_name_var,devices,device_default_input,device_default_output
+
+    apis = query_hostapis()
+    default_api_nr=0
+    print(f'\nApis:')
+    for i,api in enumerate(apis):
+        print('')
+        for key,val in api.items():
+            print('  ',key,':',val)
+            if api['devices']:
+                default_api_nr=i
 
     device_default_input_index,device_default_output_index = sd_default.device
-    devices=[]
 
-    print('Devices:')
-    for dev in query_devices():
+    devices=query_devices()
+
+    for dev in devices:
+        if not windows:
+            try:
+                Stream(device=dev['index'], samplerate=samplerate, channels=1)
+            except Exception as e_try:
+                print('e_try:',e_try)
+                continue
+
+        if dev['index']==device_default_input_index:
+            device_default_input=dev
+            default_api_nr=dev['hostapi']
+        if dev['index']==device_default_output_index:
+            device_default_output=dev
+            default_api_nr=dev['hostapi']
+
+
+    api_name_var.set(apis[default_api_nr]['name'])
+
+    print('\nDevices:')
+    for dev in devices:
         print('')
         for key,val in dev.items():
             print('  ',key,':',val)
 
-        try:
-            if windows:
-                devices.append(dev)
+current_api=None
+def api_mod():
+    print('api_mod')
 
-                dev_dict[dev['name']]=dev
-                if dev['index']==device_default_input_index:
-                    device_default_input=dev
-                if dev['index']==device_default_output_index:
-                    device_default_output=dev
+    global current_api,apis,devices,dev_out_cb,dev_in_cb
+
+    apiname=api_name_var.get()
+    print(apiname)
+
+    current_api=[api for api in apis if api['name']==apiname][0]
+
+    out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index'] in current_api['devices'] ]
+    in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in current_api['devices'] ]
+
+    dev_out_cb.configure(values=out_values )
+    dev_in_cb.configure(values=in_values )
+
+    dev_out_name=dev_out_name_var.get()
+    dev_in_name=dev_in_name_var.get()
+
+    device_default_input_name=device_default_input['name']
+    device_default_output_name=device_default_output['name']
+
+    print('defaults:',device_default_input_name,device_default_output_name)
+
+    if out_values:
+        if dev_out_name not in out_values:
+            if device_default_output_name in out_values:
+                dev_out_name_var.set(device_default_output_name)
             else:
-                with Stream(device=dev['index'], samplerate=samplerate, channels=1):
-                    devices.append(dev)
+                dev_out_name_var.set(out_values[0])
+    dev_out_mod()
 
-                    dev_dict[dev['name']]=dev
-                    if dev['index']==device_default_input_index:
-                        device_default_input=dev
-                    if dev['index']==device_default_output_index:
-                        device_default_output=dev
+    if in_values:
+        if dev_in_name not in in_values:
+            if device_default_input_name in in_values:
+                dev_in_name_var.set(device_default_input_name)
+            else:
+                dev_in_name_var.set(in_values[0])
+    dev_in_mod()
 
-        except Exception:
-            print('    -> skippping')
-
-    apis = query_hostapis()
-    print(f'\nApis:')
-    for api in apis:
-        print('')
-        for key,val in api.items():
-            print('  ',key,':',val)
-
-def dev_out_cmd():
-    global stream_out,dev_out_str,dev_dict
+def dev_out_mod():
+    global stream_out,dev_out_name_var
 
     if stream_out:
         stream_out.stop()
 
+    dev_name=dev_out_name_var.get()
+
     try:
-        stream_out = OutputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_out, callback=audio_output_callback, latency="low",device=dev_dict[dev_out_str.get()]['index'] )
+        device=[device for device in devices if device['name']==dev_name][0]['index']
+        stream_out = OutputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_out, callback=audio_output_callback, latency="low",device=device )
     except Exception as e:
-        print(e)
+        print('dev_out_mod - error:',e)
     else:
         stream_out.start()
 
-def dev_in_cmd():
-    global stream_in,dev_in_str,dev_dict
+def dev_in_mod():
+    global stream_in,dev_in_name_var,dev_dict
 
     if stream_in:
         stream_in.stop()
 
+    dev_name=dev_in_name_var.get()
+
     try:
-        stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low",device=dev_dict[dev_in_str.get()]['index'] )
+        device=[device for device in devices if device['name']==dev_name][0]['index']
+        stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low",device=device )
     except Exception as e:
-        print(e)
+        print('dev_in_mod - error:',e)
     else:
         stream_in.start()
 
-def fft_window_cmd():
-    global fft_window,fft_window_str
+def fft_window_mod():
+    global fft_window,fft_window_var
 
-    fft_window = eval(f'{fft_window_str.get()}({fft_size})')
+    fft_window = eval(f'{fft_window_var.get()}({fft_size})')
 
 about_dialog_created = False
 def get_about_dialog():
@@ -803,7 +852,20 @@ def about_wrapper():
 
 settings_shown=False
 def settings_wrapper():
-    global settings_shown,frame_options,settings,dev_out_cb,dev_in_cb
+    global settings_shown,frame_options,api_cb,api_name_var,dev_out_cb,dev_in_cb
+
+    try:
+        values=[ api['name'] for api in apis if api['devices'] ]
+        api_cb.configure(values=values)
+
+        if api_name_var.get() not in values:
+            if values:
+                api_name_var.set(values[0]['name'])
+
+        #dev_out_cb.configure(values=[dev['name'] for dev in devices if dev['max_output_channels'] > 0])
+        #dev_in_cb.configure(values=[dev['name'] for dev in devices if dev['max_input_channels'] > 0])
+    except Exception as e:
+        print(e)
 
     if settings_shown:
         settings_shown=False
@@ -867,21 +929,11 @@ def fft_toggle():
     global fft_on,stream_in,redraw_fft_line,sweeping
 
     sweeping=False
-    redraw_tracks_lines=True
-
-    if stream_in:
-        stream_in.stop()
 
     fft_on=False if fft_on else True
-    redraw_fft_line=True
-
     fft_set()
-
-    dev_in_cmd()
-    fft_window_cmd()
-
-    if stream_in:
-        stream_in.start()
+    fft_window_mod()
+    redraw_fft_line=True
 
 def fft_set():
     fft_button.configure(image=ico["fft_on" if fft_on else "fft_off"] )
@@ -1285,42 +1337,44 @@ buttons_bottom.columnconfigure(0,weight=1)
 fft_on=True
 rec_on=False
 
-refresh_devices()
 stream_in=None
 stream_out=None
-
-global dev_in_str,dev_out_str,dev_in_cb,dev_out_cb,fft_window_str
 
 frame_options = LabelFrame(root,text='',bd=2,bg=bg_color,takefocus=False)
 frame_options.grid(row=5,column=0,sticky='news',padx=4,pady=(4,2),columnspan=3)
 
-dev_out_str=StringVar(value=device_default_output['name'])
-Label(frame_options,text='Output:',anchor='w').grid(row=0, column=0, sticky='wens',padx=4,pady=4)
-dev_out_cb = Combobox(frame_options,textvariable=dev_out_str,state='readonly',width=16)
-dev_out_cb.grid(row=0, column=1, sticky='news',padx=4,pady=4)
-dev_out_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_cmd())
+api_name_var=StringVar()
+Label(frame_options,text='API:',anchor='w').grid(row=0, column=0, sticky='wens',padx=1,pady=4)
+api_cb = Combobox(frame_options,textvariable=api_name_var,state='readonly',width=10)
+api_cb.grid(row=0, column=1, sticky='news',padx=1,pady=4)
+api_cb.bind("<<ComboboxSelected>>", lambda event : api_mod())
 
-dev_in_str=StringVar(value=device_default_input['name'])
-Label(frame_options,text='Input:',anchor='w').grid(row=0, column=2, sticky='wens',padx=4,pady=4)
-dev_in_cb = Combobox(frame_options,textvariable=dev_in_str,state='readonly',width=16)
-dev_in_cb.grid(row=0, column=3, sticky='news',padx=4,pady=4)
-dev_in_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_cmd())
+dev_out_name_var=StringVar()
+Label(frame_options,text='Out:',anchor='w').grid(row=0, column=2, sticky='wens',padx=1,pady=4)
+dev_out_cb = Combobox(frame_options,textvariable=dev_out_name_var,state='readonly',width=16)
+dev_out_cb.grid(row=0, column=3, sticky='news',padx=1,pady=4)
+dev_out_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_mod())
 
-fft_window_str=StringVar(value='blackman')
-Label(frame_options,text='FFT Window:',anchor='w').grid(row=0, column=4, sticky='wens',padx=4,pady=4)
-fft_window_cb = Combobox(frame_options,textvariable=fft_window_str,state='readonly',width=16,values=('ones','hanning','hamming','blackman','bartlett'))
-fft_window_cb.grid(row=0, column=5, sticky='news',padx=4,pady=4)
-fft_window_cb.bind("<<ComboboxSelected>>", lambda event : fft_window_cmd())
+dev_in_name_var=StringVar()
+Label(frame_options,text='In:',anchor='w').grid(row=0, column=4, sticky='wens',padx=1,pady=4)
+dev_in_cb = Combobox(frame_options,textvariable=dev_in_name_var,state='readonly',width=16)
+dev_in_cb.grid(row=0, column=5, sticky='news',padx=1,pady=4)
+dev_in_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_mod())
 
-frame_options.grid_columnconfigure((1,3,5), weight=1)
+fft_window_var=StringVar(value='blackman')
+Label(frame_options,text='FFT wnd:',anchor='w').grid(row=0, column=6, sticky='wens',padx=1,pady=4)
+fft_window_cb = Combobox(frame_options,textvariable=fft_window_var,state='readonly',width=10,values=('ones','hanning','hamming','blackman','bartlett'))
+fft_window_cb.grid(row=0, column=7, sticky='news',padx=1,pady=4)
+fft_window_cb.bind("<<ComboboxSelected>>", lambda event : fft_window_mod())
+
+frame_options.grid_columnconfigure((1,3,5,7), weight=1)
 frame_options.grid_forget()
 
-dev_out_cb.configure(values=[dev['name'] for dev in devices if dev['max_output_channels'] > 0])
-dev_in_cb.configure(values=[dev['name'] for dev in devices if dev['max_input_channels'] > 0])
+refresh_devices()
 
-dev_out_cmd()
-dev_in_cmd()
-fft_window_cmd()
+fft_window_mod()
+
+api_mod()
 
 root.bind('<Configure>', root_configure)
 root.bind('<F1>', lambda event : about_wrapper() )
