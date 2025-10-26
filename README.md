@@ -25,6 +25,9 @@ With mouse cursor on the frequency graph:
 - use mouse wheel or keyboard arrows to modify locked frequency
 - run frequency sweep with action icon on the bottom
 
+⚠️ Due to latency in the sound generation, propagation, registration, and analysis chain, manually recording the spectrum with rapid mouse movements can produce inaccurate (“lagged”) results, depending on the direction of movement. Accurate measurements can only be obtained by changing the frequency slowly or by using the automatic sweep, which is deliberately designed to operate at a controlled, slow pace.
+
+
 With keyboard:
 
 - keys 1-8 to toggle visibility of specified samples buffer ('track')
