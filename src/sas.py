@@ -30,13 +30,12 @@ from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 
-from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,array as np_array
+from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis
+from collections import deque
 
 from math import pi, sin, log10, ceil, floor
 from PIL import ImageGrab, ImageTk, Image
-
-ImageGrab_grab=ImageGrab.grab
 
 from pathlib import Path
 from time import strftime, localtime
@@ -56,6 +55,7 @@ HOMEPAGE='https://github.com/PJDude/sas'
 
 windows = bool(os_name=='nt')
 
+ImageGrab_grab=ImageGrab.grab
 np_fft_rfft=np_fft.rfft
 
 blocksize_out = 128
@@ -259,9 +259,6 @@ def save_image():
                 x2 = x1 + canvas_width
                 y2 = y1 + canvas_height
 
-                #canvas_delete("freq")
-                #canvas_delete("track")
-
                 canvas_itemconfig('cursor', state='hidden')
                 canvas_itemconfig('cursor_freq', state='hidden')
 
@@ -379,6 +376,8 @@ def root_configure(event=None):
             else:
                 canvas_create_line(0, y, canvas_width,y, fill="gray" , tags="grid",width=1,dash = (2, 4))
 
+        canvas_tag_lower("grid")
+
         redraw_tracks_lines=True
         redraw_fft_line=True
         current_sample_modified=True
@@ -391,8 +390,8 @@ def root_configure(event=None):
             curr_line_data=track_line_data[track]
             curr_spectrum_buckets=spectrum_buckets[track]
             for i in range(spectrum_buckets_quant):
-                i2=i*2
-                curr_line_data[i2]= x_min_audio+scale_factor_canvas_width_to_bucket_quant * i
+                i2=i+i
+                curr_line_data[i2]= int(x_min_audio+scale_factor_canvas_width_to_bucket_quant * i)
                 curr_line_data[i2+1]=db2y(curr_spectrum_buckets[i])
 
         fft_line_data_x=[-1]*fft_points
@@ -451,12 +450,9 @@ def gui_update():
                     redraw_fft_line=False
 
             if redraw_tracks_lines:
-                #canvas_delete("spectrum")
                 for track in range(tracks):
                     if track in visible_tracks:
-                        #spectrum_line[track]=canvas_create_line( track_line_data[track] , fill=spectrum_line_color[track] , width=1, smooth=True,tags="spectrum" )
                         canvas_coords( spectrum_line[track], *(track_line_data[track]) )
-                        #print(spectrum_line[track] )
                         canvas_itemconfigure( spectrum_line[track], fill=spectrum_line_color[track], state='normal' )
                     else:
                         canvas_itemconfigure( spectrum_line[track], state='hidden' )
@@ -495,10 +491,11 @@ f=0
 f_bucket=0
 
 def change_logf(logf):
-    global current_logf,current_bucket,phase_step,f,f_bucket
+    global current_logf,current_bucket,current_bucket_x2,phase_step,f,f_bucket
 
     current_logf=logf
     current_bucket=logf_to_bucket(current_logf)
+    current_bucket_x2=current_bucket+current_bucket
 
     f = 10**logf
     f_bucket=logf_to_bucket(log10(f))
@@ -544,7 +541,8 @@ def audio_output_callback(outdata, frames, time, status):
             played_bucket_callbacks+=1
 
 def sweep():
-    global recording,sweeping,fft_on,rec_on,redraw_fft_line
+    global recording,sweeping,fft_on,rec_on,redraw_fft_line,lock_frequency
+    lock_frequency=False
 
     prev_fft=fft_on
     fft_on=False
@@ -617,7 +615,6 @@ def close_app():
 
 current_sample_db=-120
 
-from collections import deque
 fft_fifo = deque(maxlen=fft_size)
 fft_fifo_extend=fft_fifo.extend
 
@@ -627,7 +624,7 @@ def audio_input_callback(indata, frames, time_info, status):
         return
 
     try:
-        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_tracks_lines,fft_line_data_x,fft_line_data_y,redraw_fft_line,rec_on,fft_line_data_indexes,recording,current_track
+        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_tracks_lines,fft_line_data_x,fft_line_data_y,redraw_fft_line,rec_on,fft_line_data_indexes,recording,current_track,current_bucket
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
@@ -638,6 +635,21 @@ def audio_input_callback(indata, frames, time_info, status):
 
             #current_sample_db = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
             current_sample_db = 10 * log10( np_mean(record_blocks) + 1e-12)
+
+            if rec_on:
+                if current_track is not None:
+                    spectrum_buckets[current_track][current_bucket]=current_sample_db
+
+                    track_line_data_current_track=track_line_data[current_track]
+                    current_bucket_x2_p1=current_bucket_x2+1
+                    if played_bucket_callbacks>record_blocks_len:
+                        track_line_data_current_track[current_bucket_x2_p1]=db2y(current_sample_db)
+                    else:
+                        #track_line_data_current_track[current_bucket_x2_p1]=(track_line_data_current_track[current_bucket_x2_p1] + db2y(current_sample_db))*0.5
+                        track_line_data_current_track[current_bucket_x2_p1]=( track_line_data_current_track[current_bucket_x2_p1]*(record_blocks_len-1) + db2y(current_sample_db) ) / record_blocks_len
+                    redraw_tracks_lines=True
+                #if played_bucket_callbacks>record_blocks_len:
+                    #if current_bucket<spectrum_buckets_quant:
         else:
             record_blocks_short[record_blocks_index_to_replace_short]=this_callback_mean
             record_blocks_index_to_replace_short+=1
@@ -646,16 +658,6 @@ def audio_input_callback(indata, frames, time_info, status):
             current_sample_db = 10 * log10( np_mean(record_blocks_short) + 1e-12)
 
         current_sample_modified=True
-
-        if rec_on:
-            if recording or lock_frequency:
-                if played_bucket_callbacks>record_blocks_len:
-                    i=current_bucket
-                    if i<spectrum_buckets_quant:
-                        if current_track is not None:
-                            spectrum_buckets[current_track][i]=current_sample_db
-                            track_line_data[current_track][i*2+1]=db2y(current_sample_db)
-                            redraw_tracks_lines=True
 
         if fft_on:
             fft_fifo_extend(indata[:, 0])
@@ -948,7 +950,7 @@ def flatline():
         spectrum_buckets[current_track]=[dbinit]*spectrum_buckets_quant
 
         for i in range(spectrum_buckets_quant):
-            track_line_data[current_track][i*2+1]=[db2y(dbinit)]
+            track_line_data[current_track][i*2+1]=db2y(dbinit)
 
         redraw_tracks_lines=True
 
@@ -1007,6 +1009,9 @@ def track_auto_enable():
 def track_pressed(track,control_pressed):
     global current_track,visible_tracks,redraw_tracks_lines,sweeping,lock_frequency,rec_on
 
+    lock_frequency=False
+    sweeping=False
+
     try:
         prev_current_track=current_track
 
@@ -1033,8 +1038,6 @@ def track_pressed(track,control_pressed):
         update_rec_button()
 
         #recording=False
-        sweeping=False
-        lock_frequency=False
         play_stop()
 
         redraw_tracks_lines=True
@@ -1088,6 +1091,7 @@ logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
 current_bucket=logf_to_bucket(current_logf)
+current_bucket_x2=current_bucket+current_bucket
 
 dbmin=-120.0
 dbmin_display=-123.0
@@ -1220,7 +1224,7 @@ default_status='Click and hold the mouse button on the spectrum graph...'
 status_var = StringVar(value=default_status)
 status_var_set = status_var.set
 
-recording=False
+recording=True
 sweeping=False
 
 canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=bg_color)
@@ -1252,42 +1256,44 @@ canvas_itemconfigure=canvas.itemconfigure
 canvas_find_withtag=canvas.find_withtag
 canvas_winfo_width=canvas.winfo_width
 canvas_winfo_height=canvas.winfo_height
+canvas_tag_raise=canvas.tag_raise
+canvas_tag_lower=canvas.tag_lower
 
-cursor_f = canvas_create_line(logf_ini, 0, logf_ini, 0, width=2, fill="white", tags="cursor")
+cursor_f = canvas_create_line(logf_ini, 0, logf_ini, 0, width=1, fill="white", tags="cursor")
 canvas.lower(cursor_f)
 cursor_db = canvas_create_line(logf_max, 0, logf_max, 0, width=10, fill="white", tags="cursor")
 canvas.lower(cursor_db)
 
-fft_line=canvas_create_line( (0,0,0,0) , fill="gray36" , width=1, smooth=True,state='normal' )
+fft_line=canvas_create_line( (0,0,0,0) , fill="gray36" , width=1, smooth=True,state='normal', tags='fft' )
 
 spectrum_line_color={}
 spectrum_line={}
 for track in range(tracks):
     spectrum_line_color[track]='Black'
-    spectrum_line[track]=canvas_create_line( (0,0,0,0) , width=1, smooth=True,state="normal", fill='Black',dash=() )
+    spectrum_line[track]=canvas_create_line( (0,0,0,0) , width=1, smooth=True,state="normal", fill='Black', tags="track" )
 
 canv_bg = canvas.create_image(0,0,image=bg_org)
 canvas.lower(canv_bg)
 
 for track_temp in range(tracks):
-    buttontemp = trackbuttons[track_temp]=Button(buttons_right)
+    buttontemp = trackbuttons[track_temp]=Button(buttons_right,takefocus=0)
     buttontemp.grid(row=track_temp,column=0,sticky='news',pady=(0,4))
     buttontemp.bind("<Button-1>", lambda event,track_local=track_temp : trackbutton_press(event,track=track_local) )
     buttontemp.bind("<Motion>", lambda event,track_local=track_temp : trackbutton_motion(track=track_local) )
     buttontemp.bind("<Leave>", lambda event,track_local=track_temp : trackbutton_leave(track=track_local) )
 
-rec_button=Button(buttons_right,image=ico['rec_on'],command=rec_toggle)
+rec_button=Button(buttons_right,image=ico['rec_on'],command=rec_toggle,takefocus=0)
 rec_button.grid(row=tracks,column=0,sticky='news')
 widget_tooltip(rec_button,'Recording')
 
-reset_button=Button(buttons_right,image=ico['reset'],command=flatline)
+reset_button=Button(buttons_right,image=ico['reset'],command=flatline,takefocus=0)
 reset_button.grid(row=tracks+1,column=0,sticky='news')
 widget_tooltip(reset_button,'Reset all samples in current buffer')
 
 Label(buttons_right).grid(row=tracks+2,column=0,sticky='news')
 buttons_right.grid_rowconfigure(tracks+2,weight=1)
 
-fft_button=Button(buttons_right,image=ico['fft_on'],command=fft_toggle)
+fft_button=Button(buttons_right,image=ico['fft_on'],command=fft_toggle,takefocus=0)
 fft_button.grid(row=tracks+3,column=0,sticky='news')
 widget_tooltip(fft_button,'FFT')
 
@@ -1335,7 +1341,7 @@ widget_tooltip(settings_button,'Settings')
 buttons_bottom.columnconfigure(0,weight=1)
 
 fft_on=True
-rec_on=False
+rec_on=True
 
 stream_in=None
 stream_out=None
