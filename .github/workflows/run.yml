@@ -18,7 +18,7 @@ jobs:
     - name: python setup
       uses: actions/setup-python@v5
       with:
-        python-version: "3.14"
+        python-version: "3.14t"
         cache: 'pip'
         check-latest: true
 
@@ -175,7 +175,7 @@ jobs:
     - name: python setup
       uses: actions/setup-python@v5
       with:
-        python-version: "3.14"
+        python-version: "3.14t"
         cache: 'pip'
         check-latest: true
 
