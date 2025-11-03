@@ -29,7 +29,7 @@
 from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
-from threading import Thread
+from threading import Thread, Lock
 from time import sleep
 
 from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10
@@ -442,13 +442,14 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global redraw_tracks_lines,redraw_fft_line,current_sample_modified,fft_line_data
+            global redraw_tracks_lines,redraw_fft_line,current_sample_modified,fft_line_data,fft_line_data_lock
 
             if redraw_fft_line:
                 if fft_on:
                     #canvas_coords(fft_line, *(v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ) )
-                    canvas_coords(fft_line, *fft_line_data)
-                    redraw_fft_line=False
+                    with fft_line_data_lock:
+                        canvas_coords(fft_line, *fft_line_data)
+                        redraw_fft_line=False
 
             if redraw_tracks_lines:
                 for track in range(tracks):
@@ -621,8 +622,10 @@ fft_fifo_extend=fft_fifo.extend
 new_samples_to_process=False
 fft_line_data=[]
 
+fft_line_data_lock=Lock()
+
 def audio_input_callback_thread():
-    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process
+    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process,fft_line_data_lock
     while not exiting:
         if new_samples_to_process:
             if recording or lock_frequency:
@@ -654,7 +657,8 @@ def audio_input_callback_thread():
                 if len(fft_fifo) == fft_size:
                     if not redraw_fft_line:
                         fft_line_data_y = np_log10( np_abs( (np_fft_rfft( fft_fifo*fft_window))[0:fft_points] ) / fft_size + 1e-12)
-                        fft_line_data = [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ]
+                        with fft_line_data_lock:
+                            fft_line_data = [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ]
 
                         redraw_fft_line=True
 
