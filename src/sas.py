@@ -29,6 +29,8 @@
 from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
+from threading import Thread
+from time import sleep
 
 from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis
@@ -279,7 +281,7 @@ def save_image():
                             (x_offset+1, y_offset+1),
                             (x_offset, y_offset-1),
                             (x_offset, y_offset+1)):
-                        canvas_create_text(x, y, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
+                    canvas_create_text(x, y, text=text, anchor="nw", font=("Arial", 8), fill=bg_color,tags='mark')
 
                 canvas_create_text(x_offset, y_offset, text=text, anchor="nw", font=("Arial", 8), fill="black",tags='mark')
 
@@ -395,14 +397,14 @@ def root_configure(event=None):
                 curr_line_data[i2+1]=db2y(curr_spectrum_buckets[i])
 
         fft_line_data_x=[-1]*fft_points
-        fft_line_data_y=[db2y(dbmin)]*fft_points
+        #fft_line_data_y=[db2y(dbmin)]*fft_points
 
         for i_fft in range(fft_points):
             x=logf_to_xpixel(log10(i_fft * samplerate_by_fft_size + 1e-12))
             fft_line_data_x[i_fft]=x
 
         fft_line_data_x[0]=logf_to_xpixel(log10(1))
-        fft_line_data_y[0]=db2y(dbmin)
+        #fft_line_data_y[0]=db2y(dbmin)
 
         prev_x=-1
         fft_line_data_indexes_temp=[]
@@ -416,8 +418,6 @@ def root_configure(event=None):
         fft_line_data_indexes=tuple(fft_line_data_indexes_temp)
 
 def update_tracks_buttons():
-    global rec_on,current_track
-
     for c in range(tracks):
         trackbuttons[c].configure( image=ico[str(c+1) + '_' + ('sel' if c==current_track and rec_on else 'on' if c in visible_tracks else 'off')])
 
@@ -442,11 +442,12 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global redraw_tracks_lines,redraw_fft_line,current_sample_modified
+            global redraw_tracks_lines,redraw_fft_line,current_sample_modified,fft_line_data
 
             if redraw_fft_line:
                 if fft_on:
-                    canvas_coords(fft_line, *(v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ) )
+                    #canvas_coords(fft_line, *(v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ) )
+                    canvas_coords(fft_line, *fft_line_data)
                     redraw_fft_line=False
 
             if redraw_tracks_lines:
@@ -617,6 +618,49 @@ current_sample_db=-120
 
 fft_fifo = deque(maxlen=fft_size)
 fft_fifo_extend=fft_fifo.extend
+new_samples_to_process=False
+fft_line_data=[]
+
+def audio_input_callback_thread():
+    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process
+    while not exiting:
+        if new_samples_to_process:
+            if recording or lock_frequency:
+                #current_sample_db = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
+                current_sample_db = 10 * log10( np_mean(record_blocks) + 1e-12)
+
+                if rec_on:
+                    if current_track is not None:
+                        spectrum_buckets[current_track][current_bucket]=current_sample_db
+
+                        track_line_data_current_track=track_line_data[current_track]
+                        current_bucket_x2_p1=current_bucket_x2+1
+                        if played_bucket_callbacks>record_blocks_len:
+                            track_line_data_current_track[current_bucket_x2_p1]=db2y(current_sample_db)
+                        else:
+                            #track_line_data_current_track[current_bucket_x2_p1]=(track_line_data_current_track[current_bucket_x2_p1] + db2y(current_sample_db))*0.5
+                            track_line_data_current_track[current_bucket_x2_p1]=( track_line_data_current_track[current_bucket_x2_p1]*record_blocks_len_m1 + db2y(current_sample_db) ) / record_blocks_len
+                        redraw_tracks_lines=True
+                    #if played_bucket_callbacks>record_blocks_len:
+                        #if current_bucket<spectrum_buckets_quant:
+
+            else:
+                current_sample_db = 10 * log10( np_mean(record_blocks_short) + 1e-12)
+
+            #trzeba sprawdzic czy sie zmienilo
+            current_sample_modified=True
+
+            if fft_on:
+                if len(fft_fifo) == fft_size:
+                    if not redraw_fft_line:
+                        fft_line_data_y = np_log10( np_abs( (np_fft_rfft( fft_fifo*fft_window))[0:fft_points] ) / fft_size + 1e-12)
+                        fft_line_data = [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ]
+
+                        redraw_fft_line=True
+
+            new_samples_to_process=False
+        else:
+            sleep(0.001)
 
 def audio_input_callback(indata, frames, time_info, status):
     if status:
@@ -624,7 +668,7 @@ def audio_input_callback(indata, frames, time_info, status):
         return
 
     try:
-        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,current_sample_db,current_sample_modified,redraw_tracks_lines,fft_line_data_x,fft_line_data_y,redraw_fft_line,rec_on,fft_line_data_indexes,recording,current_track,current_bucket
+        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,recording,new_samples_to_process
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
 
@@ -633,38 +677,15 @@ def audio_input_callback(indata, frames, time_info, status):
             record_blocks_index_to_replace+=1
             record_blocks_index_to_replace%=record_blocks_len
 
-            #current_sample_db = 20 * log10(sqrt( np_mean(record_blocks) ) + 1e-12)
-            current_sample_db = 10 * log10( np_mean(record_blocks) + 1e-12)
-
-            if rec_on:
-                if current_track is not None:
-                    spectrum_buckets[current_track][current_bucket]=current_sample_db
-
-                    track_line_data_current_track=track_line_data[current_track]
-                    current_bucket_x2_p1=current_bucket_x2+1
-                    if played_bucket_callbacks>record_blocks_len:
-                        track_line_data_current_track[current_bucket_x2_p1]=db2y(current_sample_db)
-                    else:
-                        #track_line_data_current_track[current_bucket_x2_p1]=(track_line_data_current_track[current_bucket_x2_p1] + db2y(current_sample_db))*0.5
-                        track_line_data_current_track[current_bucket_x2_p1]=( track_line_data_current_track[current_bucket_x2_p1]*(record_blocks_len-1) + db2y(current_sample_db) ) / record_blocks_len
-                    redraw_tracks_lines=True
-                #if played_bucket_callbacks>record_blocks_len:
-                    #if current_bucket<spectrum_buckets_quant:
         else:
             record_blocks_short[record_blocks_index_to_replace_short]=this_callback_mean
             record_blocks_index_to_replace_short+=1
             record_blocks_index_to_replace_short%=record_blocks_len_short
 
-            current_sample_db = 10 * log10( np_mean(record_blocks_short) + 1e-12)
-
-        current_sample_modified=True
-
         if fft_on:
             fft_fifo_extend(indata[:, 0])
 
-            if len(fft_fifo) == fft_size:
-                fft_line_data_y = tuple(np_log10( np_abs( (np_fft_rfft( fft_fifo*fft_window))[0:fft_points] ) / fft_size + 1e-12))
-                redraw_fft_line=True
+        new_samples_to_process=True
 
     except Exception as e:
         print("audio_input_callback_error:",e)
@@ -1121,6 +1142,7 @@ sweeping_after=int(1000*time_to_collect_sample*1.5/spectrum_sub_bucket_samples)
 
 # 43
 record_blocks_len=int((samplerate*time_to_collect_sample)/blocksize_in)
+record_blocks_len_m1=record_blocks_len-1
 record_blocks_len_short=ceil(record_blocks_len/5)
 
 record_blocks=[0]*record_blocks_len
@@ -1395,5 +1417,7 @@ update_tracks_buttons()
 fft_set()
 
 root_after(200,gui_update)
+
+Thread(target=audio_input_callback_thread).start()
 
 root.mainloop()
