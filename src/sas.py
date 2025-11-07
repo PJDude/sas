@@ -29,7 +29,7 @@
 from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame
 from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
-from threading import Thread, Lock
+from threading import Thread
 from time import sleep
 
 from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10
@@ -442,14 +442,13 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global redraw_tracks_lines,redraw_fft_line,current_sample_modified,fft_line_data,fft_line_data_lock
+            global redraw_tracks_lines,redraw_fft_line,current_sample_modified,fft_line_data
 
             if redraw_fft_line:
                 if fft_on:
                     #canvas_coords(fft_line, *(v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ) )
-                    with fft_line_data_lock:
-                        canvas_coords(fft_line, *fft_line_data)
-                        redraw_fft_line=False
+                    canvas_coords(fft_line, *fft_line_data)
+                    redraw_fft_line=False
 
             if redraw_tracks_lines:
                 for track in range(tracks):
@@ -622,10 +621,8 @@ fft_fifo_extend=fft_fifo.extend
 new_samples_to_process=False
 fft_line_data=[]
 
-fft_line_data_lock=Lock()
-
 def audio_input_callback_thread():
-    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process,fft_line_data_lock
+    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process
     while not exiting:
         if new_samples_to_process:
             if recording or lock_frequency:
@@ -642,7 +639,7 @@ def audio_input_callback_thread():
                             track_line_data_current_track[current_bucket_x2_p1]=db2y(current_sample_db)
                         else:
                             #track_line_data_current_track[current_bucket_x2_p1]=(track_line_data_current_track[current_bucket_x2_p1] + db2y(current_sample_db))*0.5
-                            track_line_data_current_track[current_bucket_x2_p1]=( track_line_data_current_track[current_bucket_x2_p1]*record_blocks_len_m1 + db2y(current_sample_db) ) / record_blocks_len
+                            track_line_data_current_track[current_bucket_x2_p1]=( track_line_data_current_track[current_bucket_x2_p1]*record_blocks_len_part1 + db2y(current_sample_db)*record_blocks_len_part2 ) / record_blocks_len
                         redraw_tracks_lines=True
                     #if played_bucket_callbacks>record_blocks_len:
                         #if current_bucket<spectrum_buckets_quant:
@@ -657,8 +654,7 @@ def audio_input_callback_thread():
                 if len(fft_fifo) == fft_size:
                     if not redraw_fft_line:
                         fft_line_data_y = np_log10( np_abs( (np_fft_rfft( fft_fifo*fft_window))[0:fft_points] ) / fft_size + 1e-12)
-                        with fft_line_data_lock:
-                            fft_line_data = [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ]
+                        fft_line_data = [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ]
 
                         redraw_fft_line=True
 
@@ -724,7 +720,7 @@ def refresh_devices():
     global apis,default_api_nr,api_name_var,devices,device_default_input,device_default_output
 
     apis = query_hostapis()
-    default_api_nr=0
+    default_api_nr=-1
     print(f'\nApis:')
     for i,api in enumerate(apis):
         print('')
@@ -735,14 +731,17 @@ def refresh_devices():
 
     device_default_input_index,device_default_output_index = sd_default.device
 
+    print('\nQuery Devices ...')
     devices=query_devices()
 
+    print('\nLoop Devices ...')
     for dev in devices:
         if not windows:
             try:
-                Stream(device=dev['index'], samplerate=samplerate, channels=1)
+                stream_test=Stream(device=dev['index'], samplerate=samplerate, channels=2)
+                stream_test.close()
             except Exception as e_try:
-                print('e_try:',e_try)
+                print('e_try:',dev['index'],dev['name'],e_try)
                 continue
 
         if dev['index']==device_default_input_index:
@@ -752,8 +751,9 @@ def refresh_devices():
             device_default_output=dev
             default_api_nr=dev['hostapi']
 
-
-    api_name_var.set(apis[default_api_nr]['name'])
+    if default_api_nr!=-1:
+        print('\nDefaults:',apis[default_api_nr]['name'],device_default_input['name'],device_default_output['name'])
+        api_name_var.set(apis[default_api_nr]['name'])
 
     print('\nDevices:')
     for dev in devices:
@@ -983,7 +983,7 @@ def trackbutton_motion(track):
     canvas_itemconfig(spectrum_line[track], fill='red')
     global spectrum_line_color
     spectrum_line_color[track]='red'
-    status_var_set(f'Choose buffer {track+1} (use Ctrl to select active track or press number keys)')
+    status_var_set(f'Toggle buffer {track+1} (use Ctrl to select active track or press number keys)')
 
 def trackbutton_leave(track):
     canvas_itemconfig(spectrum_line[track], fill='black')
@@ -1146,7 +1146,8 @@ sweeping_after=int(1000*time_to_collect_sample*1.5/spectrum_sub_bucket_samples)
 
 # 43
 record_blocks_len=int((samplerate*time_to_collect_sample)/blocksize_in)
-record_blocks_len_m1=record_blocks_len-1
+record_blocks_len_part1=int(record_blocks_len/2)
+record_blocks_len_part2=record_blocks_len-record_blocks_len_part1
 record_blocks_len_short=ceil(record_blocks_len/5)
 
 record_blocks=[0]*record_blocks_len
