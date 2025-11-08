@@ -18,11 +18,6 @@
 @python --version > distro.info.txt
 @echo. >> distro.info.txt
 @echo|set /p="pyinstaller " >> distro.info.txt
-@pyinstaller --version >> distro.info.txt
-@echo|set /p="numpy       " >> distro.info.txt
-@python -c "import numpy; print(numpy.__version__)" >> distro.info.txt
-@echo|set /p="sounddevice " >> distro.info.txt
-@python -c "import sounddevice; print(sounddevice.__version__)" >> distro.info.txt
 
 @echo.
 @echo running-pyinstaller

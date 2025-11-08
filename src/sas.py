@@ -26,14 +26,14 @@
 #
 ####################################################################################
 
-from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame
+from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame, TclVersion, TkVersion
 from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 from threading import Thread
 from time import sleep
 
-from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10
-from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis
+from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version
+from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 from collections import deque
 
 from math import pi, sin, log10, ceil, floor
@@ -264,7 +264,8 @@ def save_image():
                 canvas_itemconfig('cursor', state='hidden')
                 canvas_itemconfig('cursor_freq', state='hidden')
 
-                canvas_delete("cursor_db_text")
+                canvas_itemconfig('cursor_db', state='hidden')
+                canvas_itemconfig('cursor_db_text', state='hidden')
 
                 root.lift()
                 root.attributes('-topmost', True)
@@ -294,6 +295,9 @@ def save_image():
                 canvas_delete('mark')
 
                 canvas_itemconfig('cursor', state='normal')
+                canvas_itemconfig('cursor_db', state='normal')
+                canvas_itemconfig('cursor_db_text', state='normal')
+
                 update_tracks_buttons()
 
                 global redraw_tracks_lines,redraw_fft_line
@@ -442,11 +446,10 @@ def gui_update():
         root_after(1,gui_update)
     else:
         try:
-            global redraw_tracks_lines,redraw_fft_line,current_sample_modified,fft_line_data
+            global redraw_tracks_lines,redraw_fft_line,current_sample_modified
 
             if redraw_fft_line:
                 if fft_on:
-                    #canvas_coords(fft_line, *(v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ) )
                     canvas_coords(fft_line, *fft_line_data)
                     redraw_fft_line=False
 
@@ -463,9 +466,8 @@ def gui_update():
             if current_sample_modified:
                 y=db2y(current_sample_db)
 
-                canvas_delete("cursor_db_text")
-                if not fft_on:
-                    canvas_create_text(canvas_width_m20, y, text=str(round(current_sample_db))+"dB", anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
+                canvas_itemconfigure( cursor_db_text, text=str(round(current_sample_db))+"dB" )
+                canvas_coords(cursor_db_text,canvas_width_m20, y)
 
                 canvas_coords(cursor_db,canvas_width-40, y, canvas_width, y)
                 current_sample_modified=False
@@ -622,7 +624,7 @@ new_samples_to_process=False
 fft_line_data=[]
 
 def audio_input_callback_thread():
-    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process
+    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process,current_sample_modified
     while not exiting:
         if new_samples_to_process:
             if recording or lock_frequency:
@@ -647,7 +649,6 @@ def audio_input_callback_thread():
             else:
                 current_sample_db = 10 * log10( np_mean(record_blocks_short) + 1e-12)
 
-            #trzeba sprawdzic czy sie zmienilo
             current_sample_modified=True
 
             if fft_on:
@@ -879,7 +880,7 @@ def about_wrapper():
 
 settings_shown=False
 def settings_wrapper():
-    global settings_shown,frame_options,api_cb,api_name_var,dev_out_cb,dev_in_cb
+    global settings_shown
 
     try:
         values=[ api['name'] for api in apis if api['devices'] ]
@@ -889,17 +890,15 @@ def settings_wrapper():
             if values:
                 api_name_var.set(values[0]['name'])
 
-        #dev_out_cb.configure(values=[dev['name'] for dev in devices if dev['max_output_channels'] > 0])
-        #dev_in_cb.configure(values=[dev['name'] for dev in devices if dev['max_input_channels'] > 0])
     except Exception as e:
         print(e)
 
+    settings_shown=(True,False)[settings_shown]
+
     if settings_shown:
-        settings_shown=False
-        frame_options.grid_forget()
-    else:
-        settings_shown=True
         frame_options.grid(sticky='news')
+    else:
+        frame_options.grid_forget()
 
 license_dialog_created=False
 def get_license_dialog():
@@ -943,7 +942,8 @@ def license_wrapper():
 def rec_toggle():
     global rec_on,redraw_tracks_lines
 
-    rec_on=False if rec_on else True
+    rec_on=(True,False)[rec_on]
+
     redraw_tracks_lines=True
     update_rec_button()
     track_auto_enable()
@@ -957,16 +957,15 @@ def fft_toggle():
 
     sweeping=False
 
-    fft_on=False if fft_on else True
+    fft_on=(True,False)[fft_on]
     fft_set()
     fft_window_mod()
+
     redraw_fft_line=True
 
 def fft_set():
-    fft_button.configure(image=ico["fft_on" if fft_on else "fft_off"] )
-    canvas_itemconfig(cursor_db, state='hidden' if fft_on else 'normal')
-
-    canvas_itemconfig(fft_line, state='normal' if fft_on else 'hidden')
+    fft_button.configure(image=ico[("fft_off","fft_on")[fft_on]] )
+    canvas_itemconfig(fft_line, state=('hidden','normal')[fft_on] )
 
 def flatline():
     global redraw_tracks_lines,current_track
@@ -1235,11 +1234,14 @@ APP_DIR = dirname(APP_FILE)
 
 try:
     distro_info=Path(path_join(APP_DIR,'distro.info.txt')).read_text(encoding='utf-8')
+
 except Exception as exception_1:
     print(exception_1)
     distro_info = 'Error. No distro.info.txt file.'
-else:
-    print(f'distro info:\n{distro_info}')
+
+distro_info+= "\nnumpy       " + str(numpy_version) + "\nsounddevice " + str(sounddevice_version) + "\n\nTclVersion  " + str(TclVersion) + "\nTkVersion   " + str(TkVersion)
+
+print(f'distro info:\n{distro_info}')
 
 #for initialization only
 scale_factor_logf_to_xpixel=1
@@ -1285,11 +1287,13 @@ canvas_winfo_width=canvas.winfo_width
 canvas_winfo_height=canvas.winfo_height
 canvas_tag_raise=canvas.tag_raise
 canvas_tag_lower=canvas.tag_lower
+canvas_lower=canvas.lower
 
 cursor_f = canvas_create_line(logf_ini, 0, logf_ini, 0, width=1, fill="white", tags="cursor")
-canvas.lower(cursor_f)
+canvas_lower(cursor_f)
 cursor_db = canvas_create_line(logf_max, 0, logf_max, 0, width=10, fill="white", tags="cursor")
-canvas.lower(cursor_db)
+cursor_db_text=canvas_create_text(canvas_width_m20, logf_max, text='', anchor="center", font=("Arial", 8), tags=("cursor_db_text"),fill="black")
+canvas_lower(cursor_db)
 
 fft_line=canvas_create_line( (0,0,0,0) , fill="gray36" , width=1, smooth=True,state='normal', tags='fft' )
 
@@ -1300,7 +1304,7 @@ for track in range(tracks):
     spectrum_line[track]=canvas_create_line( (0,0,0,0) , width=1, smooth=True,state="normal", fill='Black', tags="track" )
 
 canv_bg = canvas.create_image(0,0,image=bg_org)
-canvas.lower(canv_bg)
+canvas_lower(canv_bg)
 
 for track_temp in range(tracks):
     buttontemp = trackbuttons[track_temp]=Button(buttons_right,takefocus=0)
@@ -1373,8 +1377,9 @@ rec_on=True
 stream_in=None
 stream_out=None
 
-frame_options = LabelFrame(root,text='',bd=2,bg=bg_color,takefocus=False)
-frame_options.grid(row=5,column=0,sticky='news',padx=4,pady=(4,2),columnspan=3)
+#frame_options = LabelFrame(root,text='',bd=2,bg=bg_color,takefocus=False)
+frame_options = Frame(root)
+frame_options.grid(row=5,column=0,sticky='news',padx=4,columnspan=5)
 
 api_name_var=StringVar()
 Label(frame_options,text='API:',anchor='w').grid(row=0, column=0, sticky='wens',padx=1,pady=4)
