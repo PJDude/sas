@@ -26,13 +26,13 @@
 #
 ####################################################################################
 
-from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame, TclVersion, TkVersion
+from tkinter import Tk,Frame, StringVar, Canvas, PhotoImage, LabelFrame, TclVersion, TkVersion, messagebox
 from tkinter.ttk import Button,Style,Combobox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
 from threading import Thread
 from time import sleep
 
-from numpy import mean as np_mean,square as np_square,float64,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 from collections import deque
 
@@ -434,7 +434,7 @@ def gui_update():
             stream_in.stop()
             stream_in.close()
 
-        play_stop()
+        play_abort()
 
         if stream_out:
             stream_out.close()
@@ -516,32 +516,35 @@ played_bucket=0
 played_bucket_callbacks=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,stream_out_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,f_bucket
+    global phase,stream_out_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,f_bucket,out_channell_buffer_mod_index
 
-    out_channell_index=0
+    outdata.fill(0)
+
     if stream_out_state==0:
-        for i in range(blocksize_out):
-            outdata[i,out_channell_index]=0
+        pass
+        #for i in range(blocksize_out):
+        #    outdata[i,out_channell_buffer_mod_index]=0
     else:
         for i in range(blocksize_out):
-            outdata[i,out_channell_index]=sin(phase)
+            outdata[i,out_channell_buffer_mod_index]=sin(phase)
             phase += phase_step
             phase %= two_pi
 
         if stream_out_state==1:
             stream_out_state=2
             for i in range(blocksize_out):
-                outdata[i,out_channell_index]*=volume_ramp[i]
+                outdata[i,out_channell_buffer_mod_index]*=volume_ramp[i]
         elif stream_out_state==-1:
             stream_out_state=0
             for i in range(blocksize_out):
-                outdata[i,out_channell_index]*=volume_ramp[blocksize_out_m1-i]
+                outdata[i,out_channell_buffer_mod_index]*=volume_ramp[blocksize_out_m1-i]
 
         if f_bucket!=played_bucket:
             played_bucket_callbacks=1
             played_bucket=f_bucket
         else:
             played_bucket_callbacks+=1
+    #print(outdata)
 
 def sweep():
     global recording,sweeping,fft_on,rec_on,redraw_fft_line,lock_frequency
@@ -607,6 +610,13 @@ def play_stop():
 
     canvas_itemconfig(cursor_f, fill='white')
 
+def play_abort():
+    global stream_out_state
+    stream_out_state=0
+
+    canvas_itemconfig(cursor_f, fill='white')
+
+
 exiting=False
 no_update=False
 
@@ -671,7 +681,7 @@ def audio_input_callback(indata, frames, time_info, status):
     try:
         global record_blocks_index_to_replace,record_blocks_index_to_replace_short,recording,new_samples_to_process
 
-        this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float64))
+        this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float32))
 
         if recording or lock_frequency:
             record_blocks[record_blocks_index_to_replace]=this_callback_mean
@@ -803,35 +813,94 @@ def api_mod():
                 dev_in_name_var.set(in_values[0])
     dev_in_mod()
 
+device_out_current=None
+
 def dev_out_mod():
-    global stream_out,dev_out_name_var
+    global dev_out_name_var,device_out_current,device_out_channels_stream_option
+
+    dev_name=dev_out_name_var.get()
+    device_out_current=[device for device in devices if device['name']==dev_name][0]
+
+    dev_out_channell_cb_values=['all'] + [str(val) for val in range(1,device_out_current['max_output_channels']+1)]
+    dev_out_channell_cb.configure( values=dev_out_channell_cb_values )
+
+    dev_out_channell_value=dev_out_channell_var.get()
+
+    if not dev_out_channell_value or dev_out_channell_value not in dev_out_channell_cb_values:
+        dev_out_channell_value='all'
+        dev_out_channell_var.set(dev_out_channell_value)
+
+    dev_out_channell_mod()
+
+def dev_out_channell_mod():
+    global device_out_channels_stream_option,out_channell_buffer_mod_index,lock_frequency,stream_out,device_out_current
+
+    lock_frequency=False
+    play_abort()
 
     if stream_out:
         stream_out.stop()
 
-    dev_name=dev_out_name_var.get()
+    try:
+        out_channell_buffer_mod_index=int(dev_out_channell_var.get())-1
+        device_out_channels_stream_option=device_out_current['max_output_channels']
+    except:
+        device_out_channels_stream_option=1
+        out_channell_buffer_mod_index=0
+
+    dev_out_channell_config()
+
+def dev_out_channell_config():
+    global stream_out,dev_out_name_var,device_out_current,device_out_channels_stream_option
 
     try:
-        device=[device for device in devices if device['name']==dev_name][0]['index']
-        stream_out = OutputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_out, callback=audio_output_callback, latency="low",device=device )
+        stream_out = OutputStream( samplerate=samplerate, channels=device_out_channels_stream_option, dtype="float32", blocksize=blocksize_out, callback=audio_output_callback, latency="low",device=device_out_current['index'] )
     except Exception as e:
-        print('dev_out_mod - error:',e)
+        messagebox.showerror("dev_out_channell_config",str(e))
     else:
         stream_out.start()
 
+device_in_current=None
+
 def dev_in_mod():
-    global stream_in,dev_in_name_var,dev_dict
+    global dev_in_name_var,device_in_current,device_in_channels_stream_option
+
+    dev_name=dev_in_name_var.get()
+    device_in_current=[device for device in devices if device['name']==dev_name][0]
+
+    dev_in_channell_cb_values=['all'] + [str(val) for val in range(1,device_in_current['max_input_channels']+1)]
+    dev_in_channell_cb.configure( values=dev_in_channell_cb_values )
+
+    dev_in_channell_value=dev_in_channell_var.get()
+
+    if not dev_in_channell_value or dev_in_channell_value not in dev_in_channell_cb_values:
+        dev_in_channell_value='all'
+        dev_in_channell_var.set(dev_in_channell_value)
+
+    dev_in_channell_mod()
+
+def dev_in_channell_mod():
+    global device_in_channels_stream_option,in_channell_buffer_mod_index,lock_frequency,stream_in,device_in_current
 
     if stream_in:
         stream_in.stop()
 
-    dev_name=dev_in_name_var.get()
+    try:
+        in_channell_buffer_mod_index=int(dev_in_channell_var.get())-1
+        device_in_channels_stream_option=device_in_current['max_input_channels']
+    except:
+        device_in_channels_stream_option=1
+        in_channell_buffer_mod_index=0
+
+    dev_in_channell_config()
+
+def dev_in_channell_config():
+    global stream_in,dev_in_name_var,device_in_current,device_in_channels_stream_option
 
     try:
-        device=[device for device in devices if device['name']==dev_name][0]['index']
-        stream_in = InputStream( samplerate=samplerate, channels=1, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low",device=device )
+        stream_in = InputStream( samplerate=samplerate, channels=device_in_channels_stream_option, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low",device=device_in_current['index'] )
     except Exception as e:
-        print('dev_in_mod - error:',e)
+        messagebox.showerror("dev_in_channell_config",str(e))
     else:
         stream_in.start()
 
@@ -896,7 +965,7 @@ def settings_wrapper():
     settings_shown=(True,False)[settings_shown]
 
     if settings_shown:
-        frame_options.grid(sticky='news')
+        frame_options.grid(sticky='news',columnspan=2,padx=4,pady=(0,2) )
     else:
         frame_options.grid_forget()
 
@@ -1246,7 +1315,7 @@ print(f'distro info:\n{distro_info}')
 #for initialization only
 scale_factor_logf_to_xpixel=1
 
-root.rowconfigure(1, weight=1)
+root.rowconfigure(0, weight=1)
 root.columnconfigure(0, weight=1)
 
 default_status='Click and hold the mouse button on the spectrum graph...'
@@ -1257,10 +1326,10 @@ recording=False
 sweeping=False
 
 canvas = Canvas(root,height=300, width=800,relief='sunken',borderwidth=1,bg=bg_color)
-canvas.grid(row=1, column=0, sticky="news", padx=4,pady=4)
+canvas.grid(row=0, column=0, sticky="news", padx=4,pady=4)
 
 buttons_right = Frame(root,bg=bg_color)
-buttons_right.grid( row=1, column=1, sticky="news", padx=(0,6),pady=4 )
+buttons_right.grid( row=0, column=1, sticky="news", padx=(0,6),pady=4 )
 trackbuttons={}
 
 canvas.bind("<Motion>", on_mouse_move)
@@ -1269,11 +1338,9 @@ canvas.bind("<ButtonPress-3>", on_mouse_press_3)
 canvas.bind("<ButtonRelease-1>", on_mouse_release_1)
 canvas.bind("<ButtonRelease-3>", on_mouse_release_3)
 
-if windows:
-    canvas.bind("<MouseWheel>", on_mouse_scroll_win)
-else:
-    canvas.bind("<Button-4>", on_mouse_scroll_lin)
-    canvas.bind("<Button-5>", on_mouse_scroll_lin)
+canvas.bind("<MouseWheel>", on_mouse_scroll_win)
+canvas.bind("<Button-4>", on_mouse_scroll_lin)
+canvas.bind("<Button-5>", on_mouse_scroll_lin)
 
 canvas_itemconfig = canvas.itemconfig
 canvas_delete = canvas.delete
@@ -1329,7 +1396,7 @@ fft_button.grid(row=tracks+3,column=0,sticky='news')
 widget_tooltip(fft_button,'FFT')
 
 buttons_bottom = Frame(root,bg=bg_color)
-buttons_bottom.grid(row=4, column=0, pady=4,padx=6,sticky="news",columnspan=2)
+buttons_bottom.grid(row=1, column=0, pady=4,padx=6,sticky="news",columnspan=2)
 
 Label(buttons_bottom,textvariable=status_var,relief='sunken', anchor='nw',bd=1).grid(row=0, column=0, padx=0,sticky='news')
 
@@ -1377,35 +1444,44 @@ rec_on=True
 stream_in=None
 stream_out=None
 
-#frame_options = LabelFrame(root,text='',bd=2,bg=bg_color,takefocus=False)
 frame_options = Frame(root)
-frame_options.grid(row=5,column=0,sticky='news',padx=4,columnspan=5)
+frame_options.grid(row=2,column=0)
 
 api_name_var=StringVar()
-Label(frame_options,text='API:',anchor='w').grid(row=0, column=0, sticky='wens',padx=1,pady=4)
+Label(frame_options,text='API:',anchor='w').grid(row=0, column=0, sticky='wens',padx=1,pady=2)
 api_cb = Combobox(frame_options,textvariable=api_name_var,state='readonly',width=10)
-api_cb.grid(row=0, column=1, sticky='news',padx=1,pady=4)
+api_cb.grid(row=0, column=1, sticky='news',padx=1,pady=2)
 api_cb.bind("<<ComboboxSelected>>", lambda event : api_mod())
 
 dev_out_name_var=StringVar()
-Label(frame_options,text='Out:',anchor='w').grid(row=0, column=2, sticky='wens',padx=1,pady=4)
+Label(frame_options,text='Out:',anchor='w').grid(row=0, column=2, sticky='wens',padx=1,pady=2)
 dev_out_cb = Combobox(frame_options,textvariable=dev_out_name_var,state='readonly',width=16)
-dev_out_cb.grid(row=0, column=3, sticky='news',padx=1,pady=4)
+dev_out_cb.grid(row=0, column=3, sticky='news',padx=1,pady=2)
 dev_out_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_mod())
 
+dev_out_channell_var=StringVar()
+dev_out_channell_cb = Combobox(frame_options,textvariable=dev_out_channell_var,state='readonly',width=4)
+dev_out_channell_cb.grid(row=0, column=4, sticky='news',padx=1,pady=2)
+dev_out_channell_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_channell_mod())
+
 dev_in_name_var=StringVar()
-Label(frame_options,text='In:',anchor='w').grid(row=0, column=4, sticky='wens',padx=1,pady=4)
+Label(frame_options,text='In:',anchor='w').grid(row=0, column=5, sticky='wens',padx=1,pady=2)
 dev_in_cb = Combobox(frame_options,textvariable=dev_in_name_var,state='readonly',width=16)
-dev_in_cb.grid(row=0, column=5, sticky='news',padx=1,pady=4)
+dev_in_cb.grid(row=0, column=6, sticky='news',padx=1,pady=2)
 dev_in_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_mod())
 
+dev_in_channell_var=StringVar()
+dev_in_channell_cb = Combobox(frame_options,textvariable=dev_in_channell_var,state='readonly',width=4)
+dev_in_channell_cb.grid(row=0, column=7, sticky='news',padx=1,pady=2)
+dev_in_channell_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_channell_mod())
+
 fft_window_var=StringVar(value='blackman')
-Label(frame_options,text='FFT wnd:',anchor='w').grid(row=0, column=6, sticky='wens',padx=1,pady=4)
-fft_window_cb = Combobox(frame_options,textvariable=fft_window_var,state='readonly',width=10,values=('ones','hanning','hamming','blackman','bartlett'))
-fft_window_cb.grid(row=0, column=7, sticky='news',padx=1,pady=4)
+Label(frame_options,text='FFT:',anchor='w').grid(row=0, column=8, sticky='wens',padx=1,pady=2)
+fft_window_cb = Combobox(frame_options,textvariable=fft_window_var,state='readonly',width=6,values=('ones','hanning','hamming','blackman','bartlett'))
+fft_window_cb.grid(row=0, column=9, sticky='news',padx=1,pady=2)
 fft_window_cb.bind("<<ComboboxSelected>>", lambda event : fft_window_mod())
 
-frame_options.grid_columnconfigure((1,3,5,7), weight=1)
+frame_options.grid_columnconfigure((1,3,6,9), weight=1)
 frame_options.grid_forget()
 
 refresh_devices()
