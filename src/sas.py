@@ -69,13 +69,23 @@ fft_points=int(fft_size/2+1)
 if windows:
     from os import startfile
 
+def catch(func):
+    def wrapper(*args,**kwargs):
+        try:
+            return func(*args,**kwargs)
+        except Exception as e:
+            print("catch:",func,e,*args,**kwargs)
+            return None
+    return wrapper
+
 def status_set_frequency():
     res_list = [str(round(f_current))+ ' Hz (']
+    res_list_append = res_list.append
     for track in visible_tracks:
         db_temp = round(spectrum_buckets[track][current_bucket])
-        res_list.append(str(track+1) + ':' + str(db_temp))
+        res_list_append(str(track+1) + ':' + str(db_temp))
 
-    res_list.append(') [#buffer:dBFS]')
+    res_list_append(') [#buffer:dBFS]')
     status_var_set(' '.join(res_list))
 
 def on_mouse_move(event):
@@ -84,9 +94,9 @@ def on_mouse_move(event):
 
         if  logf_min_audio<logf<logf_max_audio:
             change_logf(logf)
-            status_set_frequency()
             global f_current
             f_current=10**logf
+            status_set_frequency()
 
         widgets=canvas_find_withtag("current")
 
@@ -102,24 +112,21 @@ def recording_start():
 
 record_after=None
 
+@catch
 def on_mouse_press_1(event):
-    try:
-        global sweeping,record_after,lock_frequency
-        sweeping=False
+    global sweeping,record_after,lock_frequency
+    sweeping=False
 
-        if lock_frequency:
-            lock_frequency=False
-            play_stop()
-            on_mouse_move(event)
-        else:
-            play_start()
-            status_set_frequency()
+    if lock_frequency:
+        lock_frequency=False
+        play_stop()
+        on_mouse_move(event)
+    else:
+        play_start()
+        status_set_frequency()
 
-            record_after=root_after(200,recording_start)
-
-    except Exception as e:
-        print("on_mouse_press_1:",e)
-
+        record_after=root_after(200,recording_start)
+@catch
 def on_mouse_press_3(event):
     global sweeping,record_after,lock_frequency
     sweeping=False
@@ -137,6 +144,7 @@ def on_mouse_press_3(event):
 
         record_after=root_after(200,recording_start)
 
+@catch
 def on_mouse_release_1(event):
     global recording,sweeping,lock_frequency
     root_after_cancel(record_after)
@@ -149,6 +157,7 @@ def on_mouse_release_1(event):
     play_stop()
     status_set_frequency()
 
+@catch
 def on_mouse_release_3(event):
     global recording,sweeping
     root_after_cancel(record_after)
@@ -157,10 +166,12 @@ def on_mouse_release_3(event):
     update_tracks_buttons()
     sweeping=False
 
+@catch
 def on_mouse_scroll_win(event):
     fmod = int(-1 * (event.delta/120))
     scroll_mod(fmod)
 
+@catch
 def on_mouse_scroll_lin(event):
     if event.num == 4:
         fmod = -1
@@ -171,6 +182,7 @@ def on_mouse_scroll_lin(event):
 
     scroll_mod(fmod)
 
+@catch
 def scroll_mod(mod,factor=0.01):
     if lock_frequency:
         global f_current
@@ -186,6 +198,7 @@ def scroll_mod(mod,factor=0.01):
                 status_set_frequency()
                 f_current=f_new
 
+@catch
 def save_csv():
     time_postfix=strftime('%Y_%m_%d_%H_%M_%S',localtime())
     filename = asksaveasfilename(title = "Save CSV",initialfile = f'sas_{time_postfix}.csv',defaultextension=".csv",filetypes=[("All Files","*.*"),("CSV Files","*.csv")])
@@ -201,6 +214,7 @@ def save_csv():
         except Exception as e:
             print("save_csv_error:",e)
 
+@catch
 def load_csv():
     filename = askopenfilename(title = "Load CSV",initialfile = 'sas*.csv',defaultextension=".csv",filetypes=[("CSV Files","*.csv"),("All Files","*.*")])
 
@@ -241,6 +255,7 @@ def load_csv():
         redraw_tracks_lines=True
         redraw_fft_line=True
 
+@catch
 def save_image():
     time_postfix=strftime('%Y_%m_%d_%H_%M_%S',localtime())
     filename = asksaveasfilename(title = "Save Image",initialfile = f'sas_{time_postfix}.png',defaultextension=".png",filetypes=[("All Files","*.*"),("PNG Files","*.png")])
@@ -320,6 +335,7 @@ canvas_width_m10=1
 canvas_height_by_dbrange_display=0
 canvas_height=0
 
+@catch
 def init_lines():
     curr_line_data=[0.0]*(spectrum_buckets_quant*2)
     for i in range(spectrum_buckets_quant):
@@ -330,9 +346,10 @@ def init_lines():
     for track in range(tracks):
         track_line_data.append(list(curr_line_data))
 
+@catch
 def root_configure(event=None):
     if not exiting:
-        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_tracks_lines,redraw_fft_line,current_sample_modified,canvas_height_by_dbrange_display,track_line_data,fft_line_data_x,fft_line_data_y,fft_line_data_indexes
+        global canvas_width,x_min_audio,canvas_width_m10,canvas_width_m20,scale_factor_logf_to_xpixel,scale_factor_canvas_width_to_bucket_quant,canvas_height,canvas_height_m20,redraw_tracks_lines,redraw_fft_line,current_sample_modified,canvas_height_by_dbrange_display,track_line_data,fft_line_data_x,fft_line_data_indexes
         canvas_width=canvas_winfo_width()
 
         x_min_audio=logf_to_xpixel(logf_min_audio)
@@ -401,14 +418,12 @@ def root_configure(event=None):
                 curr_line_data[i2+1]=db2y(curr_spectrum_buckets[i])
 
         fft_line_data_x=[-1]*fft_points
-        #fft_line_data_y=[db2y(dbmin)]*fft_points
 
         for i_fft in range(fft_points):
             x=logf_to_xpixel(log10(i_fft * samplerate_by_fft_size + 1e-12))
             fft_line_data_x[i_fft]=x
 
         fft_line_data_x[0]=logf_to_xpixel(log10(1))
-        #fft_line_data_y[0]=db2y(dbmin)
 
         prev_x=-1
         fft_line_data_indexes_temp=[]
@@ -421,6 +436,7 @@ def root_configure(event=None):
 
         fft_line_data_indexes=tuple(fft_line_data_indexes_temp)
 
+@catch
 def update_tracks_buttons():
     for c in range(tracks):
         trackbuttons[c].configure( image=ico[str(c+1) + '_' + ('sel' if c==current_track and rec_on else 'on' if c in visible_tracks else 'off')])
@@ -494,7 +510,7 @@ f=0
 f_bucket=0
 
 def change_logf(logf):
-    global current_logf,current_bucket,current_bucket_x2,phase_step,f,f_bucket
+    global current_logf,current_bucket,current_bucket_x2,phase_step,f,f_bucket,two_pi_by_samplerate
 
     current_logf=logf
     current_bucket=logf_to_bucket(current_logf)
@@ -518,17 +534,10 @@ played_bucket_callbacks=0
 def audio_output_callback(outdata, frames, time, status):
     global phase,stream_out_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,f_bucket,out_channell_buffer_mod_index
 
-    outdata.fill(0)
-
-    if stream_out_state==0:
-        pass
-        #for i in range(blocksize_out):
-        #    outdata[i,out_channell_buffer_mod_index]=0
-    else:
+    if stream_out_state:
         for i in range(blocksize_out):
             outdata[i,out_channell_buffer_mod_index]=sin(phase)
-            phase += phase_step
-            phase %= two_pi
+            phase = (phase+phase_step) % two_pi
 
         if stream_out_state==1:
             stream_out_state=2
@@ -544,10 +553,12 @@ def audio_output_callback(outdata, frames, time, status):
             played_bucket=f_bucket
         else:
             played_bucket_callbacks+=1
-    #print(outdata)
+    else:
+        outdata.fill(0)
 
+@catch
 def sweep():
-    global recording,sweeping,fft_on,rec_on,redraw_fft_line,lock_frequency
+    global recording,sweeping,fft_on,rec_on,redraw_fft_line,lock_frequency,redraw_tracks_lines
     lock_frequency=False
 
     prev_fft=fft_on
@@ -562,7 +573,6 @@ def sweep():
     update_tracks_buttons()
     update_rec_button()
 
-    global redraw_tracks_lines
     redraw_tracks_lines=True
 
     play_stop()
@@ -616,7 +626,6 @@ def play_abort():
 
     canvas_itemconfig(cursor_f, fill='white')
 
-
 exiting=False
 no_update=False
 
@@ -634,7 +643,7 @@ new_samples_to_process=False
 fft_line_data=[]
 
 def audio_input_callback_thread():
-    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process,current_sample_modified
+    global fft_line_data,fft_line_data_x,redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,new_samples_to_process,current_sample_modified,fft_window,fft_fifo,fft_size,fft_line_data_indexes,fft_on,recording,lock_frequency
     while not exiting:
         if new_samples_to_process:
             if recording or lock_frequency:
@@ -664,8 +673,8 @@ def audio_input_callback_thread():
             if fft_on:
                 if len(fft_fifo) == fft_size:
                     if not redraw_fft_line:
-                        fft_line_data_y = np_log10( np_abs( (np_fft_rfft( fft_fifo*fft_window))[0:fft_points] ) / fft_size + 1e-12)
-                        fft_line_data = [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(20*fft_line_data_y[index])) ]
+                        fft_line_data_y = 20*np_log10( np_abs( (np_fft_rfft( fft_fifo*fft_window))[0:fft_points] ) / fft_size + 1e-12)
+                        fft_line_data = [v for index in fft_line_data_indexes for v in (fft_line_data_x[index], db2y(fft_line_data_y[index])) ]
 
                         redraw_fft_line=True
 
@@ -679,7 +688,7 @@ def audio_input_callback(indata, frames, time_info, status):
         return
 
     try:
-        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,recording,new_samples_to_process
+        global record_blocks_index_to_replace,record_blocks_index_to_replace_short,recording,new_samples_to_process,lock_frequency,record_blocks,record_blocks_short,fft_on
 
         this_callback_mean=np_mean(np_square(indata[:, 0], dtype=float32))
 
@@ -701,6 +710,7 @@ def audio_input_callback(indata, frames, time_info, status):
     except Exception as e:
         print("audio_input_callback_error:",e)
 
+@catch
 def go_to_homepage():
     try:
         if windows:
@@ -727,6 +737,7 @@ default_api_nr=0
 device_default_input=None
 device_default_output=None
 
+@catch
 def refresh_devices():
     global apis,default_api_nr,api_name_var,devices,device_default_input,device_default_output
 
@@ -762,6 +773,10 @@ def refresh_devices():
             device_default_output=dev
             default_api_nr=dev['hostapi']
 
+    print(f'{default_api_nr=}')
+    print(f'{device_default_input=}')
+    print(f'{device_default_output=}')
+
     if default_api_nr!=-1:
         print('\nDefaults:',apis[default_api_nr]['name'],device_default_input['name'],device_default_output['name'])
         api_name_var.set(apis[default_api_nr]['name'])
@@ -773,6 +788,8 @@ def refresh_devices():
             print('  ',key,':',val)
 
 current_api=None
+
+@catch
 def api_mod():
     print('api_mod')
 
@@ -815,6 +832,7 @@ def api_mod():
 
 device_out_current=None
 
+@catch
 def dev_out_mod():
     global dev_out_name_var,device_out_current,device_out_channels_stream_option
 
@@ -830,8 +848,17 @@ def dev_out_mod():
         dev_out_channell_value='all'
         dev_out_channell_var.set(dev_out_channell_value)
 
+    dev_out_samplerate_var.set(int(device_out_current['default_samplerate']))
+
     dev_out_channell_mod()
 
+def dev_out_samplerate_mod():
+    pass
+
+def dev_in_samplerate_mod():
+    pass
+
+@catch
 def dev_out_channell_mod():
     global device_out_channels_stream_option,out_channell_buffer_mod_index,lock_frequency,stream_out,device_out_current
 
@@ -850,6 +877,7 @@ def dev_out_channell_mod():
 
     dev_out_channell_config()
 
+@catch
 def dev_out_channell_config():
     global stream_out,dev_out_name_var,device_out_current,device_out_channels_stream_option
 
@@ -862,6 +890,7 @@ def dev_out_channell_config():
 
 device_in_current=None
 
+@catch
 def dev_in_mod():
     global dev_in_name_var,device_in_current,device_in_channels_stream_option
 
@@ -877,8 +906,11 @@ def dev_in_mod():
         dev_in_channell_value='all'
         dev_in_channell_var.set(dev_in_channell_value)
 
+    dev_in_samplerate_var.set(int(device_in_current['default_samplerate']))
+
     dev_in_channell_mod()
 
+@catch
 def dev_in_channell_mod():
     global device_in_channels_stream_option,in_channell_buffer_mod_index,lock_frequency,stream_in,device_in_current
 
@@ -894,6 +926,7 @@ def dev_in_channell_mod():
 
     dev_in_channell_config()
 
+@catch
 def dev_in_channell_config():
     global stream_in,dev_in_name_var,device_in_current,device_in_channels_stream_option
 
@@ -904,6 +937,7 @@ def dev_in_channell_config():
     else:
         stream_in.start()
 
+@catch
 def fft_window_mod():
     global fft_window,fft_window_var
 
@@ -944,10 +978,12 @@ def get_about_dialog():
 
     return about_dialog
 
+@catch
 def about_wrapper():
     get_about_dialog().show()
 
 settings_shown=False
+@catch
 def settings_wrapper():
     global settings_shown
 
@@ -1008,6 +1044,7 @@ def get_license_dialog():
 def license_wrapper():
     get_license_dialog().show()
 
+@catch
 def rec_toggle():
     global rec_on,redraw_tracks_lines
 
@@ -1018,9 +1055,11 @@ def rec_toggle():
     track_auto_enable()
     update_tracks_buttons()
 
+@catch
 def update_rec_button():
     rec_button.configure(image=ico["rec_on" if rec_on else "rec_off"])
 
+@catch
 def fft_toggle():
     global fft_on,stream_in,redraw_fft_line,sweeping
 
@@ -1032,10 +1071,12 @@ def fft_toggle():
 
     redraw_fft_line=True
 
+@catch
 def fft_set():
     fft_button.configure(image=ico[("fft_off","fft_on")[fft_on]] )
     canvas_itemconfig(fft_line, state=('hidden','normal')[fft_on] )
 
+@catch
 def flatline():
     global redraw_tracks_lines,current_track
 
@@ -1066,6 +1107,7 @@ def trackbutton_press(event,track):
     if track in visible_tracks:
         trackbutton_motion(track)
 
+@catch
 def KeyPress(event):
     control_pressed=bool('Control' in str(event))
 
@@ -1090,6 +1132,7 @@ def KeyPress(event):
         if track in range(tracks):
             track_pressed(track,control_pressed)
 
+@catch
 def track_auto_enable():
     global current_track,visible_tracks,redraw_tracks_lines
 
@@ -1099,6 +1142,7 @@ def track_auto_enable():
     if current_track is None:
         current_track=next(iter(visible_tracks))
 
+@catch
 def track_pressed(track,control_pressed):
     global current_track,visible_tracks,redraw_tracks_lines,sweeping,lock_frequency,rec_on
 
@@ -1449,34 +1493,47 @@ frame_options.grid(row=2,column=0)
 
 api_name_var=StringVar()
 Label(frame_options,text='API:',anchor='w').grid(row=0, column=0, sticky='wens',padx=1,pady=2)
-api_cb = Combobox(frame_options,textvariable=api_name_var,state='readonly',width=10)
+api_cb = Combobox(frame_options,textvariable=api_name_var,state='readonly',width=10,postcommand=lambda : refresh_devices())
 api_cb.grid(row=0, column=1, sticky='news',padx=1,pady=2)
 api_cb.bind("<<ComboboxSelected>>", lambda event : api_mod())
 
+Label(frame_options,text='Channells',anchor='n',justify='center',width=10).grid(row=0, column=2, sticky='news',padx=2,pady=2)
+Label(frame_options,text='Samplerate',anchor='n',justify='center',width=10).grid(row=0, column=3, sticky='news',padx=2,pady=2)
+
 dev_out_name_var=StringVar()
-Label(frame_options,text='Out:',anchor='w').grid(row=0, column=2, sticky='wens',padx=1,pady=2)
-dev_out_cb = Combobox(frame_options,textvariable=dev_out_name_var,state='readonly',width=16)
-dev_out_cb.grid(row=0, column=3, sticky='news',padx=1,pady=2)
+Label(frame_options,text='Out:',anchor='w').grid(row=1, column=0, sticky='wens',padx=1,pady=2)
+dev_out_cb = Combobox(frame_options,textvariable=dev_out_name_var,state='readonly',width=32)
+dev_out_cb.grid(row=1, column=1, sticky='news',padx=1,pady=2)
 dev_out_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_mod())
 
 dev_out_channell_var=StringVar()
 dev_out_channell_cb = Combobox(frame_options,textvariable=dev_out_channell_var,state='readonly',width=4)
-dev_out_channell_cb.grid(row=0, column=4, sticky='news',padx=1,pady=2)
+dev_out_channell_cb.grid(row=1, column=2, sticky='news',padx=1,pady=2)
 dev_out_channell_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_channell_mod())
 
+dev_out_samplerate_var=StringVar()
+dev_out_samplerate_cb = Combobox(frame_options,textvariable=dev_out_samplerate_var,state='disabled',width=10)
+dev_out_samplerate_cb.grid(row=1, column=3, sticky='news',padx=1,pady=2)
+dev_out_samplerate_cb.bind("<<ComboboxSelected>>", lambda event : dev_out_samplerate_mod())
+
 dev_in_name_var=StringVar()
-Label(frame_options,text='In:',anchor='w').grid(row=0, column=5, sticky='wens',padx=1,pady=2)
-dev_in_cb = Combobox(frame_options,textvariable=dev_in_name_var,state='readonly',width=16)
-dev_in_cb.grid(row=0, column=6, sticky='news',padx=1,pady=2)
+Label(frame_options,text='In:',anchor='w').grid(row=2, column=0, sticky='wens',padx=1,pady=2)
+dev_in_cb = Combobox(frame_options,textvariable=dev_in_name_var,state='readonly',width=32)
+dev_in_cb.grid(row=2, column=1, sticky='news',padx=1,pady=2)
 dev_in_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_mod())
 
 dev_in_channell_var=StringVar()
 dev_in_channell_cb = Combobox(frame_options,textvariable=dev_in_channell_var,state='readonly',width=4)
-dev_in_channell_cb.grid(row=0, column=7, sticky='news',padx=1,pady=2)
+dev_in_channell_cb.grid(row=2, column=2, sticky='news',padx=1,pady=2)
 dev_in_channell_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_channell_mod())
 
+dev_in_samplerate_var=StringVar()
+dev_in_samplerate_cb = Combobox(frame_options,textvariable=dev_in_samplerate_var,state='disabled',width=10)
+dev_in_samplerate_cb.grid(row=2, column=3, sticky='news',padx=1,pady=2)
+dev_in_samplerate_cb.bind("<<ComboboxSelected>>", lambda event : dev_in_samplerate_mod())
+
 fft_window_var=StringVar(value='blackman')
-Label(frame_options,text='FFT:',anchor='w').grid(row=0, column=8, sticky='wens',padx=1,pady=2)
+Label(frame_options,text='FFT Window:',anchor='w').grid(row=0, column=8, sticky='wens',padx=1,pady=2)
 fft_window_cb = Combobox(frame_options,textvariable=fft_window_var,state='readonly',width=6,values=('ones','hanning','hamming','blackman','bartlett'))
 fft_window_cb.grid(row=0, column=9, sticky='news',padx=1,pady=2)
 fft_window_cb.bind("<<ComboboxSelected>>", lambda event : fft_window_mod())
