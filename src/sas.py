@@ -32,7 +32,7 @@ from dearpygui.dearpygui import get_plot_mouse_pos,set_value,get_value,bind_item
 
 import time
 
-from threading import Thread
+from threading import Thread, Lock
 from time import sleep
 
 import numpy as np
@@ -68,7 +68,7 @@ np_fft_rfft=np_fft.rfft
 blocksize_out = 128
 blocksize_in = 128
 
-fft_size = blocksize_in*8
+fft_size = blocksize_in*8*2
 fft_points=int(fft_size/2+1)
 
 def canvas_itemconfig(*args,**kwargs):
@@ -452,23 +452,45 @@ exiting=False
 
 current_sample_db=-120
 
-samples_chunks_fifo=Queue(maxsize=fft_size*20)
-samples_chunks_fifo_put=samples_chunks_fifo.put
-samples_chunks_fifo_get=samples_chunks_fifo.get
+#samples_chunks_fifo=Queue(maxsize=fft_size*20)
+samples_chunks_fifo=deque(maxlen=128)
+#samples_chunks_fifo_put=samples_chunks_fifo.put
+samples_chunks_fifo_put=samples_chunks_fifo.append
+#samples_chunks_fifo_get=samples_chunks_fifo.get
+samples_chunks_fifo_get=samples_chunks_fifo.popleft
+
+#lock=Lock()
 
 ###########################################################
+def audio_input_callback(indata, frames, time_info, status):
+    #if status:
+    #    print(status)
+    #    return
+
+    #samples_chunks_fifo_put(indata[:, 0])
+    #lock.acquire()
+    samples_chunks_fifo_put(indata[:, 0])
+    #lock.release()
+
+
 def audio_input_processing_thread():
-    global redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,current_sample_modified,fft_window,fft_size,fft_on,lock_frequency,fft_line_data_y,exiting,recording,track_line_data_y
+    global redraw_fft_line,current_sample_db,rec_on,current_track,current_bucket,redraw_tracks_lines,current_sample_modified,fft_window,fft_size,fft_on,lock_frequency,fft_line_data_y,exiting,recording,track_line_data_y,samples_chunks_fifo
 
     try:
-        chunks=128
+        chunks=1280
         data_fifo_chunks = deque(maxlen=chunks)
         data_fifo_chunks_append=data_fifo_chunks.append
 
         while True:
-            chunk=samples_chunks_fifo_get()
+            if not samples_chunks_fifo:
+                sleep(0.00001)
+                continue
+            #chunk=samples_chunks_fifo_get()
 
-            data_fifo_chunks_append(chunk)
+            #lock.acquire()
+            data_fifo_chunks_append(samples_chunks_fifo_get())
+            #lock.release()
+
             data=np_concatenate(data_fifo_chunks)
 
             if exiting:
@@ -478,6 +500,11 @@ def audio_input_processing_thread():
 
             if len(data) > fft_size:
                 current_sample_db = 10 * log10( np_mean(np_square(data[-fft_size:])) + 1e-12)
+                if fft_on:
+                    if not redraw_fft_line:
+                        fft_line_data_y = np.sum([fft_line_data_y,fft_line_data_y,fft_line_data_y + 20*np_log10( np_abs( (np_fft_rfft( data[-fft_size:]*fft_window))[0:fft_points] ) / fft_size + 1e-12)],axis=0 ) / 4
+                        redraw_fft_line=True
+
             else:
                 current_sample_db=-119
             current_sample_modified=True
@@ -495,30 +522,12 @@ def audio_input_processing_thread():
 
                         redraw_tracks_lines=True
 
-            if fft_on:
-                if len(data) > fft_size:
-                    if not redraw_fft_line:
-                        fft_line_data_y = 20*np_log10( np_abs( (np_fft_rfft( data[-fft_size:]*fft_window))[0:fft_points] ) / fft_size + 1e-12)
-
-                        #for val in fft_line_data_y:
-                        #    print(val)
-                        #print(fft_line_data_y)
-                        #print('\n')
-                        redraw_fft_line=True
 
     except Exception as e:
         print("audio_input_processing_thread ERROR:",e)
         exiting=True
 
     sys_exit(0)
-
-###########################################################
-def audio_input_callback(indata, frames, time_info, status):
-    if status:
-        print(status)
-        return
-
-    samples_chunks_fifo_put(indata[:, 0])
 
 @catch
 def go_to_homepage():
@@ -635,7 +644,6 @@ def dev_out_channell_config():
     else:
         stream_out.start()
 
-
 @catch
 def dev_in_channell_changed(sender=None, app_data=None):
     print('dev_in_channell_changed',sender,app_data)
@@ -654,14 +662,16 @@ def dev_in_channell_changed(sender=None, app_data=None):
 
     dev_in_channell_config()
 
-@catch
 def dev_in_channell_config():
     global stream_in,device_in_current,device_in_channels_stream_option
 
     try:
-        stream_in = InputStream( samplerate=samplerate, channels=device_in_channels_stream_option, dtype="float32", blocksize=blocksize_in, callback=audio_input_callback, latency="low",device=device_in_current['index'] )
+        stream_in = InputStream( samplerate=samplerate, channels=device_in_channels_stream_option, callback=audio_input_callback,device=device_in_current['index'] , latency="high")
+        # dtype="float32"
+        #, latency="low"
+        #, blocksize=blocksize_in
     except Exception as e:
-        messagebox.showerror("dev_in_channell_config",str(e))
+        print("dev_in_channell_config",e)
     else:
         stream_in.start()
 
@@ -938,13 +948,11 @@ spectrum_buckets_quant=256
 spectrum_sub_bucket_samples=4
 sweep_steps=spectrum_buckets_quant*spectrum_sub_bucket_samples
 
-logf_max_m_logf_min = logf_max-logf_min
 logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
 scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
 current_bucket=logf_to_bucket(current_logf)
-#current_bucket_x2=current_bucket+current_bucket
 
 dbmin=-122.0
 dbmin_display=-123.0
@@ -991,18 +999,6 @@ title=f"Simple Audio Sweeper {VER_TIMESTAMP}"
 
 dpg.create_context()
 dpg.create_viewport(title=title, width=1100, height=520)
-
-#print('dearpygui_version:',dpg.get_dearpygui_version())
-
-
-
-#POINTS=64
-
-#x_data = np.arange(POINTS, dtype=np.float32)
-#y_data = np.zeros(POINTS, dtype=np.float32)
-
-spectrum_line_color={}
-spectrum_line={}
 
 current_api=None
 
@@ -1317,8 +1313,7 @@ with dpg.window(label="main") as main:
                             bind_item_theme(f'stick{val}',grid_line_theme)
 
                     for track in range(tracks):
-                        spectrum_line_color[track]='Black'
-                        spectrum_line[track]=add_line_series(bucket_freqs, track_line_data_y[track], tag=f"track{track}")
+                        add_line_series(bucket_freqs, track_line_data_y[track], tag=f"track{track}")
                         bind_item_theme(f"track{track}",red_line_theme)
 
                 with item_handler_registry(tag="plot_handlers"):
@@ -1342,7 +1337,6 @@ with dpg.window(label="main") as main:
                 add_checkbox(label='Record',tag='record',default_value=False,callback=rec_toggle)
                 add_button(label='Flatline',tag='flatline',callback=flatline)
                 add_button(label='Sweep',tag='sweep',callback=sweep)
-
 
     bind_item_handler_registry("plot", "plot_handlers")
     with dpg.handler_registry():
@@ -1486,8 +1480,8 @@ track_auto_enable()
 
 try:
     while is_dearpygui_running():
-        if redraw_fft_line:
-            if fft_on:
+        if fft_on:
+            if redraw_fft_line:
                 set_value("fft_line", [fft_line_data_x, fft_line_data_y])
                 redraw_fft_line=False
 
