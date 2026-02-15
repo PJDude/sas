@@ -32,9 +32,7 @@ from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,ge
 
 from time import sleep,strftime,localtime,perf_counter
 
-#import numpy as np
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append
-from numpy.random import randn
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 from collections import deque
 from queue import Queue
@@ -1224,6 +1222,7 @@ try:
 
         if samples_chunks_fifo_new:
             data=np_append(data,np_concatenate(samples_chunks_fifo))[-fft_size:]
+            #from numpy.random import randn
             #data = randn(fft_size)
             samples_chunks_fifo_new=False
 
