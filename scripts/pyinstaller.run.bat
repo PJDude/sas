@@ -23,7 +23,6 @@
 @echo running-pyinstaller
 
 pyinstaller --onefile --windowed --noconfirm --clean --optimize 2 --noupx --icon=icon.ico ^
-    --exclude-module=numpy.random ^
     --exclude-module=numpy.polynomial ^
     --exclude-module=numpy.ma ^
     --exclude-module=numpy.tests ^
