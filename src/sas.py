@@ -32,7 +32,7 @@ from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,ge
 
 from time import sleep,strftime,localtime,perf_counter
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 from collections import deque
 from queue import Queue
@@ -58,15 +58,14 @@ HOMEPAGE='https://github.com/PJDude/sas'
 
 windows = bool(os_name=='nt')
 
-#ImageGrab_grab=ImageGrab.grab
 np_fft_rfft=np_fft.rfft
 
 blocksize_out = 512
 blocksize_in = 512
 
 phase_i = arange(blocksize_out)
-#fft_size = blocksize_in*8*2
 fft_size = 2048
+
 fft_points=int(fft_size/2+1)
 
 f_current=0
@@ -96,17 +95,18 @@ def catch(func):
 @catch
 def status_set_frequency():
     global show_track
-    res_list = [str(round(f_current))+ ' Hz (']
+    res_list = []
     res_list_append = res_list.append
     if current_bucket<spectrum_buckets_quant:
         for track,show in enumerate(show_track):
-            db_temp = round(track_line_data_y[track][current_bucket])
-            res_list_append(str(track+1) + ':' + str(db_temp))
+            if show:
+                db_temp = round(track_line_data_y[track][current_bucket])
+                res_list_append(str(track+1) + ':' + str(db_temp))
     else:
         print(f'{current_bucket=}')
 
-    res_list_append(') [#buffer:dBFS]')
-    set_value('status',' '.join(res_list))
+    if res_list:
+        set_value('status',' '.join(res_list) + ' [#buffer:dBFS]')
 
 def scroll_mod(mod,factor=0.001):
     if lock_frequency:
@@ -207,14 +207,11 @@ def save_png_file_selected(sender, app_data):
             if ext.lower() in ['.gif', '.png']:
                 win_pos = dpg.get_item_pos('main')
 
-                # 2. Pozycja plotu w oknie
                 plot_pos = dpg.get_item_pos('plot')
 
-                # 3. Rozmiar plotu
                 plot_w = dpg.get_item_width('plot')
                 plot_h = dpg.get_item_height('plot')
 
-                # 4. Współrzędne plotu względem viewport / ekranu
                 screen_x = win_pos[0] + plot_pos[0]
                 screen_y = win_pos[1] + plot_pos[1]
 
@@ -224,10 +221,6 @@ def save_png_file_selected(sender, app_data):
                 sleep(0.1)
                 output_frame_buffer(filename)
 
-                #print('bbox:',bbox)
-
-                #ImageGrab_grab(bbox).save(filename)
-                ###################################
             else:
                 print("Unknown file type")
     else:
@@ -253,17 +246,10 @@ def change_f(fpar):
         current_bucket=logf_to_bucket(current_logf)
 
         set_value("cursor_f", ((fpar,fpar), (0,dbmin)))
+        set_value('cursor_f_txt', (fpar, -3))
+        configure_item('cursor_f_txt',label=f'{round(fpar)}Hz')
 
         phase_step = two_pi_by_samplerate * fpar
-    else:
-        #print("freq out of range:",fpar)
-        pass
-
-    #TODO
-    #canvas_delete('cursor_freq')
-    #canvas_create_text(x+2, 2, text=str(round(fpar))+"Hz", anchor="nw", font=("Arial", 8), fill="black",tags='cursor_freq')
-
-    #set_value('api',apis[default_api_nr]['name'])
 
 played_bucket=0
 played_bucket_callbacks=0
@@ -316,7 +302,6 @@ def sweep_press(sender=None, app_data=None):
         play_start()
     else:
         sweeping=False
-        play_stop()
         play_stop()
 
     sweeping_i=0
@@ -534,11 +519,7 @@ def license_wrapper():
 
     show_info('License information',license_txt)
 
-settings_shown=False
-@catch
 def settings_wrapper():
-    global settings_shown
-
     try:
         values=[ api['name'] for api in apis if api['devices'] ]
         configure_item('api',items=values)
@@ -550,13 +531,6 @@ def settings_wrapper():
 
     except Exception as e:
         print(e)
-
-    settings_shown=(True,False)[settings_shown]
-
-    if settings_shown:
-        frame_options.grid(sticky='news',columnspan=2,padx=4,pady=(0,2) )
-    else:
-        frame_options.grid_forget()
 
 @catch
 def fft_press():
@@ -587,63 +561,68 @@ def resetrack_press(sender=None, app_data=None, track=None):
     else:
         print('recording not enabled for track',track)
 
+
 recording_enabled=[False]*tracks
 recorded_track=None
-def recording_press(sender=None, app_data=None,track=None):
-    print('recording_press:',sender,app_data,track)
+def recording_press(sender=None, app_data=None,track_combo=None):
+    print('recording_press:',sender,app_data,track_combo)
+    track,press=track_combo
 
-    global recording_enabled,recorded_track,redraw_tracks_lines
+    track_pressed(track)
 
-    sweep_abort()
+    global recording_enabled,recorded_track,redraw_tracks_lines,show_track
+    if press:
+        recording_enabled[track]=(True,False)[recording_enabled[track]]
 
-    if app_data:
-        set_value(f'showcheck{track}',True)
-        show_press(sender,True,track)
+    if recording_enabled[track]:
+        show_track[track]=True
+        show_press(sender,True,(track,False))
 
         for track_temp in range(tracks):
-            recording_enabled[track_temp]=False
-            set_value(f'recordcheck{track_temp}',False)
+            if track_temp==track:
+                recording_enabled[track]=True
+                configure_item(f'recordcheck{track}',texture_tag=ico["rec_on"])
+            else:
+                recording_enabled[track_temp]=False
+                configure_item(f'recordcheck{track_temp}',texture_tag=ico["rec_off"])
 
-        set_value(f'recordcheck{track}',True)
         recorded_track=track
     else:
+        configure_item(f'recordcheck{track}',texture_tag=ico["rec_off"])
         recorded_track=None
 
-    configure_item("sweep", enabled=app_data)
-    configure_item(f"resetrack{track}", enabled=app_data)
-    recording_enabled[track]=app_data
-    redraw_tracks_lines=True
+    configure_item("sweep", enabled=recording_enabled[track])
+    configure_item(f"resetrack{track}", enabled=recording_enabled[track])
 
 show_track=[False]*tracks
-def show_press(sender=None, app_data=None,track=None):
-    print('show_press:',sender,app_data,track)
+def show_press(sender=None, app_data=None,track_combo=None):
+    print('show_press:',sender,app_data,track_combo)
+    track,press=track_combo
 
-    sweep_abort()
-
-    global show_track,redraw_tracks_lines
-    if not app_data:
-        set_value(f'recordcheck{track}',False)
-        recording_press(sender,False,track)
-
-    show_track[track]=app_data
     track_pressed(track)
-    redraw_tracks_lines=True
+
+    global show_track,redraw_tracks_lines,recording_enabled,ico
+    if press:
+        show_track[track]=(True,False)[show_track[track]]
+
+    if show_track[track]:
+        configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_on"])
+    else:
+        configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_off"])
+
+    if not show_track[track]:
+        recording_enabled[track]=False
+        recording_press(sender,False,(track,False))
 
 @catch
 def track_pressed(track):
-    global redraw_tracks_lines,sweeping,lock_frequency
+    global redraw_tracks_lines,lock_frequency
 
     lock_frequency=False
     sweep_abort()
-
-    try:
-        play_stop()
-
-        redraw_tracks_lines=True
-        status_set_frequency()
-
-    except Exception as e_kp:
-        print("track_pressed:",track, e_kp)
+    play_stop()
+    status_set_frequency()
+    redraw_tracks_lines=True
 
 try:
     VER_TIMESTAMP=Path(os.path.join(os.path.dirname(__file__),VERSION_FILE)).read_text(encoding='ASCII').strip()
@@ -673,7 +652,6 @@ sweep_steps=spectrum_buckets_quant*spectrum_sub_bucket_samples
 logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 logf_sweep_step=logf_max_audio_m_logf_min_audio/sweep_steps
 
-
 scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
 
 current_bucket=logf_to_bucket(current_logf)
@@ -688,6 +666,12 @@ dbrange=dbmax-dbmin
 dbrange_display=dbmax_display-dbmin_display
 
 samplerate_by_fft_size = samplerate / fft_size
+
+fft_line_data_x=[-2]*fft_points
+fft_line_data_y=[-2]*fft_points
+
+for i_fft in range(fft_points):
+    fft_line_data_x[i_fft]=i_fft * samplerate_by_fft_size
 
 blocksize_out_m1=blocksize_out-1
 
@@ -922,13 +906,9 @@ def on_mouse_move(sender, app_data):
             prev_mouse_x = x
 
             if not sweeping and not lock_frequency:
-                set_value("cursor_f", ((x,x), (dbmin,0)))
                 f_current=x
                 status_set_frequency()
                 change_f(f_current)
-
-fft_line_data_x=[-2]*fft_points
-fft_line_data_y=[-2]*fft_points
 
 with theme() as red_line_theme:
     with theme_component(dpg.mvLineSeries):
@@ -994,14 +974,34 @@ with theme() as grid_line_theme:
             category=dpg.mvThemeCat_Plots
         )
 
+with theme() as padding_mod_theme:
+    with theme_component(dpg.mvAll):
+        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
+        #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
+        #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
+
 log_bucket_width=logf_max_audio_m_logf_min_audio/spectrum_buckets_quant
 log_bucket_width_by2=log_bucket_width*0.5
 
 bucket_freqs=[0]*spectrum_buckets_quant
+bucket_edges=[0]*(spectrum_buckets_quant+1)
+
 for b in range(spectrum_buckets_quant):
     bucket_freqs[b]= 10**(logf_min_audio + log_bucket_width_by2 + log_bucket_width * b)
+    bucket_edges[b+1]= 10**(logf_min_audio + log_bucket_width * (b+1))
 
 bucket_freqs=tuple(bucket_freqs)
+#print('bucket_freqs:',bucket_freqs)
+#print('bucket_edges:',bucket_edges)
+
+bin_indices = digitize(fft_line_data_x, bucket_edges)
+#print('bin_indices:',bin_indices)
+#for i,j in zip(fft_line_data_x,bin_indices):
+#    print(i,j)
+
+bin_counts = bincount(bin_indices)
 
 track_line_data_y={}
 
@@ -1045,19 +1045,43 @@ def key_callback(sender, app_data):
         #print('key_callback',sender, app_data)
         pass
 
-dpg.create_viewport(title=title)
-#,width=1000,height=330
+def slide_change(sender):
+    val=dpg.get_value(sender)
+    dpg.set_axis_limits("y_axis", dbmin_display*val/100, dbmax_display)
+
+dpg.bind_theme(padding_mod_theme)
+dpg.create_viewport(title=title,width=1200,height=400,vsync=False)
+
+def on_viewport_resize(sender=None, app_data=None):
+    vh = dpg.get_viewport_client_height()
+
+    FIXED_BOTTOM_HEIGHT = 14
+    GAP=30
+    top_h  = max(50, vh - FIXED_BOTTOM_HEIGHT - GAP)
+
+    dpg.set_item_height(plot, top_h)
+    dpg.set_item_height(slider, top_h)
+
 ###################################################
-with window(tag='main',width=-1,height=-1) as main:
-    with dpg.group(horizontal=True):
-        with dpg.child_window(width=800,height=500):
+with window(tag='main') as main:
+    with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
+       borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
+       row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
+       no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True) as main_table:
+
+        add_table_column(width_stretch=True, init_width_or_weight=-1)
+        add_table_column(width_fixed=True, init_width_or_weight=340, width=340)
+
+        with dpg.table_row():
             with plot(tag='plot',no_mouse_pos=True,no_menus=True,no_frame=True,width=-1,height=-1) as plot:
                 yticks = (('dBFS',00),('-10',-10),("-20",-20),('-30',-30),('-40',-40),('-50',-50),('-60',-60),('-70',-70),('-80',-80),('-90',-90), ("-100",-100), ("-110",-110), ("-120",-120))
                 xticks = (('',10),("20Hz",20),('',30),('',40),('',50),('',60),('',70),('',80),('',90), ("100Hz",100),
                     ('',200),('',300),('',400),('',500),('',600),('',700),('',800),('',900),("1kHz",1000),
                     ("",2000),("",3000),("",4000),("",5000),("",6000),("",7000),("",8000),("",9000),("10kHz",10000),("20kHz",20000))
+                dpg.add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
+                dpg.add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
 
-                with dpg.plot_axis(dpg.mvXAxis, tag='x_axis'):
+                with dpg.plot_axis(dpg.mvXAxis, tag='x_axis') as xaxis:
                     configure_item(dpg.last_item(),scale=dpg.mvPlotScale_Log10)
                     dpg.set_axis_limits("x_axis", fmin,fmax)
                     dpg.set_axis_ticks("x_axis", xticks)
@@ -1071,12 +1095,6 @@ with window(tag='main',width=-1,height=-1) as main:
                     add_line_series((0,0),(dbmin,0),tag="cursor_f")
                     bind_item_theme("cursor_f",red_line_theme)
 
-                    add_line_series((20000,22000),(-5,-50),tag='cursor_db')
-                    bind_item_theme("cursor_db",red_line_theme)
-
-                    #set_value('cursor_db_txt', 'init2')
-                    #dpg.set_item_pos('cursor_db_txt')
-
                     for lab,val in xticks:
                         if lab:
                             add_line_series([val,val], [-130,0],tag=f'stick{val}')
@@ -1088,69 +1106,84 @@ with window(tag='main',width=-1,height=-1) as main:
                 with item_handler_registry(tag="plot_handlers"):
                     add_item_hover_handler(callback=on_mouse_move)
                     add_item_clicked_handler(callback=on_click)
+            with dpg.group(horizontal=True):
+                slider = dpg.add_slider_float(callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,height=200,width=10,format="",show=False)
 
-        with dpg.child_window(height=500,width=600):
-            with dpg.group():
-                with dpg.group(horizontal=True):
-                    with dpg.group():
-                        add_text(default_value='API:')
-                        add_text(default_value='Dev out:')
-                        add_text(default_value='Out channells:')
-                        add_text(default_value='Out samplerate:')
-                        add_text(default_value='Dev in:')
-                        add_text(default_value='In channells:')
-                        add_text(default_value='In samplerate:')
-                        add_checkbox(label='FFT',tag='fft',default_value=fft_on,callback=fft_press)
-                        widget_tooltip('Show live Fast Fourier Transform graph')
-                    with dpg.group():
-                        add_combo(tag='api',default_value='',callback=api_changed,width=160)
-                        add_combo(tag='dev_out',default_value='',callback=dev_out_changed,width=160)
-                        add_combo(tag='dev_out_channell',default_value='',callback=dev_out_channell_changed,width=160)
-                        add_combo(tag='dev_out_samplerate',default_value='',callback=dev_out_samplerate_changed,width=160)
-                        add_combo(tag='dev_in',default_value='',callback=dev_in_changed,width=160)
-                        add_combo(tag='dev_in_channell',default_value='',callback=dev_in_channell_changed,width=160)
-                        add_combo(tag='dev_in_samplerate',default_value='',callback=dev_in_samplerate_changed,width=160)
-                        add_combo(tag='fft_window',items=['ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed,width=160)
                 with dpg.group():
                     with dpg.group(horizontal=True):
-                        with dpg.group() as g1:
-                            add_text(default_value=f'Track #')
-                        with dpg.group() as g2:
-                            add_text(default_value=f'Show')
-                        with dpg.group() as g3:
-                            add_text(default_value=f'Record')
-                        with dpg.group() as g4:
-                            add_text(default_value=f'Reset')
 
-                        for track_temp in range(tracks):
-                            add_text(default_value=f'{track_temp+1}',parent=g1)
-                            add_checkbox(tag=f'showcheck{track_temp}',default_value=False,callback=show_press,user_data=track_temp,parent=g2)
-                            add_checkbox(tag=f'recordcheck{track_temp}',default_value=False,callback=recording_press,user_data=track_temp,parent=g3)
-                            widget_tooltip(f'Enable/Disable Recording of track:{track_temp}')
-                            add_button(tag=f'resetrack{track_temp}',callback=resetrack_press,user_data=track_temp,label="X",parent=g4)
-                            widget_tooltip(f'Reset all samples of track:{track_temp}')
+                        with dpg.group():
+                            add_text(default_value='')
+                            add_text(default_value='API:')
+                            add_text(default_value='')
+                            add_text(default_value='Output')
+                            add_text(default_value='Device:')
+                            add_text(default_value='Channells:')
+                            add_text(default_value='Samplerate:')
+                            add_text(default_value='')
+                            add_text(default_value='Input')
+                            add_text(default_value='Device:')
+                            add_text(default_value='Channells:')
+                            add_text(default_value='Samplerate:')
+                            add_text(default_value=' ')
+                            add_checkbox(label='FFT',tag='fft',default_value=fft_on,callback=fft_press)
+                            widget_tooltip('Show live Fast Fourier Transform graph')
+                        with dpg.group():
+                            width=230
+                            add_text(default_value='')
+                            add_combo(tag='api',default_value='',callback=api_changed,width=width)
+                            add_text(default_value=' ')
+                            add_text(default_value=' ')
+                            add_combo(tag='dev_out',default_value='',callback=dev_out_changed,width=width)
+                            add_combo(tag='dev_out_channell',default_value='',callback=dev_out_channell_changed,width=width)
+                            add_combo(tag='dev_out_samplerate',default_value='',callback=dev_out_samplerate_changed,width=width)
+                            add_text(default_value=' ')
+                            add_text(default_value=' ')
+                            add_combo(tag='dev_in',default_value='',callback=dev_in_changed,width=width)
+                            add_combo(tag='dev_in_channell',default_value='',callback=dev_in_channell_changed,width=width)
+                            add_combo(tag='dev_in_samplerate',default_value='',callback=dev_in_samplerate_changed,width=width)
+                            add_text(default_value=' ')
+                            add_combo(tag='fft_window',items=['ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed,width=width)
+                    with dpg.group():
+                        add_text(default_value=' ')
+                        with dpg.group(horizontal=True) as g_show:
+                            for track_temp in range(tracks):
+                                add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=show_press,user_data=(track_temp,True),parent=g_show)
+                                widget_tooltip(f'Show/Hide track:{track_temp+1}')
 
-                    add_checkbox(label='Enable Frequency Sweep',tag='sweep',callback=sweep_press)
-                    widget_tooltip('Run frequency sweep')
+                        with dpg.group(horizontal=True) as g_record:
+                            for track_temp in range(tracks):
+                                add_image_button(ico["rec_off"],tag=f'recordcheck{track_temp}',callback=recording_press,user_data=(track_temp,True),parent=g_record)
+                                widget_tooltip(f'Enable/Disable Recording of track:{track_temp+1}')
 
-                    with dpg.group(horizontal=True):
-                        add_image_button(ico["save_csv"],tag='save_csv_button',callback=save_csv)
-                        widget_tooltip("Save CSV file")
-                        add_image_button(ico["load_csv"],tag='load_csv_button',callback=load_csv)
-                        widget_tooltip("Load CSV file")
-                        add_image_button(ico["save_pic"],tag='save_image',callback=save_image)
-                        widget_tooltip("Save Image file")
+                        with dpg.group(horizontal=True) as g_reset:
+                            for track_temp in range(tracks):
+                                add_image_button(ico["reset"],tag=f'resetrack{track_temp}',callback=resetrack_press,user_data=track_temp,label="X",parent=g_reset)
+                                widget_tooltip(f'Reset all samples of track:{track_temp+1}')
 
-                        add_image_button(ico["home"],tag='homepage',callback=go_to_homepage)
-                        widget_tooltip(f'Visit project homepage ({HOMEPAGE})')
-                        add_image_button(ico["license"],tag='licensex',callback=license_wrapper)
-                        widget_tooltip('Show License')
-                        add_image_button(ico["about"],tag='aboutx',callback=about_wrapper)
-                        widget_tooltip("Show 'About' Dialog")
+                        add_text(default_value=' ')
+                        add_checkbox(label='Enable Frequency Sweep',tag='sweep',callback=sweep_press)
+                        widget_tooltip('Run frequency sweep')
+        with dpg.table_row():
+            with child_window(no_scrollbar=True, border=False):
+                add_text(tag='status',default_value='*')
 
-    with dpg.group(horizontal=True):
-        add_text(tag='status',default_value=' -----------------------')
+            with child_window(no_scrollbar=True, border=False):
 
+                with dpg.group(horizontal=True):
+                    add_image_button(ico["save_csv"],tag='save_csv_button',callback=save_csv)
+                    widget_tooltip("Save CSV file")
+                    add_image_button(ico["load_csv"],tag='load_csv_button',callback=load_csv)
+                    widget_tooltip("Load CSV file")
+                    add_image_button(ico["save_pic"],tag='save_image',callback=save_image)
+                    widget_tooltip("Save Image file")
+
+                    add_image_button(ico["home"],tag='homepage',callback=go_to_homepage)
+                    widget_tooltip(f'Visit project homepage ({HOMEPAGE})')
+                    add_image_button(ico["license"],tag='licensex',callback=license_wrapper)
+                    widget_tooltip('Show License')
+                    add_image_button(ico["about"],tag='aboutx',callback=about_wrapper)
+                    widget_tooltip("Show 'About' Dialog")
 
     bind_item_handler_registry("plot", "plot_handlers")
     with dpg.handler_registry():
@@ -1165,8 +1198,11 @@ dpg.set_viewport_small_icon(Path(path_join(APP_DIR,"./icons/sas_small.png")))
 dpg.set_viewport_large_icon(Path(path_join(APP_DIR,"./icons/sas.png")))
 
 dpg.set_primary_window(main, True)
+dpg.set_viewport_resize_callback(callback=on_viewport_resize)
 dpg.setup_dearpygui()
 dpg.show_viewport()
+
+on_viewport_resize()
 
 ########################################################################
 
@@ -1193,15 +1229,12 @@ refresh_devices()
 fft_window_changed()
 
 api_changed()
-
-for i_fft in range(fft_points):
-    fft_line_data_x[i_fft]=i_fft * samplerate_by_fft_size
+settings_wrapper()
 
 fft_set()
 
 data=zeros(fft_size)
 next_sweep_time=0
-
 
 try:
     while is_dearpygui_running():
@@ -1219,6 +1252,7 @@ try:
                     next_sweep_time=now+sweeping_delay
                 else:
                     sweeping=False
+                    play_stop()
 
         if samples_chunks_fifo_new:
             data=np_append(data,np_concatenate(samples_chunks_fifo))[-fft_size:]
@@ -1228,16 +1262,21 @@ try:
 
             current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
             if fft_on:
-                set_value("fft_line", [fft_line_data_x, 20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / fft_size + 1e-12)])
+                values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / fft_size + 1e-12)
+                #value_sums = bincount(bin_indices, weights=values)
+                #means = value_sums[1:] / bin_counts[1:]
+                #print('lens:',len(bin_indices),len(values))
+                #.clip(min=100)
+
+                set_value("fft_line", [fft_line_data_x, values])
+                #set_value("fft_line", [bucket_freqs, means])
 
             if playing_state and recorded_track is not None:
                 track_line_data_y[recorded_track][current_bucket]=current_sample_db if played_bucket_callbacks>record_blocks_len else ( track_line_data_y[recorded_track][current_bucket]*record_blocks_len_part1 + current_sample_db*record_blocks_len_part2 ) / record_blocks_len
                 redraw_tracks_lines=True
 
-            #set_value('cursor_db', str(current_sample_db))
-            #dpg.set_item_pos('cursor_db_txt', (20000, current_sample_db))
-            dpg.set_value('cursor_db', ((20000,22000), (current_sample_db,current_sample_db)))
-
+            set_value('cursor_db_txt', (25000, current_sample_db))
+            configure_item('cursor_db_txt',label=f'{round(current_sample_db)}dB')
 
         if redraw_tracks_lines:
             for track,show in enumerate(show_track):
