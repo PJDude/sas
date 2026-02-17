@@ -2,16 +2,16 @@
 **A little helper for your DIY audio projects**
 
 ### Features:
-- Simple generating any specific sound frequency
-- Generating a frequency response graph of a PC audio system with a microphone and speakers
-- Exporting results to image or csv file
-- Importing csv file
-- 8 separate buffers for comparing results
-- Portability
-- Live FFT graph with window function selection
+- Easily generate any specific sound frequency
+- Generate a frequency response graph of a PC audio system using a microphone and speakers
+- Export results to image or CSV files
+- Import CSV files
+- 8 separate buffers for result comparison
+- Portable
+- Live FFT graph with selectable window functions
 - Input and output device selection
 
-**Simple Audio Sweeper** uses the [sounddevice](https://python-sounddevice.readthedocs.io) module to interact with system audio hardware, and [NumPy](https://numpy.org/) for FFT analysis. The executable file is created with [Pyinstaller](https://pyinstaller.org). The GUI is built using [TkInter](https://docs.python.org/3/library/tkinter.html)
+**Simple Audio Sweeper** uses the [sounddevice](https://python-sounddevice.readthedocs.io) module to interact with system audio hardware, and [NumPy](https://numpy.org/) for audio processing and FFT analysis. The executable file is created with [Pyinstaller](https://pyinstaller.org). The GUI is built using [DearPyGui](https://github.com/hoffstadt/DearPyGui)
 
 ![image info](./info/sas.gif)
 
