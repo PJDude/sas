@@ -60,7 +60,7 @@ windows = bool(os_name=='nt')
 
 np_fft_rfft=np_fft.rfft
 
-blocksize_out = 512
+blocksize_out = 256
 blocksize_in = 512
 
 phase_i = arange(blocksize_out)
@@ -308,16 +308,19 @@ exiting=False
 
 current_sample_db=-120
 
-samples_chunks_fifo_new=False
+samples_chunks_fifo_chunks_new=0
+samples_chunks_fifo_new=0
 samples_chunks_fifo=deque(maxlen=32)
 samples_chunks_fifo_put=samples_chunks_fifo.append
 
 ###########################################################
 def audio_input_callback(indata, frames, time_info, status):
+    new_samples=len(indata[:, 0])
     samples_chunks_fifo_put(indata[:, 0].copy())
 
-    global samples_chunks_fifo_new
-    samples_chunks_fifo_new=True
+    global samples_chunks_fifo_new,samples_chunks_fifo_chunks_new
+    samples_chunks_fifo_new+=new_samples
+    samples_chunks_fifo_chunks_new+=1
 
 @catch
 def go_to_homepage():
@@ -446,7 +449,8 @@ def dev_in_channell_config():
     global stream_in,device_in_current,device_in_channels_stream_option
 
     try:
-        stream_in = InputStream( samplerate=samplerate, channels=device_in_channels_stream_option, callback=audio_input_callback,device=device_in_current['index'] , latency="high", blocksize=blocksize_in)
+        stream_in = InputStream( samplerate=samplerate, callback=audio_input_callback,device=device_in_current['index'] , latency="low", blocksize=0,channels=1,dtype='float32')
+        #channels=device_in_channels_stream_option
         # dtype="float32"
         #, latency="low"
         #
@@ -564,6 +568,7 @@ except Exception as e_ver:
     VER_TIMESTAMP=''
 
 samplerate = 44100
+#samplerate = 48000
 
 phase = 0.0
 
@@ -622,7 +627,6 @@ sweeping_delay=time_to_collect_sample*1.5/spectrum_sub_bucket_samples
 record_blocks_len=int((samplerate*time_to_collect_sample)/blocksize_in)
 record_blocks_len_part1=int(record_blocks_len/2)
 record_blocks_len_part2=record_blocks_len-record_blocks_len_part1
-record_blocks_len_short=ceil(record_blocks_len/5)
 
 redraw_tracks_lines=True
 
@@ -796,7 +800,7 @@ device_in_current=None
 def dev_in_changed(sender=None, app_data=None):
     print('dev_in_changed',sender, app_data)
 
-    global device_in_current,device_in_channels_stream_option
+    global device_in_current
 
     dev_name=get_value("dev_in")
 
@@ -1594,6 +1598,7 @@ def on_drag(sender, app_data):
 next_fps = perf_counter()+1
 frames = 0
 rec_callbacks = 0
+rec_samples = 0
 
 with dpg.handler_registry():
     dpg.add_mouse_drag_handler(button=dpg.mvMouseButton_Left,callback=on_drag)
@@ -1620,12 +1625,14 @@ while is_dearpygui_running():
 
     if samples_chunks_fifo_new:
         data=np_append(data,np_concatenate(samples_chunks_fifo))[-fft_size:]
-        rec_callbacks+=1
+        rec_callbacks+=samples_chunks_fifo_chunks_new
+        rec_samples+=samples_chunks_fifo_new
 
         #from numpy.random import randn
         #data = randn(fft_size)
 
-        samples_chunks_fifo_new=False
+        samples_chunks_fifo_new=0
+        samples_chunks_fifo_chunks_new=0
 
         current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
         if fft_on:
@@ -1665,9 +1672,10 @@ while is_dearpygui_running():
     frames += 1
     now = perf_counter()
     if now >= next_fps:
-        set_status(f'FPS:{frames}, REC callbacks:{rec_callbacks}')
+        set_status(f'FPS:{frames}, {rec_callbacks=}, {rec_samples=}')
         frames = 0
         rec_callbacks = 0
+        rec_samples = 0
         next_fps = now+1.0
     ##################################
 
