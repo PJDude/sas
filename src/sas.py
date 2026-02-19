@@ -220,7 +220,7 @@ played_bucket=0
 played_bucket_callbacks=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channell_buffer_mod_index,blocksize_out_m1,phase_i
+    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channell_buffer_mod_index,phase_i
 
     if playing_state:
         phase_arr=(phase + phase_step * phase_i) % two_pi
