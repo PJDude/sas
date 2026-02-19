@@ -32,7 +32,7 @@ from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,ge
 
 from time import sleep,strftime,localtime,perf_counter
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,array
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 from collections import deque
 from queue import Queue
@@ -130,26 +130,23 @@ def scroll_mod(mod,factor=0.001):
             f_current=f_new
 
 def save_csv():
-    show_item("file_dialog_save")
+    filename='sas.csv'
+    set_status(f'saving {filename} ...')
 
-def save_csv_file_selected(sender, app_data):
-    filename=app_data["file_path_name"]
-
-    if filename:
-        try:
-            with open(filename,'w',encoding='utf-8') as f:
-                f.write("# Created with " + title + " #\n")
-                f.write("frequency[Hz],level[dBFS]\n")
-                for i in range(spectrum_buckets_quant):
-                    values=[]
-                    for track,show in enumerate(show_track):
-                        if show:
-                            db=track_line_data_y[track][i]
-                            logf=bucket_to_logf(i)
-                            values.append(f"{round(100*(10**logf))/100},{round(1000*db)/1000}")
-                    f.write(','.join(values) + '\n')
-        except Exception as e:
-            print("save_csv_error:",e)
+    try:
+        with open(filename,'w',encoding='utf-8') as f:
+            f.write("# Created with " + title + " #\n")
+            f.write("frequency[Hz],level[dBFS]\n")
+            for i in range(spectrum_buckets_quant):
+                values=[]
+                for track,show in enumerate(show_track):
+                    if show:
+                        db=track_line_data_y[track][i]
+                        logf=bucket_to_logf(i)
+                        values.append(f"{round(100*(10**logf))/100},{round(1000*db)/1000}")
+                f.write(','.join(values) + '\n')
+    except Exception as e:
+        print("save_csv_error:",e)
 
 def load_csv_file_selected(sender, app_data):
     filename=app_data["file_path_name"]
@@ -192,45 +189,10 @@ def load_csv_file_selected(sender, app_data):
 def load_csv():
     show_item("file_dialog_load")
 
-def save_png_file_selected(sender, app_data):
-    filename=app_data["file_path_name"]
-
-    time_postfix=strftime('%Y_%m_%d_%H_%M_%S',localtime())
-
-    if filename:
-        if os.path.exists(filename):
-            print("Name already exists!")
-        else:
-            path, file = os.path.split(filename)
-            name, ext = os.path.splitext(file)
-
-            if ext.lower() in ['.gif', '.png']:
-                win_pos = dpg.get_item_pos('main')
-
-                plot_pos = dpg.get_item_pos('plot')
-
-                plot_w = dpg.get_item_width('plot')
-                plot_h = dpg.get_item_height('plot')
-
-                screen_x = win_pos[0] + plot_pos[0]
-                screen_y = win_pos[1] + plot_pos[1]
-
-                bbox = (screen_x, screen_y, screen_x + plot_w, screen_y + plot_h)
-
-                print('filename:',filename)
-                sleep(0.1)
-                output_frame_buffer(filename)
-
-            else:
-                print("Unknown file type")
-    else:
-        print("Cancel")
-
 def save_image():
-    #dpg.output_frame_buffer(callback=_framebuffer_callback)
-    dpg.output_frame_buffer('sas-tmp.png')
-
-    show_item("file_dialog_save_image")
+    filename='sas.png'
+    set_status(f'saving {filename} ...')
+    dpg.output_frame_buffer(filename)
 
 def logf_to_bucket(logf):
     return int(floor(scale_factor_logf_to_bucket * (logf - logf_min_audio)))
@@ -493,21 +455,34 @@ def dev_in_channell_config():
     else:
         stream_in.start()
 
-def show_info(title, message):
-    with window(label=title,modal=True,no_close=True,autosize=True,tag="info_dialog"):
-        add_text(message)
-        add_button(label="OK", width=80,callback=lambda: dpg.delete_item("info_dialog"))
+def hide_info():
+    #dpg.hide_item('info')
+    #set_value('info_text','')
+    on_viewport_resize()
+    #dpg.show_item("plot")
 
-    vw, vh = dpg.get_viewport_client_width(), dpg.get_viewport_client_height()
-    ww, wh = dpg.get_item_width("info_dialog"), dpg.get_item_height("info_dialog")
+def show_info(message):
+    pass
+    #dpg.hide_item("plot")
+    #set_value('info_text',message)
+    #show_item('info')
 
-    dpg.set_item_pos("info_dialog", ((vw - ww) // 2, (vh - wh) // 2))
+    #configure_item('plot',show=False)
+
+    #with window(label=title,modal=True,no_close=True,autosize=True,tag="info_dialog"):
+    ##   add_text(message)
+    #    add_button(label="OK", width=80,callback=lambda: dpg.delete_item("info_dialog"))
+
+    #vw, vh = dpg.get_viewport_client_width(), dpg.get_viewport_client_height()
+    #ww, wh = dpg.get_item_width("info_dialog"), dpg.get_item_height("info_dialog")
+
+    #dpg.set_item_pos("info_dialog", ((vw - ww) // 2, (vh - wh) // 2))
 
 @catch
 def about_wrapper():
     text1= f'Simple Audio Sweeper {VER_TIMESTAMP}\nAuthor: Piotr Jochymek\n\n{HOMEPAGE}\n\nPJ.soft.dev.x@gmail.com\n'
     text2='\n' + distro_info + '\n'
-    show_info('About',text1+text2)
+    show_info(text1+text2)
 
 def license_wrapper():
     try:
@@ -520,7 +495,7 @@ def license_wrapper():
             print(exception_2)
             sys_exit(1)
 
-    show_info('License information',license_txt)
+    show_info(license_txt)
 
 def settings_wrapper():
     try:
@@ -535,68 +510,21 @@ def settings_wrapper():
     except Exception as e:
         print(e)
 
-@catch
-def fft_press():
-    global fft_on
-    fft_on=get_value('fft')
-    print('fft_press:',fft_on)
-
-    fft_set()
-    fft_window_changed()
-
 fft_on=True
 
-@catch
-def fft_set():
-    set_value("fft",fft_on)
-    configure_item("fft_line", show=fft_on)
+def resetrack_press(sender=None, app_data=None):
+    print('resetrack:',sender,app_data)
 
-def resetrack_press(sender=None, app_data=None, track=None):
-    print('resetrack:',sender,app_data,track)
-
-    if recording_enabled[track]:
+    global recorded_track,redraw_tracks_lines
+    if recorded_track!='none':
         sweep_abort()
-
-        track_line_data_y[track]=[dbinit]*spectrum_buckets_quant
-
-        global redraw_tracks_lines
+        track_line_data_y[recorded_track]=[dbinit]*spectrum_buckets_quant
         redraw_tracks_lines=True
     else:
         print('recording not enabled for track',track)
 
 
-recording_enabled=[False]*tracks
 recorded_track=None
-def recording_press(sender=None, app_data=None,track_combo=None):
-    print('recording_press:',sender,app_data,track_combo)
-    track,press=track_combo
-
-    track_pressed(track)
-
-    global recording_enabled,recorded_track,redraw_tracks_lines,show_track
-    if press:
-        recording_enabled[track]=(True,False)[recording_enabled[track]]
-
-    if recording_enabled[track]:
-        show_track[track]=True
-        show_press(sender,True,(track,False))
-
-        for track_temp in range(tracks):
-            if track_temp==track:
-                recording_enabled[track]=True
-                configure_item(f'recordcheck{track}',texture_tag=ico["rec_on"])
-            else:
-                recording_enabled[track_temp]=False
-                configure_item(f'recordcheck{track_temp}',texture_tag=ico["rec_off"])
-
-        recorded_track=track
-        bind_item_theme(f"track{recorded_track}",reddark_line_theme)
-    else:
-        configure_item(f'recordcheck{track}',texture_tag=ico["rec_off"])
-        recorded_track=None
-
-    configure_item("sweep", enabled=recording_enabled[track])
-    configure_item(f"resetrack{track}", enabled=recording_enabled[track])
 
 show_track=[False]*tracks
 def show_press(sender=None, app_data=None,track_combo=None):
@@ -605,7 +533,7 @@ def show_press(sender=None, app_data=None,track_combo=None):
 
     track_pressed(track)
 
-    global show_track,redraw_tracks_lines,recording_enabled,ico
+    global show_track,redraw_tracks_lines,ico,recorded_track
     if press:
         show_track[track]=(True,False)[show_track[track]]
 
@@ -615,8 +543,9 @@ def show_press(sender=None, app_data=None,track_combo=None):
         configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_off"])
 
     if not show_track[track]:
-        recording_enabled[track]=False
-        recording_press(sender,False,(track,False))
+        if recorded_track==track:
+            recorded_track=None
+            set_value('rec_track','none')
 
 @catch
 def track_pressed(track):
@@ -710,14 +639,6 @@ for name, data in image.items():
         add_static_texture(w, h, [v/255 for px in list(img.get_flattened_data()) for v in px], tag=name)
     ico[name] = name
 
-with file_dialog(directory_selector=False,show=False,callback=save_csv_file_selected,id="file_dialog_save",file_count=1,default_filename="sas"):
-    add_file_extension(".csv", color=(255, 255, 0))
-    add_file_extension(".*")
-
-with file_dialog(directory_selector=False,show=False,callback=save_png_file_selected,id="file_dialog_save_image",file_count=1,default_filename="sas"):
-    add_file_extension(".png", color=(255, 255, 0))
-    add_file_extension(".*")
-
 with file_dialog(directory_selector=False,show=False,callback=load_csv_file_selected,id="file_dialog_load",file_count=1,default_filename="sas"):
     add_file_extension(".csv", color=(255, 255, 0))
     add_file_extension(".*")
@@ -767,24 +688,76 @@ def api_changed(sender=None, app_data=None):
     dev_in_changed()
 
 @catch
+def record_track_changed(sender=None, app_data=None):
+    track_to_record=get_value('rec_track')
+
+    sweep_abort()
+
+    global recorded_track
+
+    if track_to_record=='none':
+        recorded_track=None
+        bind_item_theme(f"track{recorded_track}",gray_line_theme)
+    else:
+        if track_to_record=='1':
+            recorded_track=0
+        elif track_to_record=='2':
+            recorded_track=1
+        elif track_to_record=='3':
+            recorded_track=2
+        elif track_to_record=='4':
+            recorded_track=3
+        elif track_to_record=='5':
+            recorded_track=4
+        elif track_to_record=='6':
+            recorded_track=5
+        elif track_to_record=='7':
+            recorded_track=6
+        elif track_to_record=='8':
+            recorded_track=7
+        else:
+            print('unknown track:',track_to_record)
+
+        show_track[recorded_track]=True
+
+        show_press(sender,True,(recorded_track,False))
+
+        #for track_temp in range(tracks):
+        #    if track_temp==track:
+        #        recording_enabled[track]=True
+        #        configure_item(f'recordcheck{track}',texture_tag=ico["rec_on"])
+        #    else:
+        #        recording_enabled[track_temp]=False
+        #        configure_item(f'recordcheck{track_temp}',texture_tag=ico["rec_off"])
+
+        #recorded_track=track
+
+        bind_item_theme(f"track{recorded_track}",reddark_line_theme)
+
+@catch
 def fft_window_changed(sender=None, app_data=None):
     fft_window_name=get_value('fft_window')
 
-    global fft_window,window_correction
-    if fft_window_name=='ones':
-        fft_window=ones(fft_size)
-    elif fft_window_name=='hanning':
-        fft_window=hanning(fft_size)
-    elif fft_window_name=='hamming':
-        fft_window=hamming(fft_size)
-    elif fft_window_name=='blackman':
-        fft_window=blackman(fft_size)
-    elif fft_window_name=='bartlett':
-        fft_window=bartlett(fft_size)
+    global fft_on,fft_window,window_correction
+    if fft_window_name=='off':
+        fft_on=False
     else:
-        print('unknown window:',fft_window_name)
+        fft_on=True
+        if fft_window_name=='ones':
+            fft_window=ones(fft_size)
+        elif fft_window_name=='hanning':
+            fft_window=hanning(fft_size)
+        elif fft_window_name=='hamming':
+            fft_window=hamming(fft_size)
+        elif fft_window_name=='blackman':
+            fft_window=blackman(fft_size)
+        elif fft_window_name=='bartlett':
+            fft_window=bartlett(fft_size)
+        else:
+            print('unknown window:',fft_window_name)
 
     window_correction = np_sum(fft_window)
+    configure_item("fft_line", show=fft_on)
 
     print('fft_window_changed',sender, app_data,fft_window_name,len(fft_window))
 
@@ -813,7 +786,7 @@ def dev_out_changed(sender=None, app_data=None):
         dev_out_channell_value='all'
         set_value("dev_out_channell",dev_out_channell_value)
 
-    set_value("dev_out_samplerate",int(device_out_current['default_samplerate']))
+    set_value("dev_out_samplerate",str(int(device_out_current['default_samplerate'])))
 
     dev_out_channell_changed()
 
@@ -838,12 +811,14 @@ def dev_in_changed(sender=None, app_data=None):
         dev_in_channell_value='all'
         set_value("dev_in_channell",dev_in_channell_value)
 
-    set_value("dev_in_samplerate",int(device_in_current['default_samplerate']))
+    set_value("dev_in_samplerate",str(int(device_in_current['default_samplerate'])))
 
     dev_in_channell_changed()
 
-def on_click(sender, app_data):
-    #print('on_click',sender, app_data)
+def on_click_plot(sender, app_data):
+    print('on_click',sender, app_data)
+
+    hide_info()
 
     button_nr=app_data[0]
 
@@ -953,7 +928,8 @@ def create_theme(
             dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
             dpg.add_theme_color(dpg.mvThemeCol_Border, _rgba(border))
             dpg.add_theme_color(dpg.mvThemeCol_FrameBg, _rgba(frame_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_Button, _rgba(button))
+            #dpg.add_theme_color(dpg.mvThemeCol_Button, _rgba(button))
+            dpg.add_theme_color(dpg.mvThemeCol_Button, _rgba(window_bg))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _rgba(button_hovered))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _rgba(button_active))
             dpg.add_theme_color(dpg.mvThemeCol_TitleBg, _rgba(title_bg))
@@ -1074,6 +1050,7 @@ def create_theme(
             dpg.add_theme_color(dpg.mvThemeCol_BorderShadow, (0, 0, 0, 0))
             #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 6, 4)
 
+
     #THEME_TAGS[tag] = tag
     return tag
 
@@ -1154,6 +1131,15 @@ with theme() as theme_win_shapes:
         dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
         dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 6)
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 12, 10)
+
+
+#with theme() as text_ok:
+ #   with theme_component(dpg.mvText):
+ #       dpg.add_theme_color(dpg.mvThemeCol_Text, (220, 220, 220))
+
+#with theme() as text_alert:
+#    with theme_component(dpg.mvText):
+#        dpg.add_theme_color(dpg.mvThemeCol_Text, (255, 90, 90))
 
 with theme() as red_line_theme:
     with theme_component(dpg.mvLineSeries):
@@ -1279,7 +1265,7 @@ for i,f in enumerate(fft_line_data_x):
 
 bucket_freqs_border_index=0
 for i,f in enumerate(bucket_freqs):
-    if f>border_f:
+    if f>=border_f:
         bucket_freqs_border_index=i
         break
 
@@ -1334,71 +1320,106 @@ def slide_change(sender):
 dpg.bind_theme(padding_mod_theme)
 #dpg.bind_theme(theme_light)
 dpg.bind_theme(temp)
-dpg.create_viewport(title=title,width=1000,height=400,vsync=False)
+dpg.create_viewport(title=title,width=1000,height=350,vsync=False)
 
 def on_viewport_resize(sender=None, app_data=None):
+
     vh = dpg.get_viewport_client_height()
+    vw = dpg.get_viewport_client_width()
 
-    FIXED_BOTTOM_HEIGHT = 94
-    GAP=30
-    top_h  = max(50, vh - FIXED_BOTTOM_HEIGHT - GAP)
+    FIXED_BOTTOM_HEIGHT = 44
+    GAP=100
+    top_h  = max(220, vh - FIXED_BOTTOM_HEIGHT - GAP)
 
-    dpg.set_item_height(plot, top_h)
-    dpg.set_item_height(slider, top_h)
+    dpg.set_item_height('slider', top_h-40)
+    dpg.set_item_height('slider_window', top_h-40+8)
+    #dpg.set_item_width('slider', 60)
+
+    dpg.set_item_height('plot', top_h)
+    dpg.set_item_width('plot', vw-80)
+
+    #dpg.set_item_pos('info', (100,12))
+
+    #dpg.set_item_height('info', top_h-40)
+    #dpg.set_item_width('info', vw-30)
+    #dpg.set_item_width('info_text', vw-30)
+
+with dpg.theme() as window_theme_1:
+    with dpg.theme_component(dpg.mvAll):
+        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, (247,247,247,180), category=dpg.mvThemeCat_Core)
 
 ###################################################
 with window(tag='main') as main:
     with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
         borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
         row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
-        no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True) as main_table:
+        no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
 
         add_table_column(width_stretch=True, init_width_or_weight=-1)
-        #add_table_column(width_fixed=True, init_width_or_weight=300, width=300)
 
         with dpg.table_row():
-            with plot(tag='plot',no_mouse_pos=True,no_menus=True,no_frame=True,width=-1,height=-1) as plot:
-                yticks = (('dBFS',00),('-10',-10),("-20",-20),('-30',-30),('-40',-40),('-50',-50),('-60',-60),('-70',-70),('-80',-80),('-90',-90), ("-100",-100), ("-110",-110), ("-120",-120))
-                xticks = (('',10),("20Hz",20),('',30),('',40),('',50),('',60),('',70),('',80),('',90), ("100Hz",100),
-                    ('',200),('',300),('',400),('',500),('',600),('',700),('',800),('',900),("1kHz",1000),
-                    ("",2000),("",3000),("",4000),("",5000),("",6000),("",7000),("",8000),("",9000),("10kHz",10000),("20kHz",20000))
-                dpg.add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
-                dpg.add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
-
-                with dpg.plot_axis(dpg.mvXAxis, tag='x_axis') as xaxis:
-                    configure_item(dpg.last_item(),scale=dpg.mvPlotScale_Log10)
-                    dpg.set_axis_limits("x_axis", fmin,fmax)
-                    dpg.set_axis_ticks("x_axis", xticks)
-
-                with dpg.plot_axis(dpg.mvYAxis, tag = 'y_axis'):
-                    dpg.set_axis_limits("y_axis", dbmin_display, dbmax_display)
-                    dpg.set_axis_ticks("y_axis", yticks)
-
-                    add_line_series(fft_line_data_x, fft_line_data_y, tag="fft_line")
-
-                    add_line_series((0,0),(dbmin,0),tag="cursor_f")
-                    bind_item_theme("cursor_f",red_line_theme)
-
-                    for lab,val in xticks:
-                        if lab:
-                            add_line_series([val,val], [-130,0],tag=f'stick{val}')
-                            bind_item_theme(f'stick{val}',grid_line_theme)
-
-                    for track in range(tracks):
-                        add_line_series(bucket_freqs, track_line_data_y[track], tag=f"track{track}")
-
-                dpg.add_image_series(
-                    texture_tag=ico['bg'],
-                    bounds_min=(0, -280),
-                    bounds_max=(40000, 0),
-                    parent='y_axis'
-                )
-
-                with item_handler_registry(tag="plot_handlers"):
-                    add_item_hover_handler(callback=on_mouse_move)
-                    add_item_clicked_handler(callback=on_click)
             with dpg.group(horizontal=True):
-                slider = dpg.add_slider_float(callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,height=200,width=10,format="",show=False)
+                dpg.add_spacer(width=6)
+
+                with child_window(tag='slider_window',no_scrollbar=True, border=False,width=12):
+                    dpg.add_spacer(height=6)
+                    dpg.add_slider_float(tag='slider',callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,format="",width=10)
+
+                with plot(tag='plot',no_mouse_pos=True,no_menus=True,no_frame=True):
+                    yticks = (('dBFS',00),('-10',-10),("-20",-20),('-30',-30),('-40',-40),('-50',-50),('-60',-60),('-70',-70),('-80',-80),('-90',-90), ("-100",-100), ("-110",-110), ("-120",-120))
+                    xticks = (('',10),("20Hz",20),('',30),('',40),('',50),('',60),('',70),('',80),('',90), ("100Hz",100),
+                        ('',200),('',300),('',400),('',500),('',600),('',700),('',800),('',900),("1kHz",1000),
+                        ("",2000),("",3000),("",4000),("",5000),("",6000),("",7000),("",8000),("",9000),("10kHz",10000),("20kHz",20000))
+                    dpg.add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
+                    dpg.add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
+
+                    with dpg.plot_axis(dpg.mvXAxis, tag='x_axis') as xaxis:
+                        configure_item(dpg.last_item(),scale=dpg.mvPlotScale_Log10)
+                        dpg.set_axis_limits("x_axis", fmin,fmax)
+                        dpg.set_axis_ticks("x_axis", xticks)
+
+                    with dpg.plot_axis(dpg.mvYAxis, tag = 'y_axis'):
+                        dpg.set_axis_limits("y_axis", dbmin_display, dbmax_display)
+                        dpg.set_axis_ticks("y_axis", yticks)
+
+                        add_line_series(fft_line_data_x, fft_line_data_y, tag="fft_line",label='FFT', user_data='FFT')
+
+                        add_line_series((0,0),(dbmin,0),tag="cursor_f")
+                        bind_item_theme("cursor_f",red_line_theme)
+
+                        for lab,val in xticks:
+                            if lab:
+                                add_line_series([val,val], [-130,0],tag=f'stick{val}')
+                                bind_item_theme(f'stick{val}',grid_line_theme)
+
+                        for track in range(tracks):
+                            add_line_series(bucket_freqs, track_line_data_y[track], tag=f"track{track}",label=f"track{track+1}",user_data=track,show=False)
+
+                    dpg.add_image_series(
+                        texture_tag=ico['bg'],
+                        bounds_min=(0, -280),
+                        bounds_max=(40000, 0),
+                        parent='y_axis'
+                    )
+
+                    with item_handler_registry(tag="plot_handlers"):
+                        add_item_hover_handler(callback=on_mouse_move)
+                        add_item_clicked_handler(callback=on_click_plot)
+
+                    bind_item_handler_registry("plot", "plot_handlers")
+
+                with dpg.group(tag='buttons'):
+                    dpg.add_spacer(height=6)
+                    for track_temp in range(tracks):
+                        add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=show_press,user_data=(track_temp,True))
+                        widget_tooltip(f'Show/Hide track:{track_temp+1}')
+
+                    #with window(tag='info',height =-1,no_close=True,menubar=False,no_title_bar=True,autosize=True) as moving_frame:
+                    #    add_text(tag='info_text',default_value='text1')
+                    #    dpg.bind_item_theme(moving_frame,window_theme_1)
+
+                    #dpg.set_item_pos('info', (300,13))
+                    #dpg.hide_item('info')
 
         with dpg.table_row():
             with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
@@ -1406,24 +1427,27 @@ with window(tag='main') as main:
                 row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
                 no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
 
+                add_table_column(width_fixed=True, init_width_or_weight=10, width=10)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
-                add_table_column(width_fixed=True, init_width_or_weight=180, width=180)
+                add_table_column(width_fixed=True, init_width_or_weight=230, width=230)
 
                 with dpg.table_row():
+                    dpg.add_spacer(height=6)
+
                     add_text(tag='status',default_value='')
 
                     with dpg.group(horizontal=True):
-                    #with child_window(no_scrollbar=True, border=False,width=200):
+
                         add_image_button(ico["play"],tag='sweep',callback=sweep_press)
                         widget_tooltip('Run frequency sweep')
-
+                        dpg.add_spacer(width=16)
+                        add_image_button(ico["save_pic"],tag='save_image',callback=save_image)
+                        widget_tooltip("Save Image file")
                         add_image_button(ico["save_csv"],tag='save_csv_button',callback=save_csv)
                         widget_tooltip("Save CSV file")
                         add_image_button(ico["load_csv"],tag='load_csv_button',callback=load_csv)
                         widget_tooltip("Load CSV file")
-                        add_image_button(ico["save_pic"],tag='save_image',callback=save_image)
-                        widget_tooltip("Save Image file")
-
+                        dpg.add_spacer(width=16)
                         add_image_button(ico["home"],tag='homepage',callback=go_to_homepage)
                         widget_tooltip(f'Visit project homepage ({HOMEPAGE})')
                         add_image_button(ico["license"],tag='licensex',callback=license_wrapper)
@@ -1437,21 +1461,40 @@ with window(tag='main') as main:
                 no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
 
                 add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
-                add_table_column(width_fixed=True, init_width_or_weight=160, width=160)
+                add_table_column(width_fixed=True, init_width_or_weight=30, width=30)
+                add_table_column(width_fixed=True, init_width_or_weight=140, width=140)
                 add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
-                add_table_column(width_fixed=True, init_width_or_weight=200, width=200)
+                #add_table_column(width_fixed=True, init_wi4th_or_weight=200, width=200)
                 add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
 
                 with dpg.table_row():
                     add_text(default_value='')
                     with dpg.group(width=-1):
-                        add_text(default_value='Sound API')
+                        add_text(default_value='API')
+                        add_text(default_value='')
+                        add_text(default_value='FFT')
+                        add_text(default_value='REC')
+                    with dpg.group(width=-1):
                         add_combo(tag='api',default_value='',callback=api_changed)
-                        add_checkbox(label='FFT',tag='fft',default_value=fft_on,callback=fft_press)
-                        widget_tooltip('Show live Fast Fourier Transform graph')
-                        add_combo(tag='fft_window',items=['ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
+                        add_text(default_value='')
+                        add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
+                        widget_tooltip(' Show live Fast Fourier Transform graph \n with window function specified')
+
+                        with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
+                            borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
+                            row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
+                            no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
+
+                            add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                            add_table_column(width_stretch=True, init_width_or_weight=-1)
+
+                            with dpg.table_row():
+                                add_image_button(ico["reset"],tag=f'resetrack',callback=resetrack_press,label="X")
+                                widget_tooltip(' Reset selected track samples.')
+                                add_combo(tag='rec_track',items=['none','1','2','3','4','5','6','7','8'],default_value='none',callback=record_track_changed,width=-1)
+
                     with dpg.group():
                         add_text(default_value=' ')
                         add_text(default_value='Device:')
@@ -1461,32 +1504,16 @@ with window(tag='main') as main:
                         add_text(default_value='Output')
                         add_combo(tag='dev_out',default_value='',callback=dev_out_changed)
                         add_combo(tag='dev_out_channell',default_value='',callback=dev_out_channell_changed)
-                        add_combo(tag='dev_out_samplerate',default_value='',callback=dev_out_samplerate_changed)
+                        add_text(tag='dev_out_samplerate',label='')
                     with dpg.group(width=-1):
                         add_text(default_value='Input')
                         add_combo(tag='dev_in',default_value='',callback=dev_in_changed)
                         add_combo(tag='dev_in_channell',default_value='',callback=dev_in_channell_changed)
-                        add_combo(tag='dev_in_samplerate',default_value='',callback=dev_in_samplerate_changed)
+                        add_text(tag='dev_in_samplerate',label='')
                     with dpg.group():
+                        dpg.add_spacer(width=6)
 
-                        add_text(default_value=' ')
-                        with dpg.group(horizontal=True) as g_show:
-                            for track_temp in range(tracks):
-                                add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=show_press,user_data=(track_temp,True),parent=g_show)
-                                widget_tooltip(f'Show/Hide track:{track_temp+1}')
 
-                        with dpg.group(horizontal=True) as g_record:
-                            for track_temp in range(tracks):
-                                add_image_button(ico["rec_off"],tag=f'recordcheck{track_temp}',callback=recording_press,user_data=(track_temp,True),parent=g_record)
-                                widget_tooltip(f'Enable/Disable Recording of track:{track_temp+1}')
-
-                        with dpg.group(horizontal=True) as g_reset:
-                            for track_temp in range(tracks):
-                                add_image_button(ico["reset"],tag=f'resetrack{track_temp}',callback=resetrack_press,user_data=track_temp,label="X",parent=g_reset)
-                                widget_tooltip(f'Reset all samples of track:{track_temp+1}')
-                    add_text(default_value='')
-
-    bind_item_handler_registry("plot", "plot_handlers")
     with dpg.handler_registry():
         dpg.add_mouse_release_handler(callback=on_release)
         dpg.add_mouse_wheel_handler(callback=wheel_callback)
@@ -1525,19 +1552,34 @@ stream_out=None
 
 refresh_devices()
 
-fft_window_changed()
 
 api_changed()
 
 settings_wrapper()
 
 fft_on=True
-fft_set()
+
+fft_window_changed()
 
 data=zeros(fft_size)
 next_sweep_time=0
 
-fft_line_new_x=tuple(fft_line_data_x[:fft_line_data_x_border_index] + bucket_freqs[bucket_freqs_border_index:])
+#fft_line_new_x=tuple(fft_line_data_x[1:fft_line_data_x_border_index] + bucket_freqs[bucket_freqs_border_index:])
+fft_line_new_x=fft_line_data_x[:fft_line_data_x_border_index] + bucket_freqs[bucket_freqs_border_index:]
+fft_line_new_x[0]=5
+fft_line_new_x=tuple(fft_line_new_x)
+
+status_text=''
+def set_status(text,alert=False):
+    global status_text
+    if text!=status_text:
+        set_value('status',text)
+        status_text=text
+
+        #if alert:
+        #    bind_item_theme("status_text", text_alert)
+        #else:
+        #    bind_item_theme("status_text", text_ok)
 
 try:
     while is_dearpygui_running():
@@ -1567,10 +1609,14 @@ try:
 
             current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
             if fft_on:
-                values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / fft_size + 1e-12)
-                values_means_in_buckets = bincount(bin_indices, weights=values)[1:] / bin_counts[1:]
+                fft_values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / fft_size + 1e-12)
+                fft_values_means_in_buckets = bincount(bin_indices, weights=fft_values)[1:] / bin_counts[1:]
 
-                set_value("fft_line", [fft_line_new_x, np_concatenate([values[:fft_line_data_x_border_index],values_means_in_buckets[bucket_freqs_border_index:]])])
+                #set_value("fft_line", [fft_line_new_x, np_concatenate([fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])])
+                set_value("fft_line", [fft_line_new_x, np_concatenate([array([-120.0]),fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]]) ])
+                #vals=np_concatenate([fft_values[:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])
+                #vals[0]=-120
+                #set_value("fft_line", [fft_line_new_x, vals])
 
             if playing_state and recorded_track is not None:
                 track_line_data_y[recorded_track][current_bucket]=current_sample_db if played_bucket_callbacks>record_blocks_len else ( track_line_data_y[recorded_track][current_bucket]*record_blocks_len_part1 + current_sample_db*record_blocks_len_part2 ) / record_blocks_len
@@ -1579,13 +1625,16 @@ try:
             set_value('cursor_db_txt', (25000, current_sample_db))
             configure_item('cursor_db_txt',label=f'{round(current_sample_db)}dB')
 
+            if current_sample_db<-110:
+                set_status('No signal / Mic not connected ...',1)
+
         if redraw_tracks_lines:
             for track,show in enumerate(show_track):
                 configure_item(f"track{track}",show=show)
                 if show:
                     set_value(f"track{track}", [bucket_freqs, track_line_data_y[track]])
 
-                    if not recording_enabled[track]:
+                    if track!=recorded_track:
                         bind_item_theme(f"track{track}",gray_line_theme)
 
             redraw_tracks_lines=False
