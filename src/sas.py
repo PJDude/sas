@@ -1320,7 +1320,7 @@ def slide_change(sender):
 dpg.bind_theme(padding_mod_theme)
 #dpg.bind_theme(theme_light)
 dpg.bind_theme(temp)
-dpg.create_viewport(title=title,width=1000,height=350,vsync=False)
+dpg.create_viewport(title=title,width=1000,height=380,vsync=True)
 
 def on_viewport_resize(sender=None, app_data=None):
 
@@ -1581,86 +1581,112 @@ def set_status(text,alert=False):
         #else:
         #    bind_item_theme("status_text", text_ok)
 
-try:
-    while is_dearpygui_running():
-        if sweeping:
-            now=perf_counter()
-            if now>next_sweep_time:
-                sweeping_i+=1
-                if sweeping_i<sweep_steps:
-                    logf=logf_min_audio+sweeping_i*logf_sweep_step
-                    f=10**logf
 
-                    change_f(f)
-                    set_value('status','Sweeping (' + str(round(f))+ ' Hz), Click on the graph to abort ...')
+def mouse_down():
+    pass
 
-                    next_sweep_time=now+sweeping_delay
-                else:
-                    sweeping=False
-                    play_stop()
+def mouse_up():
+    pass
 
-        if samples_chunks_fifo_new:
-            data=np_append(data,np_concatenate(samples_chunks_fifo))[-fft_size:]
+def on_drag(sender, app_data):
+    pass
 
-            #from numpy.random import randn
-            #data = randn(fft_size)
+next_fps = perf_counter()+1
+frames = 0
+rec_callbacks = 0
 
-            samples_chunks_fifo_new=False
+with dpg.handler_registry():
+    dpg.add_mouse_drag_handler(button=dpg.mvMouseButton_Left,callback=on_drag)
+    dpg.add_mouse_down_handler(button=dpg.mvMouseButton_Left, callback=mouse_down)
+    dpg.add_mouse_release_handler(button=dpg.mvMouseButton_Left, callback=mouse_up)
 
-            current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
-            if fft_on:
-                fft_values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / fft_size + 1e-12)
-                fft_values_means_in_buckets = bincount(bin_indices, weights=fft_values)[1:] / bin_counts[1:]
 
-                #set_value("fft_line", [fft_line_new_x, np_concatenate([fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])])
-                set_value("fft_line", [fft_line_new_x, np_concatenate([array([-120.0]),fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]]) ])
-                #vals=np_concatenate([fft_values[:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])
-                #vals[0]=-120
-                #set_value("fft_line", [fft_line_new_x, vals])
+while is_dearpygui_running():
+    if sweeping:
+        now=perf_counter()
+        if now>next_sweep_time:
+            sweeping_i+=1
+            if sweeping_i<sweep_steps:
+                logf=logf_min_audio+sweeping_i*logf_sweep_step
+                f=10**logf
 
-            if playing_state and recorded_track is not None:
-                track_line_data_y[recorded_track][current_bucket]=current_sample_db if played_bucket_callbacks>record_blocks_len else ( track_line_data_y[recorded_track][current_bucket]*record_blocks_len_part1 + current_sample_db*record_blocks_len_part2 ) / record_blocks_len
-                redraw_tracks_lines=True
+                change_f(f)
+                set_value('status','Sweeping (' + str(round(f))+ ' Hz), Click on the graph to abort ...')
 
-            set_value('cursor_db_txt', (25000, current_sample_db))
-            configure_item('cursor_db_txt',label=f'{round(current_sample_db)}dB')
+                next_sweep_time=now+sweeping_delay
+            else:
+                sweeping=False
+                play_stop()
 
-            if current_sample_db<-110:
-                set_status('No signal / Mic not connected ...',1)
+    if samples_chunks_fifo_new:
+        data=np_append(data,np_concatenate(samples_chunks_fifo))[-fft_size:]
+        rec_callbacks+=1
 
-        if redraw_tracks_lines:
-            for track,show in enumerate(show_track):
-                configure_item(f"track{track}",show=show)
-                if show:
-                    set_value(f"track{track}", [bucket_freqs, track_line_data_y[track]])
+        #from numpy.random import randn
+        #data = randn(fft_size)
 
-                    if track!=recorded_track:
-                        bind_item_theme(f"track{track}",gray_line_theme)
+        samples_chunks_fifo_new=False
 
-            redraw_tracks_lines=False
+        current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
+        if fft_on:
+            fft_values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / fft_size + 1e-12)
+            fft_values_means_in_buckets = bincount(bin_indices, weights=fft_values)[1:] / bin_counts[1:]
 
-        render_dearpygui_frame()
+            #set_value("fft_line", [fft_line_new_x, np_concatenate([fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])])
+            set_value("fft_line", [fft_line_new_x, np_concatenate([array([-120.0]),fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]]) ])
+            #vals=np_concatenate([fft_values[:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])
+            #vals[0]=-120
+            #set_value("fft_line", [fft_line_new_x, vals])
 
-        if exiting:
-            break
+        if playing_state and recorded_track is not None:
+            track_line_data_y[recorded_track][current_bucket]=current_sample_db if played_bucket_callbacks>record_blocks_len else ( track_line_data_y[recorded_track][current_bucket]*record_blocks_len_part1 + current_sample_db*record_blocks_len_part2 ) / record_blocks_len
+            redraw_tracks_lines=True
 
-except Exception as main_loop_error:
-    print("ERROR:",main_loop_error)
+        set_value('cursor_db_txt', (25000, current_sample_db))
+        configure_item('cursor_db_txt',label=f'{round(current_sample_db)}dB')
 
-finally:
-    sweeping=False
-    lock_frequency=False
-    play_abort()
+        if current_sample_db<-110:
+            set_status('No signal / Mic not connected ...',1)
 
-    exiting=True
+    if redraw_tracks_lines:
+        for track,show in enumerate(show_track):
+            configure_item(f"track{track}",show=show)
+            if show:
+                set_value(f"track{track}", [bucket_freqs, track_line_data_y[track]])
 
-    if stream_in:
-        stream_in.stop()
-        stream_in.close()
+                if track!=recorded_track:
+                    bind_item_theme(f"track{track}",gray_line_theme)
 
-    if stream_out:
-        stream_out.close()
+        redraw_tracks_lines=False
 
-    destroy_context()
-    sys_exit(1)
+    render_dearpygui_frame()
+
+    ##################################
+    frames += 1
+    now = perf_counter()
+    if now >= next_fps:
+        set_status(f'FPS:{frames}, REC callbacks:{rec_callbacks}')
+        frames = 0
+        rec_callbacks = 0
+        next_fps = now+1.0
+    ##################################
+
+    if exiting:
+        break
+
+sweeping=False
+lock_frequency=False
+play_abort()
+
+exiting=True
+
+if stream_in:
+    stream_in.stop()
+    stream_in.close()
+
+if stream_out:
+    stream_out.close()
+
+destroy_context()
+sys_exit(0)
 
