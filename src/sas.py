@@ -34,6 +34,8 @@ from time import sleep,strftime,localtime,perf_counter
 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,array
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
+
+
 from collections import deque
 from queue import Queue
 
@@ -57,6 +59,8 @@ VERSION_FILE='version.txt'
 HOMEPAGE='https://github.com/PJDude/sas'
 
 windows = bool(os_name=='nt')
+if windows:
+    from sounddevice import WasapiSettings
 
 np_fft_rfft=np_fft.rfft
 
@@ -203,7 +207,7 @@ def bucket_to_logf(i):
 phase_step=1.0
 
 def change_f(fpar):
-    global current_logf,current_bucket,phase_step,current_bucket,two_pi_by_samplerate
+    global current_logf,current_bucket,phase_step,current_bucket,two_pi_by_out_samplerate
 
     if fmin_audio<fpar<fmax_audio:
         current_logf=log10(fpar)
@@ -214,13 +218,17 @@ def change_f(fpar):
         set_value('cursor_f_txt', (fpar, -3))
         configure_item('cursor_f_txt',label=f'{round(fpar)}Hz')
 
-        phase_step = two_pi_by_samplerate * fpar
+        phase_step = two_pi_by_out_samplerate * fpar
 
 played_bucket=0
 played_bucket_callbacks=0
 
+#audio_output_callback_last_time_start=perf_counter()
+#audio_output_callback_last_time_end=perf_counter()
+
 def audio_output_callback(outdata, frames, time, status):
     global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channell_buffer_mod_index,phase_i
+    #audio_output_callback_start=perf_counter()
 
     if playing_state:
         phase_arr=(phase + phase_step * phase_i) % two_pi
@@ -242,12 +250,19 @@ def audio_output_callback(outdata, frames, time, status):
     else:
         outdata.fill(0)
 
+    #audio_output_callback_end=perf_counter()
+
+def wasapi_exclusive_callback(sender=None, app_data=None):
+    print('wasapi_exclusive_callback',sender,app_data)
+
+def vsync_calllback(sender=None, app_data=None):
+    print('vsync_calllback:',sender,app_data)
+    dpg.set_viewport_vsync(app_data)
+
 def sweep_abort():
     global sweeping
     sweeping=False
-    #set_value('sweep',False)
     configure_item('sweep',texture_tag=ico["play"])
-    #print('sweeping aborted')
 
 sweeping_i=0
 def sweep_press(sender=None, app_data=None):
@@ -259,7 +274,6 @@ def sweep_press(sender=None, app_data=None):
     if recorded_track is None:
         print('no recorded_track')
         sweep_abort()
-        #set_value('sweep',False)
         return
 
     lock_frequency=False
@@ -389,17 +403,63 @@ def refresh_devices():
         for key,val in dev.items():
             print('  ',key,':',val)
 
+latency_values=('high','low','default',0.01,0.02,0.03,0)
+blocksize_values=(2048,1024,512,256,128,64,0)
+default_blocksize=64
+default_latency='low'
+
+device_in_stream_option={'channels':1,'latency':default_latency,'blocksize':default_blocksize}
+in_channell_buffer_mod_index=0
+
+device_out_stream_option={'channels':2,'latency':default_latency,'blocksize':default_blocksize}
+out_channell_buffer_mod_index=1
+
 def dev_out_samplerate_changed(sender=None, app_data=None):
     print('dev_out_samplerate_changed',sender,app_data)
+    global two_pi_by_out_samplerate
+    #two_pi_by_out_samplerate = two_pi/samplerate
+    two_pi_by_out_samplerate = two_pi/app_data
+
+def dev_out_blocksize_changed(sender=None, app_data=None):
+    print('dev_out_blocksize_changed',sender,app_data)
+    play_abort()
+
+    if stream_out:
+        stream_out.stop()
+
+    dev_out_channell_init()
+
+def dev_out_latency_changed(sender=None, app_data=None):
+    global device_out_stream_option
+    print('dev_out_latency_changed',sender,app_data)
+    play_abort()
+    device_out_stream_option['latency']=app_data
+
+    if stream_out:
+        stream_out.stop()
+
+    dev_out_channell_init()
+
+def dev_in_blocksize_changed(sender=None, app_data=None):
+    print('dev_in_blocksize_changed',sender,app_data)
+    dev_in_channell_init()
+
+def dev_in_latency_changed(sender=None, app_data=None):
+    global device_in_stream_option
+    print('dev_in_latency_changed',sender,app_data)
+    device_in_stream_option['latency']=app_data
+
+    dev_in_channell_init()
 
 def dev_in_samplerate_changed(sender=None, app_data=None):
     print('dev_in_samplerate_changed',sender,app_data)
+
 
 @catch
 def dev_out_channell_changed(sender=None, app_data=None):
     print('dev_out_channell_changed',sender,app_data)
 
-    global device_out_channels_stream_option,out_channell_buffer_mod_index,lock_frequency,stream_out,device_out_current
+    global out_channell_buffer_mod_index,lock_frequency,stream_out,device_out_current,device_out_stream_option
     lock_frequency=False
     play_abort()
 
@@ -408,24 +468,29 @@ def dev_out_channell_changed(sender=None, app_data=None):
 
     try:
         out_channell_buffer_mod_index=int(get_value("dev_out_channell"))-1
-        device_out_channels_stream_option=device_out_current['max_output_channels']
+        device_out_stream_option['channels']=device_out_current['max_output_channels']
     except:
-        device_out_channels_stream_option=1
+        device_out_stream_option['channels']=1
         out_channell_buffer_mod_index=0
-    dev_out_channell_config()
 
 @catch
-def dev_out_channell_config():
-    global stream_out,device_out_current,device_out_channels_stream_option
+def dev_out_channell_init():
+    global stream_out,device_out_current,device_out_stream_option
 
+    if get_value('exclusive'):
+        extra_settings=WasapiSettings(exclusive=True)
+    else:
+        extra_settings=None
     try:
-        stream_out = OutputStream( samplerate=samplerate, channels=device_out_channels_stream_option, blocksize=blocksize_out, callback=audio_output_callback, device=device_out_current['index'] )
+        print('\nOutputStream init ...')
+        stream_out = OutputStream( samplerate=samplerate, channels=device_out_stream_option['channels'], blocksize=blocksize_out, callback=audio_output_callback, device=device_out_current['index'],extra_settings=extra_settings )
         #dtype="float32",
         #latency="low",
-    except Exception as e:
-        print("dev_out_channell_config",str(e))
-    else:
         stream_out.start()
+    except Exception as e:
+        print("OutputStream init error:",str(e))
+    else:
+        print("OutputStream init DONE.")
 
 @catch
 def dev_in_channell_changed(sender=None, app_data=None):
@@ -443,9 +508,9 @@ def dev_in_channell_changed(sender=None, app_data=None):
         device_in_channels_stream_option=1
         in_channell_buffer_mod_index=0
 
-    dev_in_channell_config()
+    dev_in_channell_init()
 
-def dev_in_channell_config():
+def dev_in_channell_init():
     global stream_in,device_in_current,device_in_channels_stream_option
 
     try:
@@ -455,38 +520,33 @@ def dev_in_channell_config():
         #, latency="low"
         #
     except Exception as e:
-        print("dev_in_channell_config",e)
+        print("dev_in_channell_init",e)
     else:
         stream_in.start()
 
 def hide_info():
-    #dpg.hide_item('info')
-    #set_value('info_text','')
+    dpg.hide_item('info_window')
+    set_value('info_text','')
     on_viewport_resize()
-    #dpg.show_item("plot")
+    #dpg.show_item("plot_combo")
 
 def show_info(message):
-    pass
-    #dpg.hide_item("plot")
-    #set_value('info_text',message)
-    #show_item('info')
-
-    #configure_item('plot',show=False)
-
-    #with window(label=title,modal=True,no_close=True,autosize=True,tag="info_dialog"):
-    ##   add_text(message)
-    #    add_button(label="OK", width=80,callback=lambda: dpg.delete_item("info_dialog"))
-
-    #vw, vh = dpg.get_viewport_client_width(), dpg.get_viewport_client_height()
-    #ww, wh = dpg.get_item_width("info_dialog"), dpg.get_item_height("info_dialog")
-
-    #dpg.set_item_pos("info_dialog", ((vw - ww) // 2, (vh - wh) // 2))
+    on_viewport_resize()
+    set_value('info_text',normalize_text(message,info_chars))
+    show_item('info_window')
 
 @catch
 def about_wrapper():
     text1= f'Simple Audio Sweeper {VER_TIMESTAMP}\nAuthor: Piotr Jochymek\n\n{HOMEPAGE}\n\nPJ.soft.dev.x@gmail.com\n'
     text2='\n' + distro_info + '\n'
-    show_info(text1+text2)
+    show_info('\n' + text1+text2)
+
+def normalize_text(text,width):
+    res=[]
+    for line in text.split('\n'):
+        to_add=' '*int((width-len(line))/2)
+        res.append(to_add + line + to_add)
+    return '\n'.join(res)
 
 def license_wrapper():
     try:
@@ -499,7 +559,7 @@ def license_wrapper():
             print(exception_2)
             sys_exit(1)
 
-    show_info(license_txt)
+    show_info('\n'+ license_txt)
 
 def settings_wrapper():
     try:
@@ -582,7 +642,7 @@ current_f=fini
 current_logf=logf_ini
 
 two_pi = pi+pi
-two_pi_by_samplerate = two_pi/samplerate
+two_pi_by_out_samplerate = two_pi/samplerate
 
 spectrum_buckets_quant=256
 spectrum_sub_bucket_samples=4
@@ -773,7 +833,7 @@ device_out_current=None
 def dev_out_changed(sender=None, app_data=None):
     print('dev_out_changed',sender, app_data)
 
-    global device_out_current,device_out_channels_stream_option
+    global device_out_current,default_blocksize
 
     dev_out_name=get_value("dev_out")
 
@@ -790,9 +850,14 @@ def dev_out_changed(sender=None, app_data=None):
         dev_out_channell_value='all'
         set_value("dev_out_channell",dev_out_channell_value)
 
-    set_value("dev_out_samplerate",str(int(device_out_current['default_samplerate'])))
+    default_samplerate=int(device_out_current['default_samplerate'])
+    set_value("dev_out_samplerate",str(default_samplerate))
+    dev_out_samplerate_changed(None,default_samplerate)
+    dev_out_blocksize_changed(None,default_blocksize)
+    dev_out_latency_changed(None,default_latency)
 
     dev_out_channell_changed()
+    dev_out_channell_init()
 
 device_in_current=None
 
@@ -815,14 +880,17 @@ def dev_in_changed(sender=None, app_data=None):
         dev_in_channell_value='all'
         set_value("dev_in_channell",dev_in_channell_value)
 
-    set_value("dev_in_samplerate",str(int(device_in_current['default_samplerate'])))
+    default_samplerate=int(device_in_current['default_samplerate'])
+    set_value("dev_in_samplerate",str(default_samplerate))
+    dev_in_samplerate_changed(None,default_samplerate)
 
     dev_in_channell_changed()
 
-def on_click_plot(sender, app_data):
-    print('on_click',sender, app_data)
-
+def on_click(sender, app_data):
     hide_info()
+
+def on_click_plot(sender, app_data):
+    #print('on_click',sender, app_data)
 
     button_nr=app_data[0]
 
@@ -852,7 +920,21 @@ def on_click_plot(sender, app_data):
         print('another button:',button_nr)
 
 def wheel_callback(sender, val):
-    scroll_mod(val)
+    global lock_frequency
+
+    if lock_frequency:
+        scroll_mod(val)
+    else:
+        slide_val=dpg.get_value('slider')
+        slide_val+=-3*val
+
+        if slide_val<30:
+            slide_val=30
+        elif slide_val>100:
+            slide_val=100
+
+        dpg.set_value('slider',slide_val)
+        slide_change('slider')
 
 def on_release(sender, app_data):
     #print('on_release',sender, app_data)
@@ -1287,6 +1369,7 @@ def widget_tooltip(message,widget=None):
         add_text(message)
 
 def key_callback(sender, app_data):
+    hide_info()
     if app_data==537: #1
         track_pressed(0)
     elif app_data==538: #2
@@ -1326,34 +1409,38 @@ dpg.bind_theme(padding_mod_theme)
 dpg.bind_theme(temp)
 dpg.create_viewport(title=title,width=1000,height=380,vsync=True)
 
+info_chars=0
 def on_viewport_resize(sender=None, app_data=None):
-
     vh = dpg.get_viewport_client_height()
     vw = dpg.get_viewport_client_width()
 
-    FIXED_BOTTOM_HEIGHT = 44
+    global info_chars
+    info_chars=int(vw/7)
+
+    FIXED_BOTTOM_HEIGHT = 54
     GAP=100
     top_h  = max(220, vh - FIXED_BOTTOM_HEIGHT - GAP)
 
     dpg.set_item_height('slider', top_h-40)
     dpg.set_item_height('slider_window', top_h-40+8)
-    #dpg.set_item_width('slider', 60)
 
     dpg.set_item_height('plot', top_h)
     dpg.set_item_width('plot', vw-80)
 
-    #dpg.set_item_pos('info', (100,12))
+    dpg.set_item_width('info_window', vw)
+    dpg.set_item_height('info_window', vh)
 
-    #dpg.set_item_height('info', top_h-40)
-    #dpg.set_item_width('info', vw-30)
-    #dpg.set_item_width('info_text', vw-30)
-
-with dpg.theme() as window_theme_1:
-    with dpg.theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, (247,247,247,180), category=dpg.mvThemeCat_Core)
+#with dpg.theme() as window_theme_1:
+#    with dpg.theme_component(dpg.mvAll):
+##        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, (247,247,247,180), category=dpg.mvThemeCat_Core)
 
 ###################################################
 with window(tag='main') as main:
+    with window(tag='info_window',no_close=True,menubar=False,no_title_bar=True,autosize=False):
+        add_text(tag='info_text',default_value='')
+        #dpg.bind_item_theme(moving_frame,window_theme_1)
+
+        dpg.hide_item('info_window')
     with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
         borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
         row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
@@ -1362,7 +1449,7 @@ with window(tag='main') as main:
         add_table_column(width_stretch=True, init_width_or_weight=-1)
 
         with dpg.table_row():
-            with dpg.group(horizontal=True):
+            with dpg.group(tag='plot_combo',horizontal=True):
                 dpg.add_spacer(width=6)
 
                 with child_window(tag='slider_window',no_scrollbar=True, border=False,width=12):
@@ -1418,13 +1505,6 @@ with window(tag='main') as main:
                         add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=show_press,user_data=(track_temp,True))
                         widget_tooltip(f'Show/Hide track:{track_temp+1}')
 
-                    #with window(tag='info',height =-1,no_close=True,menubar=False,no_title_bar=True,autosize=True) as moving_frame:
-                    #    add_text(tag='info_text',default_value='text1')
-                    #    dpg.bind_item_theme(moving_frame,window_theme_1)
-
-                    #dpg.set_item_pos('info', (300,13))
-                    #dpg.hide_item('info')
-
         with dpg.table_row():
             with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
                 borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
@@ -1433,7 +1513,7 @@ with window(tag='main') as main:
 
                 add_table_column(width_fixed=True, init_width_or_weight=10, width=10)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
-                add_table_column(width_fixed=True, init_width_or_weight=230, width=230)
+                add_table_column(width_fixed=True, init_width_or_weight=240, width=240)
 
                 with dpg.table_row():
                     dpg.add_spacer(height=6)
@@ -1441,7 +1521,6 @@ with window(tag='main') as main:
                     add_text(tag='status',default_value='')
 
                     with dpg.group(horizontal=True):
-
                         add_image_button(ico["play"],tag='sweep',callback=sweep_press)
                         widget_tooltip('Run frequency sweep')
                         dpg.add_spacer(width=16)
@@ -1470,7 +1549,6 @@ with window(tag='main') as main:
                 add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
-                #add_table_column(width_fixed=True, init_wi4th_or_weight=200, width=200)
                 add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
 
                 with dpg.table_row():
@@ -1480,9 +1558,16 @@ with window(tag='main') as main:
                         add_text(default_value='')
                         add_text(default_value='FFT')
                         add_text(default_value='REC')
+
                     with dpg.group(width=-1):
                         add_combo(tag='api',default_value='',callback=api_changed)
-                        add_text(default_value='')
+                        add_checkbox(tag='vsync',label='VSync',callback=vsync_calllback,default_value=True)
+                        add_checkbox(tag='exclusive',label='WASAPI Exclusive',callback=wasapi_exclusive_callback,default_value=windows,enabled=windows)
+
+                        #if windows:
+                        #else:
+                        #    add_text(default_value='')
+
                         add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
                         widget_tooltip(' Show live Fast Fourier Transform graph \n with window function specified')
 
@@ -1504,21 +1589,32 @@ with window(tag='main') as main:
                         add_text(default_value='Device:')
                         add_text(default_value='Channells:')
                         add_text(default_value='Samplerate:')
+                        add_text(default_value='latency:')
+                        add_text(default_value='blckocksize:')
                     with dpg.group(width=-1):
                         add_text(default_value='Output')
                         add_combo(tag='dev_out',default_value='',callback=dev_out_changed)
                         add_combo(tag='dev_out_channell',default_value='',callback=dev_out_channell_changed)
-                        add_text(tag='dev_out_samplerate',label='')
+                        add_combo(tag='dev_out_samplerate',label='',callback=dev_out_samplerate_changed)
+
+                        add_combo(tag='dev_out_latency',label='',callback=dev_out_latency_changed,items=latency_values,default_value=default_latency)
+                        add_combo(tag='dev_out_blocksize',label='',callback=dev_out_blocksize_changed,items=blocksize_values,default_value=default_blocksize)
+
                     with dpg.group(width=-1):
                         add_text(default_value='Input')
                         add_combo(tag='dev_in',default_value='',callback=dev_in_changed)
                         add_combo(tag='dev_in_channell',default_value='',callback=dev_in_channell_changed)
-                        add_text(tag='dev_in_samplerate',label='')
+                        add_combo(tag='dev_in_samplerate',label='',callback=dev_in_samplerate_changed)
+
+                        add_combo(tag='dev_in_latency',label='',callback=dev_in_latency_changed,items=latency_values,default_value=default_latency)
+                        add_combo(tag='dev_in_blocksize',label='',callback=dev_in_blocksize_changed,items=blocksize_values,default_value=default_blocksize)
+
                     with dpg.group():
                         dpg.add_spacer(width=6)
 
 
     with dpg.handler_registry():
+        dpg.add_mouse_click_handler(callback=on_click)
         dpg.add_mouse_release_handler(callback=on_release)
         dpg.add_mouse_wheel_handler(callback=wheel_callback)
         dpg.add_key_press_handler(callback=key_callback)
