@@ -18,6 +18,7 @@
 @python --version > distro.info.txt
 @echo. >> distro.info.txt
 @echo|set /p="pyinstaller " >> distro.info.txt
+@pyinstaller --version >> distro.info.txt
 
 @echo.
 @echo running-pyinstaller
