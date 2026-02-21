@@ -58,7 +58,49 @@ l_info = logging.info
 l_warning = logging.warning
 l_error = logging.error
 
-#from dialogs import *
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    EXECUTABLE_DIR = Path(sys._MEIPASS)
+else:
+    EXECUTABLE_DIR = Path(__file__).parent
+
+if getattr(sys, 'frozen', False):
+    EXECUTABLE_DIR_REAL = os.path.dirname(sys.executable)
+else:
+    EXECUTABLE_DIR_REAL = os.path.dirname(os.path.abspath(__file__))
+
+print(f'{EXECUTABLE_DIR=}')
+print(f'{EXECUTABLE_DIR_REAL=}')
+
+#EXECUTABLE_FILE = normpath(abspath(sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]))
+#EXECUTABLE_DIR = dirname(EXECUTABLE_FILE)
+
+INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"sas-internal"])
+Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
+
+print(f'{INTERNAL_DIR=}')
+
+def localtime_catched(t):
+    try:
+        #mtime sometimes happens to be negative (Virtual box ?)
+        return localtime(t)
+    except:
+        return localtime(0)
+
+log_file = strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) ) +'.txt'
+
+log=INTERNAL_DIR + sep + log_file
+log_file = path_join(INTERNAL_DIR, log_file)
+
+print(f'{log=}')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+    handlers=[
+            logging.FileHandler(log_file, encoding='utf-8')
+    ]
+)
+
 
 from io import BytesIO
 VERSION_FILE='version.txt'
@@ -1561,39 +1603,6 @@ with window(tag='main',no_scrollbar=True) as main:
         dpg.add_mouse_wheel_handler(callback=wheel_callback)
         dpg.add_key_press_handler(callback=key_callback)
 
-if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-    EXECUTABLE_DIR = Path(sys._MEIPASS)
-else:
-    EXECUTABLE_DIR = Path(__file__).parent
-
-if getattr(sys, 'frozen', False):
-    EXECUTABLE_DIR_REAL = os.path.dirname(sys.executable)
-else:
-    EXECUTABLE_DIR_REAL = os.path.dirname(os.path.abspath(__file__))
-
-print(f'{EXECUTABLE_DIR=}')
-print(f'{EXECUTABLE_DIR_REAL=}')
-
-#EXECUTABLE_FILE = normpath(abspath(sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]))
-#EXECUTABLE_DIR = dirname(EXECUTABLE_FILE)
-
-INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"sas-internal"])
-Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
-
-print(f'{INTERNAL_DIR=}')
-
-def localtime_catched(t):
-    try:
-        #mtime sometimes happens to be negative (Virtual box ?)
-        return localtime(t)
-    except:
-        return localtime(0)
-
-log_file = strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) ) +'.txt'
-log=INTERNAL_DIR + sep + log_file
-print(f'{log=}')
-
-logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s', filename=log,filemode='w')
 
 dpg.set_viewport_small_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas_small.png")))
 dpg.set_viewport_large_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas.png")))
