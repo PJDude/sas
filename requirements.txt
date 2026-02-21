@@ -2,4 +2,4 @@ pyinstaller==6.19.0
 numpy==2.4.2
 sounddevice==0.5.5
 pillow==12.1.1
-dearpygui==2.1.1
+dearpygui==2.2
