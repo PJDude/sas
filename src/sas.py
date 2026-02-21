@@ -29,7 +29,7 @@
 import dearpygui.dearpygui as dpg
 
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,add_scatter_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_deactivated_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_release_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_button,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
-from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport
+from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window
 
 from time import sleep,strftime,time,localtime,perf_counter
 
@@ -46,9 +46,10 @@ from pathlib import Path
 
 import os
 from os import name as os_name, system, sep
-from os.path import join as path_join, normpath,dirname
+from os.path import join as path_join, normpath,dirname,abspath
 
-from sys import exit as sys_exit
+import sys
+from sys import exit as sys_exit,argv
 
 from images import image
 import logging
@@ -84,8 +85,6 @@ playing_state=0
 -1 - ramp off
 '''
 
-lock_frequency=False
-
 if windows:
     from os import startfile
 
@@ -94,7 +93,7 @@ def catch(func):
         try:
             return func(*args,**kwargs)
         except Exception as e:
-            print("catch:",func,e,*args,**kwargs)
+            l_error(f'catch:{func},{e}')
             return None
     return wrapper
 
@@ -152,7 +151,7 @@ def save_csv():
                         values.append(f"{round(100*(10**logf))/100},{round(1000*db)/1000}")
                 f.write(','.join(values) + '\n')
     except Exception as e:
-        print("save_csv_error:",e)
+        l_error(f'save_csv_error:{e}')
 
 def load_csv_file_selected(sender, app_data):
     filename=app_data["file_path_name"]
@@ -187,7 +186,7 @@ def load_csv_file_selected(sender, app_data):
                             continue
 
         except Exception as e:
-            print("Load_csv_error:",e)
+            l_error(f'Load_csv_error:{e}')
 
         global redraw_tracks_lines
         redraw_tracks_lines=True
@@ -225,12 +224,14 @@ def change_f(fpar):
 played_bucket=0
 played_bucket_callbacks=0
 
-#audio_output_callback_last_time_start=perf_counter()
-#audio_output_callback_last_time_end=perf_counter()
+audio_output_callback_outside=0
+audio_output_callback_inside=0
+audio_output_callback_prev=perf_counter()
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i
-    #audio_output_callback_start=perf_counter()
+    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,audio_output_callback_prev,audio_output_callback_inside,audio_output_callback_outside
+    audio_output_callback_start=perf_counter()
+    audio_output_callback_outside += audio_output_callback_start-audio_output_callback_prev
 
     if playing_state:
         phase_arr=(phase + phase_step * phase_i) % two_pi
@@ -252,10 +253,14 @@ def audio_output_callback(outdata, frames, time, status):
     else:
         outdata.fill(0)
 
-    #audio_output_callback_end=perf_counter()
+    audio_output_callback_end=perf_counter()
+    audio_output_callback_inside += audio_output_callback_end-audio_output_callback_start
+    audio_output_callback_prev=audio_output_callback_end
 
 def wasapi_exclusive_callback(sender=None, app_data=None):
-    print('wasapi_exclusive_callback',sender,app_data)
+    l_info(f'wasapi_exclusive_callback:{sender},{app_data}')
+
+    out_stream_init()
 
 def vsync_calllback(sender=None, app_data=None):
     l_info(f'vsync_calllback:{sender,app_data}')
@@ -271,13 +276,13 @@ def rec_press(sender=None, app_data=None):
 
 sweeping_i=0
 def sweep_press(sender=None, app_data=None):
-    print('sweep_press',sender,app_data)
+    l_info(f'sweep_press:{sender},{app_data}')
 
     global sweeping,lock_frequency,sweeping_i
     sweeping=(True,False)[sweeping]
 
     if recorded_track is None:
-        print('no recorded_track')
+        l_info('no recorded_track')
         sweep_abort()
         return
 
@@ -310,7 +315,7 @@ def play_stop():
     lock_frequency=False
 
     bind_item_theme("cursor_f",green_line_theme)
-#    playing_state=0
+    #playing_state=0
 
     if recorded_track:
         bind_item_theme(f"track{recorded_track}",reddark_line_theme)
@@ -329,13 +334,25 @@ samples_chunks_fifo=deque(maxlen=32)
 samples_chunks_fifo_put=samples_chunks_fifo.append
 
 ###########################################################
+
+audio_input_callback_outside=0
+audio_input_callback_inside=0
+audio_input_callback_prev=perf_counter()
+
 def audio_input_callback(indata, frames, time_info, status):
+    global samples_chunks_fifo_new,samples_chunks_fifo_chunks_new,audio_input_callback_prev,audio_input_callback_inside,audio_input_callback_outside
+    audio_input_callback_start=perf_counter()
+    audio_input_callback_outside += audio_input_callback_start-audio_input_callback_prev
+
     new_samples=len(indata[:, 0])
     samples_chunks_fifo_put(indata[:, 0].copy())
 
-    global samples_chunks_fifo_new,samples_chunks_fifo_chunks_new
     samples_chunks_fifo_new+=new_samples
     samples_chunks_fifo_chunks_new+=1
+
+    audio_input_callback_end=perf_counter()
+    audio_input_callback_inside += audio_input_callback_end-audio_input_callback_start
+    audio_input_callback_prev=audio_input_callback_end
 
 @catch
 def go_to_homepage():
@@ -347,7 +364,7 @@ def go_to_homepage():
             set_value('status','executing: xdg-open %s' % HOMEPAGE)
             system("xdg-open " + HOMEPAGE)
     except Exception as e:
-        print('go_to_homepage error:',e)
+        l_error(f'go_to_homepage error:{e}')
 
 default_api_nr=0
 
@@ -377,14 +394,14 @@ def refresh_devices():
     devices=query_devices()
 
     for dev in devices:
-        if False and not windows:
-            try:
-                stream_test=Stream(device=dev['index'])
-                #, samplerate=samplerate, channels=2
-                stream_test.close()
-            except Exception as e_try:
-                l_error(f'e_try:{dev["index"]},{dev["name:"]},{e_try}')
-                continue
+        #if False and not windows:
+        #    try:
+        #        stream_test=Stream(device=dev['index'])
+        #        #, samplerate=samplerate, channels=2
+        #        stream_test.close()
+        #    except Exception as e_try:
+        #        l_error(f'e_try:{dev["index"]},{dev["name:"]},{e_try}')
+        #        continue
 
         if dev['index']==device_default_input_index:
             device_default_input=dev
@@ -507,7 +524,7 @@ def out_stream_init():
     blocksize=int(get_value('out_blocksize'))
 
     l_info('')
-    l_info(f'OutputStream init {device=},{samplerate=},{latency=},{blocksize=},{channels=}')
+    l_info(f'OutputStream init {device=},{samplerate=},{latency=},{blocksize=},{channels=},{extra_settings=}')
 
     try:
         stream_out = OutputStream(callback=audio_output_callback, extra_settings=extra_settings,
@@ -589,11 +606,11 @@ def normalize_text(text,width):
 
 def license_wrapper():
     try:
-        license_txt=Path(path_join(APP_DIR,'LICENSE')).read_text(encoding='ASCII')
+        license_txt=Path(path_join(EXECUTABLE_DIR,'LICENSE')).read_text(encoding='ASCII')
     except Exception as exception_lic:
         print(exception_lic)
         try:
-            license_txt=Path(path_join(dirname(APP_DIR),'LICENSE')).read_text(encoding='ASCII')
+            license_txt=Path(path_join(dirname(EXECUTABLE_DIR),'LICENSE')).read_text(encoding='ASCII')
         except Exception as exception_2:
             print(exception_2)
             sys_exit(1)
@@ -615,9 +632,15 @@ def resetrack_press(sender=None, app_data=None):
 
 recorded_track=None
 
+def configure_track_button(track):
+    if show_track[track]:
+        configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_on"])
+    else:
+        configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_off"])
+
 show_track=[False]*tracks
-def show_press(sender=None, app_data=None,track_combo=None):
-    print('show_press:',sender,app_data,track_combo)
+def show_press(sender=None,app_data=None,track_combo=None):
+    l_info(f'show_press:{sender},{app_data},{track_combo}')
     track,press=track_combo
 
     track_pressed(track)
@@ -626,17 +649,13 @@ def show_press(sender=None, app_data=None,track_combo=None):
     if press:
         show_track[track]=(True,False)[show_track[track]]
 
-    if show_track[track]:
-        configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_on"])
-    else:
-        configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_off"])
+    configure_track_button(track)
 
     if not show_track[track]:
         if recorded_track==track:
             recorded_track=None
             set_value('rec_track','none')
 
-@catch
 def track_pressed(track):
     global redraw_tracks_lines,lock_frequency
 
@@ -654,6 +673,9 @@ except Exception as e_ver:
 
 #TODO
 in_samplerate = 44100
+two_pi = pi+pi
+two_pi_by_in_samplerate = two_pi/in_samplerate
+in_samplerate_by_fft_size = in_samplerate / fft_size
 
 phase = 0.0
 
@@ -665,9 +687,6 @@ logf_min_audio,logf_max_audio=log10(fmin_audio),log10(fmax_audio)
 
 current_f=fini
 current_logf=logf_ini
-
-two_pi = pi+pi
-two_pi_by_in_samplerate = two_pi/in_samplerate
 
 spectrum_buckets_quant=256
 spectrum_sub_bucket_samples=4
@@ -688,8 +707,6 @@ dbrange=dbmax-dbmin
 
 dbrange_display=dbmax_display-dbmin_display
 
-in_samplerate_by_fft_size = in_samplerate / fft_size
-
 fft_line_data_x=[0]*fft_points
 fft_line_data_y=[0]*fft_points
 
@@ -700,7 +717,7 @@ time_to_collect_sample=0.125 #[s]
 #1/4s - 86 paczek
 
 sweeping_delay=time_to_collect_sample*1.5/spectrum_sub_bucket_samples
-#print(f'{sweeping_delay=}')
+l_info(f'{sweeping_delay=}')
 
 redraw_tracks_lines=True
 
@@ -713,7 +730,6 @@ for name, data in image.items():
     img = Image.open(BytesIO(data)).convert("RGBA")
     w, h = img.size
     with texture_registry():
-        #add_static_texture(w, h, [v/255 for px in list(img.getdata()) for v in px], tag=name)
         add_static_texture(w, h, [v/255 for px in list(img.get_flattened_data()) for v in px], tag=name)
     ico[name] = name
 
@@ -793,21 +809,11 @@ def record_track_changed(sender=None, app_data=None):
         elif track_to_record=='8':
             recorded_track=7
         else:
-            print('unknown track:',track_to_record)
+            l_error(f'unknown track:{track_to_record}')
 
         show_track[recorded_track]=True
 
         show_press(sender,True,(recorded_track,False))
-
-        #for track_temp in range(tracks):
-        #    if track_temp==track:
-        #        recording_enabled[track]=True
-        #        configure_item(f'recordcheck{track}',texture_tag=ico["rec_on"])
-        #    else:
-        #        recording_enabled[track_temp]=False
-        #        configure_item(f'recordcheck{track_temp}',texture_tag=ico["rec_off"])
-
-        #recorded_track=track
 
         bind_item_theme(f"track{recorded_track}",reddark_line_theme)
 
@@ -831,12 +837,12 @@ def fft_window_changed(sender=None, app_data=None):
         elif fft_window_name=='bartlett':
             fft_window=bartlett(fft_size)
         else:
-            print('unknown window:',fft_window_name)
+            l_error(f'unknown window:{fft_window_name}')
 
     window_correction = np_sum(fft_window)
     configure_item("fft_line", show=fft_on)
 
-    print('fft_window_changed',sender, app_data,fft_window_name,len(fft_window))
+    l_info(f'fft_window_changed:{sender},{app_data},{fft_window_name},{len(fft_window)}')
 
     #fft_window = eval(f'{fft_window_name}({fft_size})')()
 
@@ -934,7 +940,7 @@ def on_click_plot(sender, app_data):
             play_start()
             status_set_frequency()
     else:
-        print('another button:',button_nr)
+        l_info(f'another button:{button_nr}')
 
 def wheel_callback(sender, val):
     global lock_frequency
@@ -950,7 +956,7 @@ def wheel_callback(sender, val):
         elif slide_val>100:
             slide_val=100
 
-        dpg.set_value('slider',slide_val)
+        set_value('slider',slide_val)
         slide_change('slider')
 
 def on_release(sender, app_data):
@@ -970,7 +976,7 @@ def on_release(sender, app_data):
 
         sweep_abort()
     else:
-        print('another button:',button_nr)
+        l_info(f'another button:{button_nr}')
 
 prev_mouse_x=0
 def on_mouse_move(sender, app_data):
@@ -992,235 +998,65 @@ def on_mouse_move(sender, app_data):
                 status_set_frequency()
                 change_f(f_current)
 
-def create_theme(
-    tag: str,
-    *,
-    window_bg,
-    text,
-    frame_bg,
-    button,
-    button_hovered,
-    button_active,
-    menubar_bg,
-    popup_bg=None,
-    child_bg=None,
-    border=(0, 0, 0, 50),
-    slider_grab=(128, 128, 128),
-    check_mark=(50, 150, 255),
-    title_bg=None,
-    title_bg_active=None,
-    drag_drop_target=(200, 200, 80, 60),
-    dock_bg=None,
-    rounding=(4, 8, 4),  # (frame, window, child)
-    frame_padding=(6, 6),
-    item_spacing=(8, 6),
-):
-    """
-    Tworzy kompletny theme obejmujący: mvAll + mvMenuBar + mvMenu + mvFileDialog + mvPopup + mvTooltip + wybrane widgety.
-    """
-    popup_bg = popup_bg or frame_bg
-    child_bg = child_bg or window_bg
-    title_bg = title_bg or window_bg
-    title_bg_active = title_bg_active or window_bg
-    dock_bg = dock_bg or window_bg
+import dearpygui.dearpygui as dpg
 
-    with dpg.theme(tag=tag):
-        # ---------- Global (mvAll) ----------
-        with dpg.theme_component(dpg.mvAll):
-            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, _rgba(window_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-            dpg.add_theme_color(dpg.mvThemeCol_Border, _rgba(border))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, _rgba(frame_bg))
-            #dpg.add_theme_color(dpg.mvThemeCol_Button, _rgba(button))
-            dpg.add_theme_color(dpg.mvThemeCol_Button, _rgba(window_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _rgba(button_hovered))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _rgba(button_active))
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBg, _rgba(title_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, _rgba(title_bg_active))
-            dpg.add_theme_color(dpg.mvThemeCol_PopupBg, _rgba(popup_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, _rgba(child_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg, _rgba(menubar_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, _rgba(slider_grab))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, _rgba(button_active))
-            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, _rgba(check_mark))
-            dpg.add_theme_color(dpg.mvThemeCol_DockingEmptyBg, _rgba(dock_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_DragDropTarget, _rgba(drag_drop_target))
+dpg.create_context()
 
-            #dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, rounding[0], category=dpg.mvThemeCat_Core)
-            #dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, rounding[1], category=dpg.mvThemeCat_Core)
-            #dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, rounding[2], category=dpg.mvThemeCat_Core)
-            #dpg.add_theme_style(dpg.mvStyleVar_FramePadding, frame_padding[0], frame_padding[1])
-            #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, item_spacing[0], item_spacing[1])
+LIGHT_BG = (240, 240, 240, 255)
+LIGHT_CHILD_BG = (255, 255, 255, 255)
+LIGHT_BORDER = (200, 200, 200, 255)
+LIGHT_FRAME = (230, 230, 230, 255)
+LIGHT_FRAME_HOVER = (200, 200, 255, 255)
+LIGHT_FRAME_ACTIVE = (180, 180, 255, 255)
+LIGHT_TEXT = (0, 0, 0, 255)
+LIGHT_BUTTON = LIGHT_BG #(210, 210, 210, 255)
+LIGHT_BUTTON_HOVER = (180, 180, 255, 255)
+LIGHT_BUTTON_ACTIVE = (150, 150, 255, 255)
+LIGHT_ACCENT = (50, 50, 200, 255)  # check, slider grab, etc.
 
-            # Scrollbars (jedyny poprawny sposób w DPG 1.11+)
-            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg, _rgba(window_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab, _rgba(button))
-            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, _rgba(button_hovered))
-            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabActive, _rgba(button_active))
+DARK_BG = (45, 45, 48, 255)
+DARK_CHILD_BG = (60, 60, 65, 255)
+DARK_BORDER = (90, 90, 90, 255)
+DARK_FRAME = (70, 70, 75, 255)
+DARK_FRAME_HOVER = (100, 100, 150, 255)
+DARK_FRAME_ACTIVE = (120, 120, 200, 255)
+DARK_TEXT = (255, 255, 255, 255)
+DARK_BUTTON = DARK_BG #(90, 90, 100, 255)
+DARK_BUTTON_HOVER = (120, 120, 180, 255)
+DARK_BUTTON_ACTIVE = (150, 150, 200, 255)
+DARK_ACCENT = (100, 150, 255, 255)  # check, slider grab, etc.
 
-            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
-            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 1, 1, category=dpg.mvThemeCat_Core)
-            #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
-            #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
-            dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
-
-        # ---------- MenuBar ----------
-        with dpg.theme_component(dpg.mvMenuBar):
-            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg, _rgba(menubar_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-            dpg.add_theme_color(dpg.mvThemeCol_Border, _rgba(border))
-
-        # ---------- Menu ----------
-        with dpg.theme_component(dpg.mvMenu):
-            dpg.add_theme_color(dpg.mvThemeCol_Header, _rgba(button))
-            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, _rgba(button_hovered))
-            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, _rgba(button_active))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-
-        # ---------- MenuItem ----------
-        with dpg.theme_component(dpg.mvMenuItem):
-            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, _rgba(button_hovered))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-
-        # ---------- FileDialog ----------
-        with dpg.theme_component(dpg.mvFileDialog):
-            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, _rgba(window_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, _rgba(child_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, _rgba(frame_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_Button, _rgba(button))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _rgba(button_hovered))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _rgba(button_active))
-            dpg.add_theme_color(dpg.mvThemeCol_Border, _rgba(border))
-            dpg.add_theme_color(dpg.mvThemeCol_PopupBg, _rgba(popup_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg, _rgba(menubar_bg))
-
-        # ---------- Popup ----------
-        #with dpg.theme_component(dpg.mvPopup):
-        #    dpg.add_theme_color(dpg.mvThemeCol_PopupBg, _rgba(popup_bg))
-        #    dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-        #    dpg.add_theme_color(dpg.mvThemeCol_Border, _rgba(border))
-
-        # ---------- Tooltip ----------
-        with dpg.theme_component(dpg.mvTooltip):
-            dpg.add_theme_color(dpg.mvThemeCol_PopupBg, _rgba(popup_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-            dpg.add_theme_color(dpg.mvThemeCol_Border, _rgba(border))
-
-        # ---------- Widgety często używane ----------
-        with dpg.theme_component(dpg.mvButton):
-            dpg.add_theme_color(dpg.mvThemeCol_Button, _rgba(button))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _rgba(button_hovered))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _rgba(button_active))
-
-        with dpg.theme_component(dpg.mvInputText):
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, _rgba(frame_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-
-        with dpg.theme_component(dpg.mvCheckbox):
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, _rgba(frame_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, _rgba(check_mark))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-
-        with dpg.theme_component(dpg.mvCombo):
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, _rgba(frame_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-            dpg.add_theme_color(dpg.mvThemeCol_Button, _rgba(button))
-
-        with dpg.theme_component(dpg.mvSliderFloat):
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, _rgba(frame_bg))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, _rgba(slider_grab))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, _rgba(button_active))
-
-
-        # ---------- Table headers ----------
-        #with dpg.theme_component(dpg.mvTableHeaderRow):
-        #    dpg.add_theme_color(dpg.mvThemeCol_Header, _rgba(button))
-        #    dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, _rgba(button_hovered))
-        #    dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, _rgba(button_active))
-        #    dpg.add_theme_color(dpg.mvThemeCol_Text, _rgba(text))
-
-        with dpg.theme_component(dpg.mvTable):
-            dpg.add_theme_color(dpg.mvThemeCol_Border, _rgba(border))
-            dpg.add_theme_color(dpg.mvThemeCol_BorderShadow, _rgba((0, 0, 0, 0)))
-            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, _rgba(button))
-            #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 6, 4)
-
-
-        with dpg.theme_component(dpg.mvTable):
-            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, _rgba(button))
-            dpg.add_theme_color(dpg.mvThemeCol_Border, _rgba(border))
-            dpg.add_theme_color(dpg.mvThemeCol_BorderShadow, (0, 0, 0, 0))
-            #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 6, 4)
-
-
-    #THEME_TAGS[tag] = tag
-    return tag
-
-def _rgba(c):
-    """Umożliwia podawanie kolorów jako (r,g,b) lub (r,g,b,a); domyślnie a=255."""
-    if len(c) == 3:
-        return (*c, 255)
-    return c
-
-light=create_theme(
-    "light_xx",
-    window_bg=(242, 242, 242),
-    text=(10, 10, 10),
-    frame_bg=(255, 255, 255),
-    button=(230, 230, 230),
-    button_hovered=(215, 215, 215),
-    button_active=(200, 200, 200),
-    menubar_bg=(235, 235, 235),
-    popup_bg=(250, 250, 250),
-    border=(0, 0, 0, 60),
-    slider_grab=(130, 130, 130),
-    check_mark=(0, 120, 215),
-    title_bg=(242, 242, 242),
-    title_bg_active=(230, 230, 230),
-    rounding=(3, 6, 3),
-)
-
-dark=create_theme(
-    "dark_xx",
-    window_bg=(142, 142, 142),
-    text=(10, 10, 10),
-    frame_bg=(255, 255, 255),
-    button=(130, 130, 130),
-    button_hovered=(115, 115, 115),
-    button_active=(100, 100, 100),
-    menubar_bg=(235, 235, 235),
-    popup_bg=(250, 250, 250),
-    border=(0, 0, 0, 60),
-    slider_grab=(130, 130, 130),
-    check_mark=(0, 120, 215),
-    title_bg=(242, 242, 242),
-    title_bg_active=(130, 130, 130),
-    rounding=(3, 6, 3),
-)
-
-with theme() as theme_light:
+with dpg.theme() as theme_light:
     with dpg.theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvThemeCol_Text, (20, 20, 20))
-        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, (250, 250, 250))
-        dpg.add_theme_color(dpg.mvThemeCol_Border, (210, 210, 210))
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (245, 245, 245))
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (230, 230, 230))
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, (220, 220, 220))
-        dpg.add_theme_color(dpg.mvThemeCol_TitleBg, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_Button, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (225, 225, 225))
-        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (210, 210, 210))
-        dpg.add_theme_color(dpg.mvThemeCol_CheckMark, (0, 120, 215))   # Windows accent
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, (0, 120, 215))
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (0, 100, 180))
+        # tło i ramki
+        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, LIGHT_BG)
+        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, LIGHT_CHILD_BG)
+        dpg.add_theme_color(dpg.mvThemeCol_PopupBg, LIGHT_CHILD_BG)
+        dpg.add_theme_color(dpg.mvThemeCol_Border, LIGHT_BORDER)
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, LIGHT_FRAME)
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, LIGHT_FRAME_HOVER)
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, LIGHT_FRAME_ACTIVE)
 
-        dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_PopupBg, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_DockingEmptyBg, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_DragDropTarget, (240, 240, 240))
+        # tekst i przyciski
+        dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
+        dpg.add_theme_color(dpg.mvThemeCol_Button, LIGHT_BUTTON)
+        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, LIGHT_BUTTON_HOVER)
+        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, LIGHT_BUTTON_ACTIVE)
+
+        # checkboxes, radiobuttons, sliders
+        dpg.add_theme_color(dpg.mvThemeCol_CheckMark, LIGHT_ACCENT)
+        dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, LIGHT_ACCENT)
+        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (30, 30, 180, 255))
+        dpg.add_theme_color(dpg.mvThemeCol_Header, LIGHT_FRAME)
+        dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, LIGHT_FRAME_HOVER)
+        dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, LIGHT_FRAME_ACTIVE)
+
+        # taby
+        dpg.add_theme_color(dpg.mvThemeCol_Tab, LIGHT_FRAME)
+        dpg.add_theme_color(dpg.mvThemeCol_TabHovered, LIGHT_FRAME_HOVER)
+        dpg.add_theme_color(dpg.mvThemeCol_TabActive, LIGHT_FRAME_ACTIVE)
+        dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused, LIGHT_FRAME)
+        dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive, LIGHT_FRAME_HOVER)
 
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
@@ -1228,31 +1064,40 @@ with theme() as theme_light:
         #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
-    with dpg.theme_component(dpg.mvSliderFloat):
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (240, 240, 240))
-
-    with dpg.theme_component(dpg.mvCombo):
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_Text, (240, 240, 240))
-        dpg.add_theme_color(dpg.mvThemeCol_Button, (240, 240, 240))
-
-with theme() as theme_win_shapes:
+with dpg.theme() as theme_dark:
     with dpg.theme_component(dpg.mvAll):
-        dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, 8)
-        dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 6)
-        dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 6)
-        dpg.add_theme_style(dpg.mvStyleVar_TabRounding, 6)
-        dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 6)
-        dpg.add_theme_style(dpg.mvStyleVar_PopupRounding, 6)
-        dpg.add_theme_style(dpg.mvStyleVar_ScrollbarRounding, 6)
 
-        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 1)
-        dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
-        dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 6)
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 12, 10)
+        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
+        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, DARK_CHILD_BG)
+        dpg.add_theme_color(dpg.mvThemeCol_PopupBg, DARK_CHILD_BG)
+        dpg.add_theme_color(dpg.mvThemeCol_Border, DARK_BORDER)
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, DARK_FRAME)
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, DARK_FRAME_HOVER)
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, DARK_FRAME_ACTIVE)
 
+        dpg.add_theme_color(dpg.mvThemeCol_Text, DARK_TEXT)
+        dpg.add_theme_color(dpg.mvThemeCol_Button, DARK_BUTTON)
+        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, DARK_BUTTON_HOVER)
+        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, DARK_BUTTON_ACTIVE)
+
+        dpg.add_theme_color(dpg.mvThemeCol_CheckMark, DARK_ACCENT)
+        dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, DARK_ACCENT)
+        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (80, 120, 220, 255))
+        dpg.add_theme_color(dpg.mvThemeCol_Header, DARK_FRAME)
+        dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, DARK_FRAME_HOVER)
+        dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, DARK_FRAME_ACTIVE)
+
+        dpg.add_theme_color(dpg.mvThemeCol_Tab, DARK_FRAME)
+        dpg.add_theme_color(dpg.mvThemeCol_TabHovered, DARK_FRAME_HOVER)
+        dpg.add_theme_color(dpg.mvThemeCol_TabActive, DARK_FRAME_ACTIVE)
+        dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused, DARK_FRAME)
+        dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive, DARK_FRAME_HOVER)
+
+        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
+        #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
+        #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
 #with theme() as text_ok:
  #   with theme_component(dpg.mvText):
@@ -1339,13 +1184,13 @@ with theme() as grid_line_theme:
             category=dpg.mvThemeCat_Plots
         )
 
-with theme() as padding_mod_theme:
-    with theme_component(dpg.mvAll):
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
+#with theme() as padding_mod_theme:
+#    with theme_component(dpg.mvAll):
+#        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
+#        dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
         #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
         #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
+#        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
 log_bucket_width=logf_max_audio_m_logf_min_audio/spectrum_buckets_quant
 log_bucket_width_by2=log_bucket_width*0.5
@@ -1374,7 +1219,9 @@ for f,ind in zip(fft_line_data_x,bin_indices):
         border_f=f
         break
 
-print(f'\n{border=}\n{border_f=}\n')
+l_info('')
+l_info(f'{border=}')
+l_info(f'{border_f=}')
 
 fft_line_data_x_border_index=0
 for i,f in enumerate(fft_line_data_x):
@@ -1390,7 +1237,8 @@ for i,f in enumerate(bucket_freqs):
         bucket_freqs_border_index=i
         break
 
-print(f'\n{fft_line_data_x_border_index=} / {len(fft_line_data_x)}\n{bucket_freqs_border_index=} / {len(bucket_freqs)}\n')
+l_info(f'{fft_line_data_x_border_index=} / {len(fft_line_data_x)}')
+l_info(f'{bucket_freqs_border_index=} / {len(bucket_freqs)}')
 
 track_line_data_y={}
 
@@ -1406,21 +1254,21 @@ def widget_tooltip(message,widget=None):
 def key_callback(sender, app_data):
     hide_info()
     if app_data==537: #1
-        track_pressed(0)
+        show_press(None,None,(0,True))
     elif app_data==538: #2
-        track_pressed(1)
+        show_press(None,None,(1,True))
     elif app_data==539: #3
-        track_pressed(2)
+        show_press(None,None,(2,True))
     elif app_data==540: #4
-        track_pressed(3)
+        show_press(None,None,(3,True))
     elif app_data==541: #5
-        track_pressed(4)
+        show_press(None,None,(4,True))
     elif app_data==542: #6
-        track_pressed(5)
+        show_press(None,None,(5,True))
     elif app_data==543: #7
-        track_pressed(6)
+        show_press(None,None,(6,True))
     elif app_data==544: #8
-        track_pressed(7)
+        show_press(None,None,(7,True))
     elif app_data==513: #left
         scroll_mod(-1,0.001)
     elif app_data==514: #right
@@ -1439,23 +1287,30 @@ def slide_change(sender):
     val=dpg.get_value(sender)
     dpg.set_axis_limits("y_axis", dbmin_display*val/100, dbmax_display)
 
-vsync_default=True
+vsync_default=False
 settings_height=120
-status_height=40
+
+status_height=50
 plot_min_height=200
 plot_axis_height=40
 viewport_height_min=plot_min_height+status_height
 
-dpg.bind_theme(padding_mod_theme)
-#dpg.bind_theme(theme_light)
+#dpg.bind_theme(padding_mod_theme)
 
 def theme_light_callback():
-    dpg.bind_theme(light)
+    dpg.bind_theme(theme_light)
 
 def theme_dark_callback():
-    dpg.bind_theme(dark)
+    dpg.bind_theme(theme_dark)
 
-theme_light_callback()
+def theme_x1_callback():
+    dpg.bind_theme(theme_win_shapes)
+    #dpg.bind_theme(theme_light)
+
+def debug_callback():
+    set_value('debug_text','')
+
+theme_dark_callback()
 
 create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=vsync_default)
 
@@ -1468,9 +1323,11 @@ def settings_wrapper():
 
     if bottom_shown:
         show_item('settings_table')
+        #show_item('settings_window')
         h=max(viewport_height_min,get_viewport_height()+settings_height)
     else:
         hide_item('settings_table')
+        #hide_item('settings_window')
         h=max(viewport_height_min,get_viewport_height()-settings_height)
 
     set_viewport_height(h)
@@ -1486,7 +1343,7 @@ def settings_wrapper():
                 set_value('api',values[0]['name'])
 
     except Exception as e:
-        print(e)
+        l_error(f'settings_wrapper:{e}')
 
 info_chars=0
 
@@ -1506,23 +1363,19 @@ def on_viewport_resize(sender=None, app_data=None):
     set_item_height('plot', plot_height)
     set_item_width('plot', vw-80)
 
+    set_item_pos('info_window',[0,0])
+    set_item_pos('debug_text',[85,20])
     set_item_width('info_window', vw)
     set_item_height('info_window', vh)
 
-#with dpg.theme() as window_theme_1:
-#    with dpg.theme_component(dpg.mvAll):
-##        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, (247,247,247,180), category=dpg.mvThemeCat_Core)
-
 ###################################################
-with window(tag='main') as main:
-    dpg.set_primary_window(main, True)
+with window(tag='main',no_scrollbar=True) as main:
+    set_primary_window(main, True)
 
     with window(tag='info_window',no_close=True,menubar=False,no_title_bar=True,autosize=False,no_scrollbar=True):
-        #
         add_text(tag='info_text',default_value='')
-        #dpg.bind_item_theme(moving_frame,window_theme_1)
-
         hide_item('info_window')
+
     with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
         borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
         row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
@@ -1546,12 +1399,12 @@ with window(tag='main') as main:
                     dpg.add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
                     dpg.add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
 
-                    with dpg.plot_axis(dpg.mvXAxis, tag='x_axis') as xaxis:
+                    with dpg.plot_axis(dpg.mvXAxis, tag='x_axis',no_highlight=True) as xaxis:
                         configure_item(dpg.last_item(),scale=dpg.mvPlotScale_Log10)
                         dpg.set_axis_limits("x_axis", fmin,fmax)
                         dpg.set_axis_ticks("x_axis", xticks)
 
-                    with dpg.plot_axis(dpg.mvYAxis, tag = 'y_axis'):
+                    with dpg.plot_axis(dpg.mvYAxis, tag = 'y_axis',no_highlight=True):
                         dpg.set_axis_limits("y_axis", dbmin_display, dbmax_display)
                         dpg.set_axis_ticks("y_axis", yticks)
 
@@ -1603,7 +1456,7 @@ with window(tag='main') as main:
                 with dpg.table_row():
                     dpg.add_spacer(height=6)
                     add_image_button(ico["rec"],tag='recx',callback=rec_press)
-                    add_combo(tag='rec_track',items=['none','1','2','3','4','5','6','7','8'],default_value='none',callback=record_track_changed,width=-1)
+                    add_combo(tag='rec_track',items=['none','1','2','3','4','5','6','7','8'],default_value='1',callback=record_track_changed,width=-1)
                     add_image_button(ico["reset"],tag=f'resetrack',callback=resetrack_press,label="X")
                     widget_tooltip(' Reset selected track samples.')
 
@@ -1629,70 +1482,78 @@ with window(tag='main') as main:
                         add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper)
                         widget_tooltip("Show settings")
         with dpg.table_row():
-            with dpg.table(tag='settings_table',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
-                borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
-                row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
-                no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
+                with dpg.table(tag='settings_table',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
 
-                add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
-                add_table_column(width_fixed=True, init_width_or_weight=30, width=30)
-                add_table_column(width_fixed=True, init_width_or_weight=140, width=140)
-                add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
-                add_table_column(width_stretch=True, init_width_or_weight=-1)
-                add_table_column(width_stretch=True, init_width_or_weight=-1)
-                add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
+                    add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
+                    add_table_column(width_fixed=True, init_width_or_weight=30, width=30)
+                    add_table_column(width_fixed=True, init_width_or_weight=140, width=140)
+                    add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
+                    add_table_column(width_stretch=True, init_width_or_weight=300)
+                    add_table_column(width_stretch=True, init_width_or_weight=300)
+                    add_table_column(width_fixed=True, init_width_or_weight=20, width=20)
+                    add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
+                    add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
 
-                with dpg.table_row():
-                    add_text(default_value='')
-                    with dpg.group():
-                        add_text(default_value='API')
+                    with dpg.table_row():
                         add_text(default_value='')
-                        add_text(default_value='')
-                        add_text(default_value='FFT')
-                        add_text(default_value='Theme')
+                        with dpg.group():
+                            add_text(default_value='API')
+                            add_text(default_value='')
+                            add_text(default_value='')
+                            add_text(default_value='FFT')
+                            add_text(default_value='')
 
+                        with dpg.group():
+                            add_combo(tag='api',default_value='',callback=api_changed)
+                            add_checkbox(tag='exclusive',label='WASAPI Exclusive',callback=wasapi_exclusive_callback,default_value=False,enabled=windows)
+                            add_text(default_value='')
 
-                    with dpg.group():
-                        add_combo(tag='api',default_value='',callback=api_changed)
-                        add_checkbox(tag='vsync',label='VSync',callback=vsync_calllback,default_value=vsync_default)
-                        add_checkbox(tag='exclusive',label='WASAPI Exclusive',callback=wasapi_exclusive_callback,default_value=windows,enabled=windows)
+                            add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
+                            widget_tooltip(' Show live Fast Fourier Transform graph \n with window function specified')
 
-                        add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
-                        widget_tooltip(' Show live Fast Fourier Transform graph \n with window function specified')
+                        with dpg.group():
+                            add_text(default_value=' ')
+                            add_text(default_value='Device:')
+                            add_text(default_value='channels:')
+                            add_text(default_value='Samplerate:')
+                            add_text(default_value='latency:')
+                            add_text(default_value='blckocksize:')
+                        with dpg.group(width=-1):
+                            add_text(default_value='Output')
+                            add_combo(tag='out_dev',default_value='',callback=out_dev_changed,user_data=True)
+                            add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
+                            add_text(tag='out_samplerate')
 
-                        add_image_button(ico["light"],tag='theme_light_x',callback=theme_light_callback,width=16)
-                        widget_tooltip("light theme ")
+                            add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
+                            add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
 
-                        add_image_button(ico["dark"],tag='theme_dark_x',callback=theme_dark_callback,width=16)
-                        widget_tooltip("dark theme ")
+                        with dpg.group(width=-1):
+                            add_text(default_value='Input')
+                            add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True)
+                            add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
+                            add_text(tag='in_samplerate')
 
-                    with dpg.group():
-                        add_text(default_value=' ')
-                        add_text(default_value='Device:')
-                        add_text(default_value='channels:')
-                        add_text(default_value='Samplerate:')
-                        add_text(default_value='latency:')
-                        add_text(default_value='blckocksize:')
-                    with dpg.group(width=-1):
-                        add_text(default_value='Output')
-                        add_combo(tag='out_dev',default_value='',callback=out_dev_changed,user_data=True)
-                        add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
-                        add_text(tag='out_samplerate')
+                            add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
+                            add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
 
-                        add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
-                        add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
+                        dpg.add_spacer(width=20)
 
-                    with dpg.group(width=-1):
-                        add_text(default_value='Input')
-                        add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True)
-                        add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
-                        add_text(tag='in_samplerate')
+                        with dpg.group():
+                            add_checkbox(tag='vsync',label='VSync',callback=vsync_calllback,default_value=vsync_default)
+                            add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=False)
+                            add_text(default_value='')
 
-                        add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
-                        add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
+                            with dpg.group(horizontal=True):
+                                add_image_button(ico["light"],callback=theme_light_callback,width=16)
+                                widget_tooltip("light theme ")
 
-                    with dpg.group():
-                        dpg.add_spacer(width=6)
+                                add_image_button(ico["dark"],callback=theme_dark_callback,width=16)
+                                widget_tooltip("dark theme ")
+
+                        with dpg.group():
+                            dpg.add_spacer(width=6)
+
+    add_text(tag='debug_text',default_value='')
 
     with dpg.handler_registry():
         dpg.add_mouse_click_handler(callback=on_click)
@@ -1700,11 +1561,26 @@ with window(tag='main') as main:
         dpg.add_mouse_wheel_handler(callback=wheel_callback)
         dpg.add_key_press_handler(callback=key_callback)
 
-APP_FILE = normpath(__file__)
-APP_DIR = dirname(APP_FILE)
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    EXECUTABLE_DIR = Path(sys._MEIPASS)
+else:
+    EXECUTABLE_DIR = Path(__file__).parent
 
-INTERNAL_DIR = sep.join([APP_DIR,"sas-internal"])
+if getattr(sys, 'frozen', False):
+    EXECUTABLE_DIR_REAL = os.path.dirname(sys.executable)
+else:
+    EXECUTABLE_DIR_REAL = os.path.dirname(os.path.abspath(__file__))
+
+print(f'{EXECUTABLE_DIR=}')
+print(f'{EXECUTABLE_DIR_REAL=}')
+
+#EXECUTABLE_FILE = normpath(abspath(sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]))
+#EXECUTABLE_DIR = dirname(EXECUTABLE_FILE)
+
+INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"sas-internal"])
 Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
+
+print(f'{INTERNAL_DIR=}')
 
 def localtime_catched(t):
     try:
@@ -1715,11 +1591,12 @@ def localtime_catched(t):
 
 log_file = strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) ) +'.txt'
 log=INTERNAL_DIR + sep + log_file
+print(f'{log=}')
 
 logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s', filename=log,filemode='w')
 
-dpg.set_viewport_small_icon(Path(path_join(APP_DIR,"./icons/sas_small.png")))
-dpg.set_viewport_large_icon(Path(path_join(APP_DIR,"./icons/sas.png")))
+dpg.set_viewport_small_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas_small.png")))
+dpg.set_viewport_large_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas.png")))
 
 dpg.set_viewport_resize_callback(callback=on_viewport_resize)
 
@@ -1728,15 +1605,15 @@ dpg.setup_dearpygui()
 ########################################################################
 
 try:
-    distro_info=Path(path_join(APP_DIR,'distro.info.txt')).read_text(encoding='utf-8')
-
+    distro_info=Path(path_join(EXECUTABLE_DIR,'distro.info.txt')).read_text(encoding='utf-8')
 except Exception as exception_1:
     print(exception_1)
     distro_info = 'Error. No distro.info.txt file.'
 
 distro_info+= "\nnumpy       " + str(numpy_version) + "\nsounddevice " + str(sounddevice_version) + "\n\nDearPyGui   " + str(dpg.get_dearpygui_version()) + "\n\n"
 
-print(f'distro info:\n{distro_info}')
+print(distro_info)
+l_info(distro_info)
 
 sweeping=False
 
@@ -1748,7 +1625,7 @@ refresh_devices()
 api_changed()
 
 show_viewport()
-set_viewport_height(400)
+set_viewport_height(460)
 settings_wrapper()
 
 fft_on=True
@@ -1794,6 +1671,8 @@ with dpg.handler_registry():
     dpg.add_mouse_drag_handler(button=dpg.mvMouseButton_Left,callback=on_drag)
     dpg.add_mouse_down_handler(button=dpg.mvMouseButton_Left, callback=mouse_down)
     dpg.add_mouse_release_handler(button=dpg.mvMouseButton_Left, callback=mouse_up)
+
+record_track_changed()
 
 while is_dearpygui_running():
     if sweeping:
@@ -1860,12 +1739,25 @@ while is_dearpygui_running():
     ##################################
     frames += 1
     now = perf_counter()
-    if now >= next_fps:
-        set_status(f'FPS:{frames}, {rec_callbacks=}, {rec_samples=}')
+    if now >= next_fps and get_value('debug'):
+        out_sum=audio_output_callback_outside+audio_output_callback_inside
+        out_ratio = 0 if out_sum==0 else audio_output_callback_inside/out_sum
+
+        in_sum=audio_input_callback_outside+audio_input_callback_inside
+        in_ratio = 0 if in_sum==0 else audio_input_callback_inside/in_sum
+
+        set_value('debug_text',f'FPS:{frames}\n\n{rec_callbacks=}\n{rec_samples=}\n\nOUT  {out_ratio}\nIN   {in_ratio}')
+
         frames = 0
         rec_callbacks = 0
         rec_samples = 0
         next_fps = now+1.0
+
+        audio_output_callback_outside=0
+        audio_output_callback_inside=0
+
+        audio_input_callback_outside=0
+        audio_input_callback_inside=0
     ##################################
 
     if exiting:
