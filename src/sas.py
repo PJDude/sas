@@ -28,13 +28,13 @@
 
 import dearpygui.dearpygui as dpg
 
-from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,add_scatter_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_deactivated_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_release_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_button,add_text,add_table_column,window,table,is_item_hovered,show_item,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
+from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,add_scatter_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_deactivated_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_release_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_button,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
+from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport
 
-from time import sleep,strftime,localtime,perf_counter
+from time import sleep,strftime,time,localtime,perf_counter
 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,array
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
-
 
 from collections import deque
 from queue import Queue
@@ -45,13 +45,19 @@ from PIL import Image
 from pathlib import Path
 
 import os
-from os import name as os_name, system
+from os import name as os_name, system, sep
 from os.path import join as path_join, normpath,dirname
 
 from sys import exit as sys_exit
 
 from images import image
-from dialogs import *
+import logging
+
+l_info = logging.info
+l_warning = logging.warning
+l_error = logging.error
+
+#from dialogs import *
 
 from io import BytesIO
 VERSION_FILE='version.txt'
@@ -64,10 +70,6 @@ if windows:
 
 np_fft_rfft=np_fft.rfft
 
-blocksize_out = 256
-blocksize_in = 512
-
-phase_i = arange(blocksize_out)
 fft_size = 2048
 
 fft_points=int(fft_size/2+1)
@@ -207,7 +209,7 @@ def bucket_to_logf(i):
 phase_step=1.0
 
 def change_f(fpar):
-    global current_logf,current_bucket,phase_step,current_bucket,two_pi_by_out_samplerate
+    global current_logf,current_bucket,phase_step,current_bucket,two_pi_by_in_samplerate
 
     if fmin_audio<fpar<fmax_audio:
         current_logf=log10(fpar)
@@ -218,7 +220,7 @@ def change_f(fpar):
         set_value('cursor_f_txt', (fpar, -3))
         configure_item('cursor_f_txt',label=f'{round(fpar)}Hz')
 
-        phase_step = two_pi_by_out_samplerate * fpar
+        phase_step = two_pi_by_in_samplerate * fpar
 
 played_bucket=0
 played_bucket_callbacks=0
@@ -227,20 +229,20 @@ played_bucket_callbacks=0
 #audio_output_callback_last_time_end=perf_counter()
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channell_buffer_mod_index,phase_i
+    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i
     #audio_output_callback_start=perf_counter()
 
     if playing_state:
         phase_arr=(phase + phase_step * phase_i) % two_pi
-        outdata[phase_i, out_channell_buffer_mod_index] = np_sin(phase_arr)
+        outdata[phase_i, out_channel_buffer_mod_index] = np_sin(phase_arr)
         phase = phase_arr[-1]+phase_step
 
         if playing_state==1:
             playing_state=2
-            outdata[:, out_channell_buffer_mod_index] *= volume_ramp
+            outdata[:, out_channel_buffer_mod_index] *= volume_ramp
         elif playing_state==-1:
             playing_state=0
-            outdata[:, out_channell_buffer_mod_index] *= volume_ramp[::-1]
+            outdata[:, out_channel_buffer_mod_index] *= volume_ramp[::-1]
 
         if current_bucket!=played_bucket:
             played_bucket_callbacks=1
@@ -256,13 +258,16 @@ def wasapi_exclusive_callback(sender=None, app_data=None):
     print('wasapi_exclusive_callback',sender,app_data)
 
 def vsync_calllback(sender=None, app_data=None):
-    print('vsync_calllback:',sender,app_data)
-    dpg.set_viewport_vsync(app_data)
+    l_info(f'vsync_calllback:{sender,app_data}')
+    set_viewport_vsync(app_data)
 
 def sweep_abort():
     global sweeping
     sweeping=False
     configure_item('sweep',texture_tag=ico["play"])
+
+def rec_press(sender=None, app_data=None):
+    l_info(f'rec_press:{sender},{app_data}')
 
 sweeping_i=0
 def sweep_press(sender=None, app_data=None):
@@ -299,24 +304,20 @@ def play_start():
 
 @catch
 def play_stop():
-    global playing_state
+    global playing_state,lock_frequency
     if playing_state==2:
         playing_state=-1
+    lock_frequency=False
 
     bind_item_theme("cursor_f",green_line_theme)
-    redraw_tracks_lines=False
+#    playing_state=0
 
     if recorded_track:
         bind_item_theme(f"track{recorded_track}",reddark_line_theme)
 
     sweep_abort()
 
-@catch
-def play_abort():
-    global playing_state
-
-    bind_item_theme("cursor_f",green_line_theme)
-    playing_state=0
+    redraw_tracks_lines=False
 
 exiting=False
 
@@ -355,31 +356,34 @@ device_default_output=None
 
 @catch
 def refresh_devices():
+    l_info('refresh_devices')
     global apis,default_api_nr,devices,device_default_input,device_default_output
 
     apis = query_hostapis()
     default_api_nr=-1
-    print(f'\nApis:')
+    l_info(f'')
+    l_info(f'Host APIs:')
     for i,api in enumerate(apis):
-        print('')
+        l_info('')
         for key,val in api.items():
-            print('  ',key,':',val)
+            l_info(f'  {key}:{val}')
             if api['devices']:
                 default_api_nr=i
 
     device_default_input_index,device_default_output_index = sd_default.device
 
-    print('\nQuery Devices ...')
+    l_info('')
+    l_info('Query Devices ...')
     devices=query_devices()
 
-    print('\nLoop Devices ...')
     for dev in devices:
-        if not windows:
+        if False and not windows:
             try:
-                stream_test=Stream(device=dev['index'], samplerate=samplerate, channels=2)
+                stream_test=Stream(device=dev['index'])
+                #, samplerate=samplerate, channels=2
                 stream_test.close()
             except Exception as e_try:
-                print('e_try:',dev['index'],dev['name'],e_try)
+                l_error(f'e_try:{dev["index"]},{dev["name:"]},{e_try}')
                 continue
 
         if dev['index']==device_default_input_index:
@@ -389,146 +393,181 @@ def refresh_devices():
             device_default_output=dev
             default_api_nr=dev['hostapi']
 
-    print(f'{default_api_nr=}')
-    print(f'{device_default_input=}')
-    print(f'{device_default_output=}')
+    l_info(f'{default_api_nr=}')
+    l_info(f'{device_default_input=}')
+    l_info(f'{device_default_output=}')
 
     if default_api_nr!=-1:
-        print('\nDefaults:',apis[default_api_nr]['name'],device_default_input['name'],device_default_output['name'])
+        l_info(f'Defaults:{apis[default_api_nr]["name"]},{device_default_input["name"]},{device_default_output["name"]}')
         set_value('api',apis[default_api_nr]['name'])
+    else:
+        l_error(f'No default API !')
 
-    print('\nDevices:')
+    l_info('Devices:')
     for dev in devices:
-        print('')
+        l_info('')
         for key,val in dev.items():
-            print('  ',key,':',val)
+            l_info(f'  {key}:{val}')
 
-latency_values=('high','low','default',0.01,0.02,0.03,0)
-blocksize_values=(2048,1024,512,256,128,64,0)
-default_blocksize=64
-default_latency='low'
+latency_values=('high','low',0.01,0.02,0.03,0)
 
-device_in_stream_option={'channels':1,'latency':default_latency,'blocksize':default_blocksize}
-in_channell_buffer_mod_index=0
+out_blocksize_values=(2048,1024,512,256)
+out_blocksize_default=256
+out_latency_default='low'
 
-device_out_stream_option={'channels':2,'latency':default_latency,'blocksize':default_blocksize}
-out_channell_buffer_mod_index=1
+in_blocksize_values=(512,256,128,64,0)
+in_blocksize_default=512
+in_latency_default='low'
 
-def dev_out_samplerate_changed(sender=None, app_data=None):
-    print('dev_out_samplerate_changed',sender,app_data)
-    global two_pi_by_out_samplerate
-    #two_pi_by_out_samplerate = two_pi/samplerate
-    two_pi_by_out_samplerate = two_pi/app_data
+out_channel_buffer_mod_index=0
 
-def dev_out_blocksize_changed(sender=None, app_data=None):
-    print('dev_out_blocksize_changed',sender,app_data)
-    play_abort()
+def out_blocksize_changed(sender=None, out_blocksize_str=None,user_data=False):
+    l_info(f'out_blocksize_changed:{sender},{out_blocksize_str},{user_data}')
+    play_stop()
+    out_stream_stop()
 
+    global volume_ramp,phase_i
+    out_blocksize=int(out_blocksize_str)
+
+    #volume_ramp = tuple([(i+1.0)/out_blocksize for i in range(out_blocksize)])
+    volume_ramp = arange(1, out_blocksize + 1, dtype=float32) / out_blocksize
+    phase_i = arange(out_blocksize)
+
+    if user_data:
+        out_stream_init()
+
+def out_latency_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'out_latency_changed:{sender},{app_data},{user_data}')
+    play_stop()
+    out_stream_stop()
+
+    if user_data:
+        out_stream_init()
+
+def in_blocksize_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'in_blocksize_changed:{sender},{app_data},{user_data}')
+
+    global record_blocks_len,record_blocks_len_part1,record_blocks_len_part2
+
+    in_blocksize=int(get_value('in_blocksize'))
+
+    record_blocks_len=int((in_samplerate*time_to_collect_sample)/in_blocksize)
+    record_blocks_len_part1=int(record_blocks_len/2)
+    record_blocks_len_part2=record_blocks_len-record_blocks_len_part1
+
+    if user_data:
+        in_stream_init()
+
+def in_latency_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'in_latency_changed:{sender},{app_data},{user_data}')
+
+    if user_data:
+        in_stream_init()
+
+def out_channel_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'out_channel_changed:{sender},{app_data},{user_data}')
+
+    play_stop()
+    out_stream_stop()
+
+    if user_data:
+        out_stream_init()
+
+def out_stream_stop():
     if stream_out:
+        l_info('OutputStream stop.')
         stream_out.stop()
 
-    dev_out_channell_init()
+def latency_for_stream(latency):
+    if not latency in ('low','high'):
+        try:
+            latency=float(latency)
+        except:
+            latency=0
+            set_value('out_latency',0)
+    return latency
 
-def dev_out_latency_changed(sender=None, app_data=None):
-    global device_out_stream_option
-    print('dev_out_latency_changed',sender,app_data)
-    play_abort()
-    device_out_stream_option['latency']=app_data
-
-    if stream_out:
-        stream_out.stop()
-
-    dev_out_channell_init()
-
-def dev_in_blocksize_changed(sender=None, app_data=None):
-    print('dev_in_blocksize_changed',sender,app_data)
-    dev_in_channell_init()
-
-def dev_in_latency_changed(sender=None, app_data=None):
-    global device_in_stream_option
-    print('dev_in_latency_changed',sender,app_data)
-    device_in_stream_option['latency']=app_data
-
-    dev_in_channell_init()
-
-def dev_in_samplerate_changed(sender=None, app_data=None):
-    print('dev_in_samplerate_changed',sender,app_data)
-
-
-@catch
-def dev_out_channell_changed(sender=None, app_data=None):
-    print('dev_out_channell_changed',sender,app_data)
-
-    global out_channell_buffer_mod_index,lock_frequency,stream_out,device_out_current,device_out_stream_option
-    lock_frequency=False
-    play_abort()
-
-    if stream_out:
-        stream_out.stop()
-
-    try:
-        out_channell_buffer_mod_index=int(get_value("dev_out_channell"))-1
-        device_out_stream_option['channels']=device_out_current['max_output_channels']
-    except:
-        device_out_stream_option['channels']=1
-        out_channell_buffer_mod_index=0
-
-@catch
-def dev_out_channell_init():
-    global stream_out,device_out_current,device_out_stream_option
+def out_stream_init():
+    global stream_out,device_out_current,out_channel_buffer_mod_index
 
     if get_value('exclusive'):
         extra_settings=WasapiSettings(exclusive=True)
     else:
         extra_settings=None
+
     try:
-        print('\nOutputStream init ...')
-        stream_out = OutputStream( samplerate=samplerate, channels=device_out_stream_option['channels'], blocksize=blocksize_out, callback=audio_output_callback, device=device_out_current['index'],extra_settings=extra_settings )
+        channels=int(get_value('out_channel'))
+    except:
+        channels=1
+    out_channel_buffer_mod_index=channels-1
+
+    device=int(device_out_current['index'])
+    samplerate=float(device_out_current['default_samplerate'])
+    latency=latency_for_stream(get_value('out_latency'))
+    blocksize=int(get_value('out_blocksize'))
+
+    l_info('')
+    l_info(f'OutputStream init {device=},{samplerate=},{latency=},{blocksize=},{channels=}')
+
+    try:
+        stream_out = OutputStream(callback=audio_output_callback, extra_settings=extra_settings,
+            device=device,
+            samplerate=samplerate,
+            latency=latency,
+            blocksize=blocksize,
+            channels=channels
+        )
         #dtype="float32",
-        #latency="low",
         stream_out.start()
     except Exception as e:
-        print("OutputStream init error:",str(e))
+        l_error(f'OutputStream init error:{e}')
     else:
-        print("OutputStream init DONE.")
+        l_info('OutputStream init DONE.')
 
+in_channel_buffer_mod_index=0
 @catch
-def dev_in_channell_changed(sender=None, app_data=None):
-    print('dev_in_channell_changed',sender,app_data)
-
-    global device_in_channels_stream_option,in_channell_buffer_mod_index,stream_in,device_in_current
+def in_channel_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'in_channel_changed:{sender},{app_data},{user_data}')
 
     if stream_in:
         stream_in.stop()
 
+    if user_data:
+        in_stream_init()
+
+def in_stream_init():
+    global stream_in,device_in_current,device_in_channels_stream_option,in_channel_buffer_mod_index
+
+    device=int(device_in_current['index'])
+    samplerate=float(get_value('in_samplerate'))
+    latency=latency_for_stream(get_value('in_latency'))
+    blocksize=int(get_value('in_blocksize'))
+    channels=1
+    in_channel_buffer_mod_index=0
+
+    l_info('')
+    l_info(f'InputStream init {device=},{samplerate=},{latency=},{blocksize=},{channels=}')
     try:
-        in_channell_buffer_mod_index=int(get_value("dev_in_channell"))-1
-        device_in_channels_stream_option=device_in_current['max_input_channels']
-    except:
-        device_in_channels_stream_option=1
-        in_channell_buffer_mod_index=0
-
-    dev_in_channell_init()
-
-def dev_in_channell_init():
-    global stream_in,device_in_current,device_in_channels_stream_option
-
-    try:
-        stream_in = InputStream( samplerate=samplerate, callback=audio_input_callback,device=device_in_current['index'] , latency="low", blocksize=0,channels=1,dtype='float32')
+        stream_in = InputStream(callback=audio_input_callback,
+            device=device,
+            samplerate=samplerate,
+            latency=latency,
+            blocksize=blocksize,
+            channels=channels
+        )
         #channels=device_in_channels_stream_option
         # dtype="float32"
-        #, latency="low"
-        #
-    except Exception as e:
-        print("dev_in_channell_init",e)
-    else:
         stream_in.start()
 
+    except Exception as e:
+        l_error(f'InputStream init error:{e}')
+    else:
+        l_info('InputStream init DONE.')
+
 def hide_info():
-    dpg.hide_item('info_window')
+    hide_item('info_window')
     set_value('info_text','')
     on_viewport_resize()
-    #dpg.show_item("plot_combo")
 
 def show_info(message):
     on_viewport_resize()
@@ -561,19 +600,6 @@ def license_wrapper():
 
     show_info('\n'+ license_txt)
 
-def settings_wrapper():
-    try:
-        values=[ api['name'] for api in apis if api['devices'] ]
-        configure_item('api',items=values)
-
-        apiname=get_value('api')
-        if apiname not in values:
-            if values:
-                set_value('api',values[0]['name'])
-
-    except Exception as e:
-        print(e)
-
 fft_on=True
 
 def resetrack_press(sender=None, app_data=None):
@@ -586,7 +612,6 @@ def resetrack_press(sender=None, app_data=None):
         redraw_tracks_lines=True
     else:
         print('recording not enabled for track',track)
-
 
 recorded_track=None
 
@@ -622,13 +647,13 @@ def track_pressed(track):
     redraw_tracks_lines=True
 
 try:
-    VER_TIMESTAMP=Path(os.path.join(os.path.dirname(__file__),VERSION_FILE)).read_text(encoding='ASCII').strip()
+    VER_TIMESTAMP=Path(path_join(dirname(__file__),VERSION_FILE)).read_text(encoding='ASCII').strip()
 except Exception as e_ver:
     print(e_ver)
     VER_TIMESTAMP=''
 
-samplerate = 44100
-#samplerate = 48000
+#TODO
+in_samplerate = 44100
 
 phase = 0.0
 
@@ -642,7 +667,7 @@ current_f=fini
 current_logf=logf_ini
 
 two_pi = pi+pi
-two_pi_by_out_samplerate = two_pi/samplerate
+two_pi_by_in_samplerate = two_pi/in_samplerate
 
 spectrum_buckets_quant=256
 spectrum_sub_bucket_samples=4
@@ -663,30 +688,19 @@ dbrange=dbmax-dbmin
 
 dbrange_display=dbmax_display-dbmin_display
 
-samplerate_by_fft_size = samplerate / fft_size
+in_samplerate_by_fft_size = in_samplerate / fft_size
 
 fft_line_data_x=[0]*fft_points
 fft_line_data_y=[0]*fft_points
 
 for i_fft in range(fft_points):
-    fft_line_data_x[i_fft]=i_fft * samplerate_by_fft_size
-
-blocksize_out_m1=blocksize_out-1
-
-#volume_ramp = tuple([(i+1.0)/blocksize_out for i in range(blocksize_out)])
-volume_ramp = arange(1, blocksize_out + 1, dtype=float32) / blocksize_out
+    fft_line_data_x[i_fft]=i_fft * in_samplerate_by_fft_size
 
 time_to_collect_sample=0.125 #[s]
 #1/4s - 86 paczek
-#record_blocks_len=int((samplerate/4)/blocksize_in)
 
 sweeping_delay=time_to_collect_sample*1.5/spectrum_sub_bucket_samples
 #print(f'{sweeping_delay=}')
-
-# 43
-record_blocks_len=int((samplerate*time_to_collect_sample)/blocksize_in)
-record_blocks_len_part1=int(record_blocks_len/2)
-record_blocks_len_part2=record_blocks_len-record_blocks_len_part1
 
 redraw_tracks_lines=True
 
@@ -711,45 +725,44 @@ current_api=None
 
 @catch
 def api_changed(sender=None, app_data=None):
-
-    global current_api,apis,devices,dev_in_cb
+    global current_api,apis,devices,in_dev_cb
 
     apiname=get_value('api')
-    print('api_changed',sender, app_data,apiname)
+    l_info(f'api_changed:{sender},{app_data},{apiname}')
 
     current_api=[api for api in apis if api['name']==apiname][0]
 
     out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index'] in current_api['devices'] ]
     in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in current_api['devices'] ]
 
-    dev_out_name=get_value("dev_out")
-    dev_in_name=get_value("dev_in")
+    out_dev_name=get_value("out_dev")
+    in_dev_name=get_value("in_dev")
 
-    configure_item("dev_out",items=out_values)
-    configure_item("dev_in",items=in_values)
+    configure_item("out_dev",items=out_values)
+    configure_item("in_dev",items=in_values)
 
     device_default_input_name=device_default_input['name']
     device_default_output_name=device_default_output['name']
 
-    print('defaults:',device_default_input_name,device_default_output_name)
+    l_info(f'defaults:{device_default_input_name},{device_default_output_name}')
 
     if out_values:
-        if dev_out_name not in out_values:
+        if out_dev_name not in out_values:
             if device_default_output_name in out_values:
-                set_value("dev_out",device_default_output_name)
+                set_value("out_dev",device_default_output_name)
             else:
-                set_value("dev_out",out_values[0])
+                set_value("out_dev",out_values[0])
 
-    dev_out_changed()
+    out_dev_changed(None,None,True)
 
     if in_values:
-        if dev_in_name not in in_values:
+        if in_dev_name not in in_values:
             if device_default_input_name in in_values:
-                set_value("dev_in",device_default_input_name)
+                set_value("in_dev",device_default_input_name)
             else:
-                set_value("dev_in",in_values[0])
+                set_value("in_dev",in_values[0])
 
-    dev_in_changed()
+    in_dev_changed(None,None,True)
 
 @catch
 def record_track_changed(sender=None, app_data=None):
@@ -829,62 +842,66 @@ def fft_window_changed(sender=None, app_data=None):
 
 device_out_current=None
 
-@catch
-def dev_out_changed(sender=None, app_data=None):
-    print('dev_out_changed',sender, app_data)
+def out_dev_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'out_dev_changed:{sender},{app_data},{user_data}')
 
-    global device_out_current,default_blocksize
+    global device_out_current
 
-    dev_out_name=get_value("dev_out")
+    out_dev_name=get_value("out_dev")
 
-    device_out_current=[device for device in devices if device['name']==dev_out_name][0]
+    device_out_current=[device for device in devices if device['name']==out_dev_name][0]
 
-    dev_out_channell_values=['all'] + [str(val) for val in range(1,device_out_current['max_output_channels']+1)]
-    #dev_out_channell_cb.configure( values=dev_out_channell_cb_values )
+    output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
+    l_info(f'{output_channels=}')
 
-    configure_item("dev_out_channell",items=dev_out_channell_values)
+    configure_item("out_channel",items=output_channels)
 
-    dev_out_channell_value=get_value("dev_out_channell")
+    out_channel_value=get_value("out_channel")
 
-    if not dev_out_channell_value or dev_out_channell_value not in dev_out_channell_values:
-        dev_out_channell_value='all'
-        set_value("dev_out_channell",dev_out_channell_value)
+    if not out_channel_value or out_channel_value not in output_channels:
+        out_channel_value=2
+        set_value("out_channel",out_channel_value)
 
-    default_samplerate=int(device_out_current['default_samplerate'])
-    set_value("dev_out_samplerate",str(default_samplerate))
-    dev_out_samplerate_changed(None,default_samplerate)
-    dev_out_blocksize_changed(None,default_blocksize)
-    dev_out_latency_changed(None,default_latency)
+    set_value("out_samplerate",device_out_current['default_samplerate'])
 
-    dev_out_channell_changed()
-    dev_out_channell_init()
+    out_channel_changed(None,out_channel_value)
+    out_latency_changed(None,out_latency_default)
+    out_blocksize_changed(None,out_blocksize_default)
+
+    if user_data:
+        out_stream_init()
 
 device_in_current=None
 
-@catch
-def dev_in_changed(sender=None, app_data=None):
-    print('dev_in_changed',sender, app_data)
+def in_dev_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'in_dev_changed:{sender},{app_data},{user_data}')
 
     global device_in_current
 
-    dev_name=get_value("dev_in")
+    dev_name=get_value("in_dev")
 
     device_in_current=[device for device in devices if device['name']==dev_name][0]
 
-    dev_in_channell_values=['all'] + [str(val) for val in range(1,device_in_current['max_input_channels']+1)]
-    configure_item("dev_in_channell",items=dev_in_channell_values)
+    input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
+    l_info(f'{input_channels=}')
 
-    dev_in_channell_value=get_value("dev_in_channell")
+    configure_item("in_channel",items=input_channels)
 
-    if not dev_in_channell_value or dev_in_channell_value not in dev_in_channell_values:
-        dev_in_channell_value='all'
-        set_value("dev_in_channell",dev_in_channell_value)
+    in_channel_value=get_value("in_channel")
 
-    default_samplerate=int(device_in_current['default_samplerate'])
-    set_value("dev_in_samplerate",str(default_samplerate))
-    dev_in_samplerate_changed(None,default_samplerate)
+    if not in_channel_value or in_channel_value not in input_channels:
+        in_channel_value=1
+        set_value("in_channel",in_channel_value)
 
-    dev_in_channell_changed()
+    default_in_samplerate=int(device_in_current['default_samplerate'])
+    set_value("in_samplerate",str(default_in_samplerate))
+
+    in_channel_changed(None,in_channel_value)
+    in_latency_changed(None,in_latency_default)
+    in_blocksize_changed(None,in_blocksize_default)
+
+    if user_data:
+        in_stream_init()
 
 def on_click(sender, app_data):
     hide_info()
@@ -1146,8 +1163,8 @@ def _rgba(c):
         return (*c, 255)
     return c
 
-temp=create_theme(
-    "theme_windows_light",
+light=create_theme(
+    "light_xx",
     window_bg=(242, 242, 242),
     text=(10, 10, 10),
     frame_bg=(255, 255, 255),
@@ -1161,6 +1178,24 @@ temp=create_theme(
     check_mark=(0, 120, 215),
     title_bg=(242, 242, 242),
     title_bg_active=(230, 230, 230),
+    rounding=(3, 6, 3),
+)
+
+dark=create_theme(
+    "dark_xx",
+    window_bg=(142, 142, 142),
+    text=(10, 10, 10),
+    frame_bg=(255, 255, 255),
+    button=(130, 130, 130),
+    button_hovered=(115, 115, 115),
+    button_active=(100, 100, 100),
+    menubar_bg=(235, 235, 235),
+    popup_bg=(250, 250, 250),
+    border=(0, 0, 0, 60),
+    slider_grab=(130, 130, 130),
+    check_mark=(0, 120, 215),
+    title_bg=(242, 242, 242),
+    title_bg_active=(130, 130, 130),
     rounding=(3, 6, 3),
 )
 
@@ -1404,31 +1439,75 @@ def slide_change(sender):
     val=dpg.get_value(sender)
     dpg.set_axis_limits("y_axis", dbmin_display*val/100, dbmax_display)
 
+vsync_default=True
+settings_height=120
+status_height=40
+plot_min_height=200
+plot_axis_height=40
+viewport_height_min=plot_min_height+status_height
+
 dpg.bind_theme(padding_mod_theme)
 #dpg.bind_theme(theme_light)
-dpg.bind_theme(temp)
-dpg.create_viewport(title=title,width=1000,height=380,vsync=True)
+
+def theme_light_callback():
+    dpg.bind_theme(light)
+
+def theme_dark_callback():
+    dpg.bind_theme(dark)
+
+theme_light_callback()
+
+create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=vsync_default)
+
+bottom_shown=True
+
+def settings_wrapper():
+    global bottom_shown
+    bottom_shown=(True,False)[bottom_shown]
+    l_info(f'settings_wrapper:{bottom_shown}')
+
+    if bottom_shown:
+        show_item('settings_table')
+        h=max(viewport_height_min,get_viewport_height()+settings_height)
+    else:
+        hide_item('settings_table')
+        h=max(viewport_height_min,get_viewport_height()-settings_height)
+
+    set_viewport_height(h)
+    on_viewport_resize()
+
+    try:
+        values=[ api['name'] for api in apis if api['devices'] ]
+        configure_item('api',items=values)
+
+        apiname=get_value('api')
+        if apiname not in values:
+            if values:
+                set_value('api',values[0]['name'])
+
+    except Exception as e:
+        print(e)
 
 info_chars=0
-def on_viewport_resize(sender=None, app_data=None):
-    vh = dpg.get_viewport_client_height()
-    vw = dpg.get_viewport_client_width()
 
-    global info_chars
+def on_viewport_resize(sender=None, app_data=None):
+    vw = get_viewport_client_width()
+    vh = get_viewport_client_height()
+
+    global info_chars,settings_height
+
     info_chars=int(vw/7)
 
-    FIXED_BOTTOM_HEIGHT = 54
-    GAP=100
-    top_h  = max(220, vh - FIXED_BOTTOM_HEIGHT - GAP)
+    plot_height  = max(plot_min_height, vh - (settings_height if bottom_shown else 0) - status_height)
 
-    dpg.set_item_height('slider', top_h-40)
-    dpg.set_item_height('slider_window', top_h-40+8)
+    set_item_height('slider', plot_height-plot_axis_height)
+    set_item_height('slider_window', plot_height-plot_axis_height+8)
 
-    dpg.set_item_height('plot', top_h)
-    dpg.set_item_width('plot', vw-80)
+    set_item_height('plot', plot_height)
+    set_item_width('plot', vw-80)
 
-    dpg.set_item_width('info_window', vw)
-    dpg.set_item_height('info_window', vh)
+    set_item_width('info_window', vw)
+    set_item_height('info_window', vh)
 
 #with dpg.theme() as window_theme_1:
 #    with dpg.theme_component(dpg.mvAll):
@@ -1436,11 +1515,14 @@ def on_viewport_resize(sender=None, app_data=None):
 
 ###################################################
 with window(tag='main') as main:
-    with window(tag='info_window',no_close=True,menubar=False,no_title_bar=True,autosize=False):
+    dpg.set_primary_window(main, True)
+
+    with window(tag='info_window',no_close=True,menubar=False,no_title_bar=True,autosize=False,no_scrollbar=True):
+        #
         add_text(tag='info_text',default_value='')
         #dpg.bind_item_theme(moving_frame,window_theme_1)
 
-        dpg.hide_item('info_window')
+        hide_item('info_window')
     with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
         borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
         row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
@@ -1511,12 +1593,19 @@ with window(tag='main') as main:
                 row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
                 no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
 
-                add_table_column(width_fixed=True, init_width_or_weight=10, width=10)
+                add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
+                add_table_column(width_fixed=True, init_width_or_weight=18, width=18)
+                add_table_column(width_fixed=True, init_width_or_weight=60, width=60)
+                add_table_column(width_fixed=True, init_width_or_weight=18, width=18)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
-                add_table_column(width_fixed=True, init_width_or_weight=240, width=240)
+                add_table_column(width_fixed=True, init_width_or_weight=255, width=255)
 
                 with dpg.table_row():
                     dpg.add_spacer(height=6)
+                    add_image_button(ico["rec"],tag='recx',callback=rec_press)
+                    add_combo(tag='rec_track',items=['none','1','2','3','4','5','6','7','8'],default_value='none',callback=record_track_changed,width=-1)
+                    add_image_button(ico["reset"],tag=f'resetrack',callback=resetrack_press,label="X")
+                    widget_tooltip(' Reset selected track samples.')
 
                     add_text(tag='status',default_value='')
 
@@ -1537,8 +1626,10 @@ with window(tag='main') as main:
                         widget_tooltip('Show License')
                         add_image_button(ico["about"],tag='aboutx',callback=about_wrapper)
                         widget_tooltip("Show 'About' Dialog")
+                        add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper)
+                        widget_tooltip("Show settings")
         with dpg.table_row():
-            with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
+            with dpg.table(tag='settings_table',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
                 borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
                 row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
                 no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
@@ -1553,65 +1644,55 @@ with window(tag='main') as main:
 
                 with dpg.table_row():
                     add_text(default_value='')
-                    with dpg.group(width=-1):
+                    with dpg.group():
                         add_text(default_value='API')
                         add_text(default_value='')
+                        add_text(default_value='')
                         add_text(default_value='FFT')
-                        add_text(default_value='REC')
+                        add_text(default_value='Theme')
 
-                    with dpg.group(width=-1):
+
+                    with dpg.group():
                         add_combo(tag='api',default_value='',callback=api_changed)
-                        add_checkbox(tag='vsync',label='VSync',callback=vsync_calllback,default_value=True)
+                        add_checkbox(tag='vsync',label='VSync',callback=vsync_calllback,default_value=vsync_default)
                         add_checkbox(tag='exclusive',label='WASAPI Exclusive',callback=wasapi_exclusive_callback,default_value=windows,enabled=windows)
-
-                        #if windows:
-                        #else:
-                        #    add_text(default_value='')
 
                         add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
                         widget_tooltip(' Show live Fast Fourier Transform graph \n with window function specified')
 
-                        with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
-                            borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
-                            row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
-                            no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
+                        add_image_button(ico["light"],tag='theme_light_x',callback=theme_light_callback,width=16)
+                        widget_tooltip("light theme ")
 
-                            add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
-                            add_table_column(width_stretch=True, init_width_or_weight=-1)
-
-                            with dpg.table_row():
-                                add_image_button(ico["reset"],tag=f'resetrack',callback=resetrack_press,label="X")
-                                widget_tooltip(' Reset selected track samples.')
-                                add_combo(tag='rec_track',items=['none','1','2','3','4','5','6','7','8'],default_value='none',callback=record_track_changed,width=-1)
+                        add_image_button(ico["dark"],tag='theme_dark_x',callback=theme_dark_callback,width=16)
+                        widget_tooltip("dark theme ")
 
                     with dpg.group():
                         add_text(default_value=' ')
                         add_text(default_value='Device:')
-                        add_text(default_value='Channells:')
+                        add_text(default_value='channels:')
                         add_text(default_value='Samplerate:')
                         add_text(default_value='latency:')
                         add_text(default_value='blckocksize:')
                     with dpg.group(width=-1):
                         add_text(default_value='Output')
-                        add_combo(tag='dev_out',default_value='',callback=dev_out_changed)
-                        add_combo(tag='dev_out_channell',default_value='',callback=dev_out_channell_changed)
-                        add_combo(tag='dev_out_samplerate',label='',callback=dev_out_samplerate_changed)
+                        add_combo(tag='out_dev',default_value='',callback=out_dev_changed,user_data=True)
+                        add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
+                        add_text(tag='out_samplerate')
 
-                        add_combo(tag='dev_out_latency',label='',callback=dev_out_latency_changed,items=latency_values,default_value=default_latency)
-                        add_combo(tag='dev_out_blocksize',label='',callback=dev_out_blocksize_changed,items=blocksize_values,default_value=default_blocksize)
+                        add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
+                        add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
 
                     with dpg.group(width=-1):
                         add_text(default_value='Input')
-                        add_combo(tag='dev_in',default_value='',callback=dev_in_changed)
-                        add_combo(tag='dev_in_channell',default_value='',callback=dev_in_channell_changed)
-                        add_combo(tag='dev_in_samplerate',label='',callback=dev_in_samplerate_changed)
+                        add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True)
+                        add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
+                        add_text(tag='in_samplerate')
 
-                        add_combo(tag='dev_in_latency',label='',callback=dev_in_latency_changed,items=latency_values,default_value=default_latency)
-                        add_combo(tag='dev_in_blocksize',label='',callback=dev_in_blocksize_changed,items=blocksize_values,default_value=default_blocksize)
+                        add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
+                        add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
 
                     with dpg.group():
                         dpg.add_spacer(width=6)
-
 
     with dpg.handler_registry():
         dpg.add_mouse_click_handler(callback=on_click)
@@ -1622,15 +1703,27 @@ with window(tag='main') as main:
 APP_FILE = normpath(__file__)
 APP_DIR = dirname(APP_FILE)
 
+INTERNAL_DIR = sep.join([APP_DIR,"sas-internal"])
+Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
+
+def localtime_catched(t):
+    try:
+        #mtime sometimes happens to be negative (Virtual box ?)
+        return localtime(t)
+    except:
+        return localtime(0)
+
+log_file = strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) ) +'.txt'
+log=INTERNAL_DIR + sep + log_file
+
+logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s', filename=log,filemode='w')
+
 dpg.set_viewport_small_icon(Path(path_join(APP_DIR,"./icons/sas_small.png")))
 dpg.set_viewport_large_icon(Path(path_join(APP_DIR,"./icons/sas.png")))
 
-dpg.set_primary_window(main, True)
 dpg.set_viewport_resize_callback(callback=on_viewport_resize)
-dpg.setup_dearpygui()
-dpg.show_viewport()
 
-on_viewport_resize()
+dpg.setup_dearpygui()
 
 ########################################################################
 
@@ -1652,9 +1745,10 @@ stream_out=None
 
 refresh_devices()
 
-
 api_changed()
 
+show_viewport()
+set_viewport_height(400)
 settings_wrapper()
 
 fft_on=True
@@ -1700,7 +1794,6 @@ with dpg.handler_registry():
     dpg.add_mouse_drag_handler(button=dpg.mvMouseButton_Left,callback=on_drag)
     dpg.add_mouse_down_handler(button=dpg.mvMouseButton_Left, callback=mouse_down)
     dpg.add_mouse_release_handler(button=dpg.mvMouseButton_Left, callback=mouse_up)
-
 
 while is_dearpygui_running():
     if sweeping:
@@ -1780,7 +1873,9 @@ while is_dearpygui_running():
 
 sweeping=False
 lock_frequency=False
-play_abort()
+
+play_stop()
+out_stream_stop()
 
 exiting=True
 
@@ -1788,9 +1883,7 @@ if stream_in:
     stream_in.stop()
     stream_in.close()
 
-if stream_out:
-    stream_out.close()
-
 destroy_context()
+l_info('Exiting.')
 sys_exit(0)
 
