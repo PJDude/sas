@@ -45,7 +45,7 @@ from PIL import Image
 from pathlib import Path
 
 import os
-from os import name as os_name, system, sep
+from os import name as os_name, system, sep, environ
 from os.path import join as path_join, normpath,dirname,abspath
 
 import sys
@@ -1566,6 +1566,12 @@ def debug_callback():
     set_value('debug_text','')
 
 decoration=True
+try:
+    if environ['SAS_NO_DECORATION']:
+        decoration=False
+except:
+    pass
+
 create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=vsync_default,decorated=decoration)
 
 bottom_shown=True
