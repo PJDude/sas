@@ -398,10 +398,9 @@ def audio_output_callback(outdata, frames, time, status):
     audio_output_callback_inside += audio_output_callback_end-audio_output_callback_start
     audio_output_callback_prev=audio_output_callback_end
 
-def wasapi_exclusive_callback(sender=None, app_data=None):
-    l_info(f'wasapi_exclusive_callback:{sender},{app_data}')
-
-    out_stream_init()
+#def wasapi_exclusive_callback(sender=None, app_data=None):
+#    l_info(f'wasapi_exclusive_callback:{sender},{app_data}')
+#    out_stream_init()
 
 def vsync_callback(sender=None, app_data=None):
     l_info(f'vsync_callback:{sender},{app_data}')
@@ -565,7 +564,7 @@ out_blocksize_default=256
 out_latency_default='low'
 
 in_blocksize_values=(512,256,128,64,0)
-in_blocksize_default=512
+in_blocksize_default=256
 in_latency_default='low'
 
 out_channel_buffer_mod_index=0
@@ -645,10 +644,12 @@ def latency_for_stream(latency):
 def out_stream_init():
     global stream_out,device_out_current,out_channel_buffer_mod_index
 
-    if get_value('exclusive'):
-        extra_settings=WasapiSettings(exclusive=True)
-    else:
-        extra_settings=None
+    extra_settings=None
+    try:
+        if environ['SAS_WASAPI_EXCLUSIVE']:
+            extra_settings=WasapiSettings(exclusive=True)
+    except:
+        pass
 
     try:
         channels=int(get_value('out_channel'))
@@ -746,11 +747,11 @@ def license_wrapper():
     try:
         license_txt=Path(path_join(EXECUTABLE_DIR,'LICENSE')).read_text(encoding='ASCII')
     except Exception as exception_lic:
-        print(exception_lic)
+        l_info(str(exception_lic))
         try:
             license_txt=Path(path_join(dirname(EXECUTABLE_DIR),'LICENSE')).read_text(encoding='ASCII')
-        except Exception as exception_2:
-            print(exception_2)
+        except Exception as exception_lic_2:
+            l_info(str(exception_lic_2))
             sys_exit(1)
 
     show_info('\n'+ license_txt)
@@ -758,7 +759,7 @@ def license_wrapper():
 fft_on=True
 
 def resetrack_press(sender=None, app_data=None):
-    print('resetrack:',sender,app_data)
+    l_info(f'resetrack:{sender},{app_data}')
 
     global recorded_track,redraw_tracks_lines
     if recorded_track!='none':
@@ -786,6 +787,7 @@ def show_press(sender=None,app_data=None,track_combo=None):
     global show_track,redraw_tracks_lines,ico,recorded_track
     if press:
         show_track[track]=(True,False)[show_track[track]]
+        bind_item_theme(f"track{track}",line_theme)
 
     configure_track_button(track)
 
@@ -808,6 +810,8 @@ try:
 except Exception as e_ver:
     print(e_ver)
     VER_TIMESTAMP=''
+
+print(f'{VER_TIMESTAMP=}')
 
 #TODO
 in_samplerate = 44100
@@ -908,7 +912,7 @@ def record_track_changed(sender=None, app_data=None):
 
     if track_to_record=='none':
         recorded_track=None
-        bind_item_theme(f"track{recorded_track}",gray_line_theme)
+        bind_item_theme(f"track{recorded_track}",line_theme)
     else:
         if track_to_record=='1':
             recorded_track=0
@@ -950,7 +954,7 @@ def fft_toggle():
 
 def fft_change(sender=None, app_data=None):
     print(f'fft_change:{sender},{app_data}')
-    global fft_size,fft_points,in_samplerate,fft_line_data_x,fft_line_data_y,fft_line_data_x_border_index
+    global fft_size,fft_points
 
     fft_size=int(get_value('fft_size'))
     fft_points=int(fft_size/2+1)
@@ -1169,10 +1173,11 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
         in_stream_init()
 
 def on_click(sender, app_data):
+    print('on_click')
     hide_info()
 
 def on_click_plot(sender, app_data):
-    #print('on_click',sender, app_data)
+    #print('on_click_plot',sender, app_data)
 
     button_nr=app_data[0]
 
@@ -1218,28 +1223,28 @@ def wheel_callback(sender, val):
         set_value('slider',slide_val)
         slide_change('slider')
 
-def on_release(sender, app_data):
-    #print('on_release',sender, app_data)
+def on_mouse_release(sender, app_data):
+    print('on_mouse_release',sender, app_data)
     button_nr=app_data
 
-    global sweeping,lock_frequency
-
     if button_nr==0:
+        global sweeping,lock_frequency
+        global is_dragging,is_resizing
+        is_dragging = False
+        is_resizing = False
+
         lock_frequency=False
 
         if not sweeping:
             play_stop()
             status_set_frequency()
-
     elif button_nr==1:
-
         sweep_abort()
     else:
         l_info(f'another button:{button_nr}')
 
 prev_mouse_x=0
-def on_mouse_move(sender, app_data):
-
+def on_mouse_move_plot(sender, app_data):
     if not is_item_hovered("plot"):
         return
 
@@ -1264,7 +1269,7 @@ dpg.create_context()
 is_dragging = False
 is_resizing = False
 
-def mouse_down(sender, app_data):
+def on_mouse_down(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
     if not is_dragging:
         offset_x, offset_y = dpg.get_mouse_pos()
@@ -1276,15 +1281,12 @@ def mouse_down(sender, app_data):
 
         if offset_y<20:
             is_dragging = True
+            print('on_mouse_down - start dragging')
         elif offset_x>vw-30 and offset_y>vh-30:
             is_resizing = True
 
-def mouse_release(sender, app_data):
-    global is_dragging,is_resizing
-    is_dragging = False
-    is_resizing = False
-
-def mouse_move(sender, app_data):
+set_viewport_pos_scheduled=False
+def on_mouse_move(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
 
     #mouse_x, mouse_y = app_data
@@ -1293,7 +1295,11 @@ def mouse_move(sender, app_data):
         curr_vp_x = curr_vp_x + mouse_x - offset_x
         curr_vp_y = curr_vp_y + mouse_y - offset_y
 
-        dpg.set_viewport_pos([curr_vp_x, curr_vp_y])
+        #print('dpg.set_viewport_pos:',curr_vp_x, curr_vp_y)
+        #dpg.set_viewport_pos([curr_vp_x, curr_vp_y])
+        global set_viewport_pos_scheduled
+        set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
+
     elif is_resizing:
         dpg.set_viewport_height(mouse_y)
         dpg.set_viewport_width(mouse_x)
@@ -1310,8 +1316,9 @@ LIGHT_BUTTON_HOVER = (180, 180, 255, 255)
 LIGHT_BUTTON_ACTIVE = (150, 150, 255, 255)
 LIGHT_ACCENT = (50, 50, 200, 255)  # check, slider grab, etc.
 
-DARK_BG = (45, 45, 48, 128)
-DARK_BG_LIGHTER = (80, 80, 80, 128)
+#DARK_BG = (45, 45, 48, 200)
+DARK_BG = (60, 60, 60, 255)
+DARK_BG_LIGHTER = (40, 40, 40, 128)
 DARK_CHILD_BG = (60, 60, 65, 255)
 DARK_BORDER = (90, 90, 90, 255)
 DARK_FRAME = (70, 70, 75, 255)
@@ -1325,6 +1332,8 @@ DARK_ACCENT = (100, 150, 255, 255)  # check, slider grab, etc.
 
 with dpg.theme() as theme_light:
     with dpg.theme_component(dpg.mvAll):
+        dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, 12, category=dpg.mvThemeCat_Core)
+
         # tło i ramki
         dpg.add_theme_color(dpg.mvThemeCol_WindowBg, LIGHT_BG)
         dpg.add_theme_color(dpg.mvThemeCol_ChildBg, LIGHT_CHILD_BG)
@@ -1361,10 +1370,11 @@ with dpg.theme() as theme_light:
         #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
+
 with dpg.theme() as theme_dark:
     with dpg.theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
-        dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
+        #dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
+        #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
         dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
         dpg.add_theme_color(dpg.mvThemeCol_ChildBg, DARK_CHILD_BG)
         dpg.add_theme_color(dpg.mvThemeCol_PopupBg, DARK_CHILD_BG)
@@ -1396,6 +1406,13 @@ with dpg.theme() as theme_dark:
         #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
         #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
+
+    with dpg.theme_component(dpg.mvPlot):
+        #dpg.add_theme_color(dpg.mvPlotCol_PlotAreaBg, DARK_BG_LIGHTER)
+        dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
+        #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
+        #dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
+        pass
 
 #with theme() as text_ok:
  #   with theme_component(dpg.mvText):
@@ -1434,7 +1451,7 @@ with theme() as gray_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
             dpg.mvPlotCol_Line,
-            (100, 100, 100, 100),
+            (10, 10, 10, 255),
             category=dpg.mvThemeCat_Plots
         )
         dpg.add_theme_style(
@@ -1489,6 +1506,7 @@ def widget_tooltip(message,widget=None):
         add_text(message)
 
 def key_callback(sender, app_data):
+    set_status('')
     hide_info()
     if app_data==dpg.mvKey_1:
         show_press(None,None,(0,True))
@@ -1539,7 +1557,6 @@ def key_callback(sender, app_data):
         sweeping=False
         set_value('debug_text2','')
     else:
-        #print('key_callback',sender, app_data)
         pass
 
 def slide_change(sender):
@@ -1549,30 +1566,40 @@ def slide_change(sender):
 vsync_default=False
 settings_height=120
 
+decorated=False
+try:
+    if environ['SAS_DECORATED']:
+        decorated=True
+except:
+    pass
+
+title_hight=(0 if decorated else 26)
 status_height=50
 plot_min_height=200
 plot_axis_height=40
-viewport_height_min=plot_min_height+status_height
+viewport_height_min=plot_min_height+status_height+title_hight
 
 def theme_light_callback():
     dpg.bind_theme(theme_light)
-    bind_item_theme("fft_line",gray_line_theme)
+    line_theme=gray_line_theme
+    bind_item_theme("fft_line",line_theme)
+    for track in range(tracks):
+        bind_item_theme(f"track{track}",line_theme)
+    configure_item('plotbg',texture_tag=ico['bg'])
 
 def theme_dark_callback():
     dpg.bind_theme(theme_dark)
-    bind_item_theme("fft_line",white_line_theme)
+    line_theme=white_line_theme
+    bind_item_theme("fft_line",line_theme)
+    for track in range(tracks):
+        bind_item_theme(f"track{track}",line_theme)
+
+    configure_item('plotbg',texture_tag=ico['bg_dark'])
 
 def debug_callback():
     set_value('debug_text','')
 
-decoration=True
-try:
-    if environ['SAS_NO_DECORATION']:
-        decoration=False
-except:
-    pass
-
-create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=vsync_default,decorated=decoration)
+create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=vsync_default,decorated=decorated)
 
 bottom_shown=True
 
@@ -1615,39 +1642,50 @@ def on_viewport_resize(sender=None, app_data=None):
 
     info_chars=int(vw/7)
 
-    plot_height  = max(plot_min_height, vh - (settings_height if bottom_shown else 0) - status_height)
+    plot_height  = max(plot_min_height, vh - (settings_height if bottom_shown else 0) - status_height - title_hight)
 
     set_item_height('slider', plot_height-plot_axis_height)
-    set_item_height('slider_window', plot_height-plot_axis_height+8)
+    set_item_pos('slider',[5,title_hight+23])
 
     set_item_height('plot', plot_height)
-    set_item_width('plot', vw-80)
+    set_item_width('plot', vw-64)
 
-    set_item_pos('info_window',[0,0])
-    set_item_pos('debug_text',[85,20])
-    set_item_pos('debug_text2',[385,20])
+    set_item_pos('info_window',[0,title_hight])
+    set_item_pos('debug_text',[85,24+title_hight])
+    set_item_pos('debug_text2',[385,24+title_hight])
     set_item_width('info_window', vw)
     set_item_height('info_window', vh)
+
+def exit_press(sender=None, app_data=None):
+    global exiting
+    exiting=True
 
 ###################################################
 with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_move=True) as main:
     set_primary_window(main, True)
 
-    if not decoration:
+    if not decorated:
         with dpg.table(header_row=False,resizable=False, policy=dpg.mvTable_SizingStretchProp,borders_outerH=False, borders_innerV=False, borders_outerV=False):
-            dpg.add_table_column( width_fixed=True, init_width_or_weight=60)
+            dpg.add_table_column( width_fixed=True, init_width_or_weight=5)
+            dpg.add_table_column( width_fixed=True, init_width_or_weight=16)
+            dpg.add_table_column( width_fixed=True, init_width_or_weight=300)
             dpg.add_table_column( width_stretch=True, init_width_or_weight=10)
             dpg.add_table_column( width_fixed=True, init_width_or_weight=16)
+            dpg.add_table_column( width_fixed=True, init_width_or_weight=3)
 
             with dpg.table_row():
+                dpg.add_spacer(height=3)
+
+            with dpg.table_row():
+                dpg.add_spacer(width=3)
+                add_image_button(ico["sas_small"],callback=None)
                 dpg.add_text(title)
                 dpg.add_spacer()
-                dpg.add_button(label="X", callback=lambda: sys.exit())
+                add_image_button(ico["exit"],callback=exit_press)
+                dpg.add_spacer(width=3)
 
-        with dpg.handler_registry():
-            dpg.add_mouse_down_handler(button=0, callback=mouse_down)
-            dpg.add_mouse_release_handler(button=0, callback=mouse_release)
-            dpg.add_mouse_move_handler(callback=mouse_move)
+            with dpg.table_row():
+                dpg.add_spacer(height=3)
 
     with window(tag='info_window',no_close=True,menubar=False,no_title_bar=True,autosize=False,no_scrollbar=True):
         add_text(tag='info_text',default_value='')
@@ -1664,9 +1702,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
             with dpg.group(tag='plot_combo',horizontal=True):
                 dpg.add_spacer(width=6)
 
-                with child_window(tag='slider_window',no_scrollbar=True, border=False,width=12):
-                    dpg.add_spacer(height=6)
-                    dpg.add_slider_float(tag='slider',callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,format="",width=10)
+                dpg.add_slider_float(tag='slider',callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,format="",width=10,track_offset=0.5)
 
                 with plot(tag='plot',no_mouse_pos=True,no_menus=True,no_frame=True):
                     yticks = (('dBFS',00),('-10',-10),("-20",-20),('-30',-30),('-40',-40),('-50',-50),('-60',-60),('-70',-70),('-80',-80),('-90',-90), ("-100",-100), ("-110",-110), ("-120",-120))
@@ -1683,13 +1719,14 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                     with dpg.plot_axis(dpg.mvYAxis, tag = 'y_axis',no_highlight=True):
                         dpg.set_axis_limits("y_axis", dbmin_display, dbmax_display)
-                        dpg.set_axis_ticks("y_axis", yticks)
 
-                        #add_line_series(fft_line_data_x, fft_line_data_y, tag="fft_line",label='FFT', user_data='FFT')
-                        add_line_series([20], [-120], tag="fft_line",label='FFT', user_data='FFT')
+                        dpg.add_image_series(tag='plotbg',texture_tag=ico['bg'],bounds_min=(0, -280),bounds_max=(40000, 0),parent='y_axis')
+                        dpg.set_axis_ticks("y_axis", yticks)
 
                         add_line_series((0,0),(dbmin,0),tag="cursor_f")
                         bind_item_theme("cursor_f",red_line_theme)
+
+                        add_line_series([20], [-120], tag="fft_line",label='FFT', user_data='FFT')
 
                         for lab,val in xticks:
                             if lab:
@@ -1697,18 +1734,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 bind_item_theme(f'stick{val}',grid_line_theme)
 
                         for track in range(tracks):
-                            #add_line_series(bucket_freqs, track_line_data_y[track], tag=f"track{track}",label=f"track{track+1}",user_data=track,show=False)
                             add_line_series([20], [-120], tag=f"track{track}",label=f"track{track+1}",user_data=track,show=False)
 
-                    dpg.add_image_series(
-                        texture_tag=ico['bg'],
-                        bounds_min=(0, -280),
-                        bounds_max=(40000, 0),
-                        parent='y_axis'
-                    )
-
                     with item_handler_registry(tag="plot_handlers"):
-                        add_item_hover_handler(callback=on_mouse_move)
+                        add_item_hover_handler(callback=on_mouse_move_plot)
                         add_item_clicked_handler(callback=on_click_plot)
 
                     bind_item_handler_registry("plot", "plot_handlers")
@@ -1777,7 +1806,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_text(default_value='')
                         with dpg.group():
                             add_text(default_value='API')
-                            add_text(default_value='')
+                            #add_text(default_value='')
                             add_text(default_value='FFT')
                             add_text(default_value=' window')
                             add_text(default_value=' size')
@@ -1785,7 +1814,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                         with dpg.group(width=-1):
                             add_combo(tag='api',default_value='',callback=api_changed)
-                            add_checkbox(tag='exclusive',label='WASAPI Exclusive',callback=wasapi_exclusive_callback,default_value=False,enabled=windows)
+                            #add_checkbox(tag='exclusive',label='WASAPI Exclusive',callback=wasapi_exclusive_callback,default_value=False,enabled=windows)
                             add_text(default_value='')
 
                             add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
@@ -1841,10 +1870,12 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
     with dpg.handler_registry():
         dpg.add_mouse_click_handler(callback=on_click)
-        dpg.add_mouse_release_handler(callback=on_release)
+        dpg.add_mouse_release_handler(callback=on_mouse_release)
         dpg.add_mouse_wheel_handler(callback=wheel_callback)
         dpg.add_key_press_handler(callback=key_callback)
 
+        dpg.add_mouse_down_handler(button=0, callback=on_mouse_down)
+        dpg.add_mouse_move_handler(callback=on_mouse_move)
 
 dpg.set_viewport_small_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas_small.png")))
 dpg.set_viewport_large_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas.png")))
@@ -1856,6 +1887,7 @@ dpg.setup_dearpygui()
 ########################################################################
 
 theme_dark_callback()
+line_theme=white_line_theme
 
 try:
     distro_info=Path(path_join(EXECUTABLE_DIR,'distro.info.txt')).read_text(encoding='utf-8')
@@ -1904,24 +1936,10 @@ def set_status(text,alert=False):
         #    bind_item_theme("status_text", text_ok)
 
 
-def mouse_down():
-    pass
-
-def mouse_up():
-    pass
-
-def on_drag(sender, app_data):
-    pass
-
 next_fps = perf_counter()+1
 frames = 0
 rec_callbacks = 0
 rec_samples = 0
-
-with dpg.handler_registry():
-    dpg.add_mouse_drag_handler(button=dpg.mvMouseButton_Left,callback=on_drag)
-    dpg.add_mouse_down_handler(button=dpg.mvMouseButton_Left, callback=mouse_down)
-    dpg.add_mouse_release_handler(button=dpg.mvMouseButton_Left, callback=mouse_up)
 
 record_track_changed()
 dpg.configure_app(init_file=ini_file,load_init_file=True)
@@ -1999,11 +2017,15 @@ while is_dearpygui_running():
                 if show:
                     set_value(f"track{track}", [bucket_freqs, track_line_data_y[track]])
 
+                    #TODO
                     if track!=recorded_track:
-                        bind_item_theme(f"track{track}",gray_line_theme)
+                        bind_item_theme(f"track{track}",line_theme)
 
             redraw_tracks_lines=False
 
+        if set_viewport_pos_scheduled:
+            dpg.set_viewport_pos(set_viewport_pos_scheduled)
+            set_viewport_pos_scheduled=False
         render_dearpygui_frame()
 
         ##################################
