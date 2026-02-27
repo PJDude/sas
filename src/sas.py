@@ -33,7 +33,7 @@ from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_vi
 
 from time import strftime,time,localtime,perf_counter
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 
 from collections import deque
@@ -82,6 +82,7 @@ INTERNAL_DIR_IMAGES = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'images'])
 
 Path(INTERNAL_DIR_CSV_DEBUG).mkdir(parents=True,exist_ok=True)
 Path(INTERNAL_DIR_LOGS).mkdir(parents=True,exist_ok=True)
+Path(INTERNAL_DIR_IMAGES).mkdir(parents=True,exist_ok=True)
 
 Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
 
@@ -351,11 +352,14 @@ def load_csv_file_selected(sender, app_data):
 def load_csv():
     show_item("file_dialog_load")
 
+def img_callback(img):
+    print('img_callback:',img)
+
 def save_image():
     filename_full = path_join(INTERNAL_DIR_IMAGES, 'sas.png')
 
     set_status(f'saving {filename_full} ...')
-    dpg.output_frame_buffer(filename_full)
+    dpg.output_frame_buffer(filename_full,callback=img_callback)
 
     x, y = dpg.get_item_rect_min("plot")
     w, h = dpg.get_item_rect_size("plot")
@@ -600,7 +604,7 @@ out_blocksize_default=256
 out_latency_default='low'
 
 in_blocksize_values=(512,256,128,64,0)
-in_blocksize_default=64
+in_blocksize_default=256
 in_latency_default='low'
 
 out_channel_buffer_mod_index=0
@@ -2087,6 +2091,7 @@ dpg.configure_app()
 show_help()
 
 while is_dearpygui_running():
+
     if sweeping:
         now=perf_counter()
         if now>next_sweep_time:
@@ -2177,51 +2182,51 @@ while is_dearpygui_running():
 
             redraw_tracks_lines=False
 
-        if set_viewport_pos_scheduled:
-            dpg.set_viewport_pos(set_viewport_pos_scheduled)
-            cfg['viewport_pos']=set_viewport_pos_scheduled
-            set_viewport_pos_scheduled=False
-        elif set_viewport_size_scheduled:
-            dpg.set_viewport_width(set_viewport_size_scheduled[0])
-            dpg.set_viewport_height(set_viewport_size_scheduled[1])
-            cfg['viewport_size']=set_viewport_size_scheduled
-            set_viewport_size_scheduled=None
+    if set_viewport_pos_scheduled:
+        dpg.set_viewport_pos(set_viewport_pos_scheduled)
+        cfg['viewport_pos']=set_viewport_pos_scheduled
+        set_viewport_pos_scheduled=False
+    elif set_viewport_size_scheduled:
+        dpg.set_viewport_width(set_viewport_size_scheduled[0])
+        dpg.set_viewport_height(set_viewport_size_scheduled[1])
+        cfg['viewport_size']=set_viewport_size_scheduled
+        set_viewport_size_scheduled=None
 
-        render_dearpygui_frame()
+    render_dearpygui_frame()
 
-        ##################################
-        if DEBUG:
-            frames += 1
-            now = perf_counter()
-            if now > next_fps :
-                out_sum=audio_output_callback_outside+audio_output_callback_inside
-                out_ratio = 0 if out_sum==0 else audio_output_callback_inside/out_sum
+    ##################################
+    if DEBUG:
+        frames += 1
+        now = perf_counter()
+        if now > next_fps :
+            out_sum=audio_output_callback_outside+audio_output_callback_inside
+            out_ratio = 0 if out_sum==0 else audio_output_callback_inside/out_sum
 
-                in_sum=audio_input_callback_outside+audio_input_callback_inside
-                in_ratio = 0 if in_sum==0 else audio_input_callback_inside/in_sum
+            in_sum=audio_input_callback_outside+audio_input_callback_inside
+            in_ratio = 0 if in_sum==0 else audio_input_callback_inside/in_sum
 
-                set_value('debug_text',f'''
-    FPS:{frames} VSync:{get_value("vsync")}\n
-    {input_callbacks_all=}
-    {rec_samples=}\n
-    OUT  {out_ratio}
-    IN   {in_ratio}\n
-    FFT Window duration: {fft_duration}s
-    {postprocessing=}   {fft_line_data_x_border_index} / {len(fft_values)} - {bucket_freqs_border_index} / {len(fft_values_means_in_buckets)}
-    {border_f=} Hz
-    ''')
+            set_value('debug_text',f'''
+FPS:{frames} VSync:{get_value("vsync")}\n
+{input_callbacks_all=}
+{rec_samples=}\n
+OUT  {out_ratio}
+IN   {in_ratio}\n
+FFT Window duration: {fft_duration}s
+{postprocessing=}   {fft_line_data_x_border_index} / {len(fft_values)} - {bucket_freqs_border_index} / {len(fft_values_means_in_buckets)}
+{border_f=} Hz
+''')
 
-                frames = 0
-                input_callbacks_all = 0
-                rec_samples = 0
-                next_fps = now+1.0
+            frames = 0
+            input_callbacks_all = 0
+            rec_samples = 0
+            next_fps = now+1.0
 
-                audio_output_callback_outside=0
-                audio_output_callback_inside=0
+            audio_output_callback_outside=0
+            audio_output_callback_inside=0
 
-                audio_input_callback_outside=0
-                audio_input_callback_inside=0
-        ##################################
+            audio_input_callback_outside=0
+            audio_input_callback_inside=0
+    ##################################
 
     if exiting:
         break
