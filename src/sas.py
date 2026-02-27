@@ -31,9 +31,9 @@ import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,add_scatter_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_deactivated_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_release_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_button,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window
 
-from time import sleep,strftime,time,localtime,perf_counter
+from time import strftime,time,localtime,perf_counter
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,array
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 
 from collections import deque
@@ -43,6 +43,7 @@ from math import pi, log10, ceil, floor
 from PIL import Image
 
 from pathlib import Path
+from json import dumps,loads
 
 import os
 from os import name as os_name, system, sep, environ
@@ -75,6 +76,13 @@ print(f'{EXECUTABLE_DIR_REAL=}')
 #EXECUTABLE_DIR = dirname(EXECUTABLE_FILE)
 
 INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"sas-internal"])
+INTERNAL_DIR_CSV_DEBUG = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'csv-debug'])
+INTERNAL_DIR_LOGS = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'logs'])
+INTERNAL_DIR_IMAGES = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'images'])
+
+Path(INTERNAL_DIR_CSV_DEBUG).mkdir(parents=True,exist_ok=True)
+Path(INTERNAL_DIR_LOGS).mkdir(parents=True,exist_ok=True)
+
 Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
 
 print(f'{INTERNAL_DIR=}')
@@ -86,11 +94,35 @@ def localtime_catched(t):
     except:
         return localtime(0)
 
-log_file = path_join(INTERNAL_DIR, strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) ) +'.txt')
-ini_file = path_join(INTERNAL_DIR, 'gui.ini')
+log_file = path_join(INTERNAL_DIR_LOGS, strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) ) +'.txt')
+cfg_file = path_join(INTERNAL_DIR, 'sas.cfg')
 
 print(f'{log_file=}')
-print(f'{ini_file=}')
+
+#fft_points = 4
+
+cfg={}
+
+try:
+    with open(cfg_file, "r", encoding="utf-8") as f:
+        cfg=loads(f.read())
+    print(f'cfg_file "{cfg_file}" opened successfully')
+except Exception as e:
+    print(f'cfg file "{cfg_file}" opening error {e}')
+
+cfg.setdefault('fft_size',1024)
+cfg.setdefault('fft_window_name','blackman')
+prev_fft=cfg['fft_window_name']
+#blackman'
+cfg.setdefault('theme','dark')
+
+cfg.setdefault('buckets_fft',1024)
+cfg.setdefault('buckets_tracks',256)
+
+cfg.setdefault('viewport_pos',[100,100])
+cfg.setdefault('viewport_size',[1300,400])
+
+print(f'{cfg=}')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -99,7 +131,6 @@ logging.basicConfig(
             logging.FileHandler(log_file, encoding='utf-8')
     ]
 )
-
 
 from io import BytesIO
 VERSION_FILE='version.txt'
@@ -112,8 +143,6 @@ if windows:
 
 np_fft_rfft=np_fft.rfft
 
-fft_size = 8
-fft_points = 4
 
 f_current=0
 tracks=8
@@ -143,7 +172,7 @@ def status_set_frequency():
     global show_track
     res_list = []
     res_list_append = res_list.append
-    if current_bucket<spectrum_buckets_quant:
+    if current_bucket<cfg['buckets_tracks']:
         for track,show in enumerate(show_track):
             if show:
                 db_temp = round(track_line_data_y[track][current_bucket])
@@ -176,87 +205,90 @@ def scroll_mod(mod,factor=0.001):
             f_current=f_new
 
 def save_fft_points():
-    file = path_join(INTERNAL_DIR, f'fft-{fft_size}-{fft_points}.csv')
-    #set_status(f'saving {file} ...')
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'fft-{cfg["fft_size"]}-{fft_points}.csv')
     print(file)
-
-    global bucket_freqs
 
     try:
         with open(file,'w',encoding='utf-8') as fh:
-            fh.write(f"#fft_size:{fft_size},fft_points:{fft_points}\n")
+            fh.write(f"#fft_size:{cfg['fft_size']},fft_points:{fft_points}\n")
             fh.write("#index,frequency[Hz]\n")
             for i,f in enumerate(fft_line_data_x):
                 fh.write(f'{i},{f}\n')
     except Exception as e:
-        print(f'buckets-save_csv_error:{e}')
+        print(f'save_fft_points_error:{e}')
         #l_error()
 
-def save_buckets():
-    file = path_join(INTERNAL_DIR, f'buckets-{spectrum_buckets_quant}.csv')
-    #set_status(f'saving {file} ...')
+def save_window():
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'fft_window-{cfg["fft_size"]}-{cfg["fft_window_name"]}.csv')
     print(file)
-
-    global bucket_freqs
 
     try:
         with open(file,'w',encoding='utf-8') as fh:
-            fh.write(f"#buckets:{spectrum_buckets_quant}\n")
+            fh.write(f"#fft_size:{cfg['fft_size']}\n")
+            fh.write("#index,val\n")
+            for i,v in enumerate(fft_window):
+                fh.write(f'{i},{v}\n')
+    except Exception as e:
+        print(f'save_fft_window_error:{e}')
+
+def save_buckets():
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'buckets-{cfg["buckets_tracks"]}.csv')
+    print(file)
+
+    try:
+        with open(file,'w',encoding='utf-8') as fh:
+            fh.write(f"#buckets:{cfg["buckets_tracks"]}\n")
             fh.write("#index,frequency[Hz]\n")
-            for b in range(spectrum_buckets_quant):
-                f=bucket_freqs[b]
+            for b in range(cfg['buckets_tracks']):
+                f=bucket_fft_freqs[b]
                 fh.write(f'{b},{f}\n')
     except Exception as e:
         print(f'buckets-save_csv_error:{e}')
         #l_error()
 
 def save_buckets_edges():
-    global bucket_edges
-    file = path_join(INTERNAL_DIR, f'buckets-edges-{len(bucket_edges)}.csv')
-    #set_status(f'saving {file} ...')
+    global bucket_fft_edges
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'bucket_fft_edges-{len(bucket_fft_edges)}.csv')
     print(file)
-
 
     try:
         with open(file,'w',encoding='utf-8') as fh:
-            fh.write(f"#buckets-edges:{len(bucket_edges)}\n")
+            fh.write(f"#bucket_fft_edges:{len(bucket_fft_edges)}\n")
             fh.write("#index,frequency[Hz]\n")
-            for i,f in enumerate(bucket_edges):
+            for i,f in enumerate(bucket_fft_edges):
                 fh.write(f'{i},{f}\n')
     except Exception as e:
-        print(f'buckets-edges-save_csv_error:{e}')
+        print(f'bucket_fft_edges-save_csv_error:{e}')
         #l_error()
 
-def save_bin_indices():
-    global bin_indices
-    file = path_join(INTERNAL_DIR, f'bin_indices-{len(bin_indices)}.csv')
-    #set_status(f'saving {file} ...')
+def save_fft_bin_indices():
+    global fft_bin_indices
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'fft_bin_indices-{len(fft_bin_indices)}.csv')
     print(file)
 
     try:
         with open(file,'w',encoding='utf-8') as fh:
-            fh.write(f"#bin_indices:{len(bin_indices)}\n")
+            fh.write(f"#fft_bin_indices:{len(fft_bin_indices)}\n")
             fh.write("#index,index[Hz]\n")
-            for i,j in enumerate(bin_indices):
+            for i,j in enumerate(fft_bin_indices):
                 fh.write(f'{i},{j}\n')
     except Exception as e:
-        print(f'bin_indices-save_csv_error:{e}')
+        print(f'fft_bin_indices-save_csv_error:{e}')
         #l_error()
 
-def save_bin_counts():
-    global bin_counts
-    file = path_join(INTERNAL_DIR, f'bin_counts-{len(bin_counts)}.csv')
-    #set_status(f'saving {file} ...')
+def save_fft_bin_counts():
+    global fft_bin_counts
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'fft_bin_counts-{len(fft_bin_counts)}.csv')
     print(file)
 
     try:
         with open(file,'w',encoding='utf-8') as fh:
-            fh.write(f"#bin_counts:{len(bin_counts)}\n")
+            fh.write(f"#fft_bin_counts:{len(fft_bin_counts)}\n")
             fh.write("#index,index[Hz]\n")
-            for i,j in enumerate(bin_counts):
+            for i,j in enumerate(fft_bin_counts):
                 fh.write(f'{i},{j}\n')
     except Exception as e:
-        print(f'bin_counts-save_csv_error:{e}')
+        print(f'fft_bin_counts-save_csv_error:{e}')
         #l_error()
 
 def save_csv():
@@ -267,7 +299,7 @@ def save_csv():
         with open(filename,'w',encoding='utf-8') as f:
             f.write("# Created with " + title + " #\n")
             f.write("frequency[Hz],level[dBFS]\n")
-            for i in range(spectrum_buckets_quant):
+            for i in range(cfg["buckets_tracks"]):
                 values=[]
                 for track,show in enumerate(show_track):
                     if show:
@@ -299,7 +331,7 @@ def load_csv_file_selected(sender, app_data):
 
                         if fmin_audio<=float_freq<=fmax_audio:
                             logf=log10(float_freq)
-                            bucket = logf_to_bucket(logf)
+                            bucket = logf_to_bucket_tracks(logf)
                         else:
                             print("wrong frequency:",float_freq)
                             continue
@@ -320,7 +352,7 @@ def load_csv():
     show_item("file_dialog_load")
 
 def save_image():
-    filename_full = path_join(INTERNAL_DIR, 'sas.png')
+    filename_full = path_join(INTERNAL_DIR_IMAGES, 'sas.png')
 
     set_status(f'saving {filename_full} ...')
     dpg.output_frame_buffer(filename_full)
@@ -333,18 +365,19 @@ def save_image():
     cropped_img = img.crop((x, y, x+w, y+h))
 
     timestamp=strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) )
-    filename_cut=path_join(INTERNAL_DIR, f'sas-{timestamp}.png')
+    filename_cut=path_join(INTERNAL_DIR_IMAGES, f'sas-{timestamp}.png')
 
     set_status(f'saving {filename_cut} ...')
     cropped_img.save(filename_cut)
 
-scale_factor_logf_to_bucket=1
+scale_factor_logf_to_bucket_fft=1
+scale_factor_logf_to_bucket_tracks=1
 
-def logf_to_bucket(logf):
-    return int(floor(scale_factor_logf_to_bucket * (logf - logf_min_audio)))
+def logf_to_bucket_fft(logf):
+    return int(round(scale_factor_logf_to_bucket_fft * (logf - logf_min_audio)))
 
-def bucket_to_logf(i):
-    return (i+0.5)/scale_factor_logf_to_bucket + logf_min_audio
+def logf_to_bucket_tracks(logf):
+    return int(round(scale_factor_logf_to_bucket_tracks * (logf - logf_min_audio)))
 
 phase_step=1.0
 
@@ -354,7 +387,7 @@ def change_f(fpar):
     if fmin_audio<fpar<fmax_audio:
         current_logf=log10(fpar)
         current_f=fpar
-        current_bucket=logf_to_bucket(current_logf)
+        current_bucket=logf_to_bucket_tracks(current_logf)
 
         set_value("cursor_f", ((fpar,fpar), (0,dbmin)))
         set_value('cursor_f_txt', (fpar, -3))
@@ -370,9 +403,11 @@ audio_output_callback_inside=0
 audio_output_callback_prev=perf_counter()
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,audio_output_callback_prev,audio_output_callback_inside,audio_output_callback_outside
-    audio_output_callback_start=perf_counter()
-    audio_output_callback_outside += audio_output_callback_start-audio_output_callback_prev
+    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,DEBUG
+    if DEBUG:
+        global audio_output_callback_outside,audio_output_callback_inside,audio_output_callback_prev
+        audio_output_callback_start=perf_counter()
+        audio_output_callback_outside += audio_output_callback_start-audio_output_callback_prev
 
     if playing_state:
         phase_arr=(phase + phase_step * phase_i) % two_pi
@@ -394,13 +429,10 @@ def audio_output_callback(outdata, frames, time, status):
     else:
         outdata.fill(0)
 
-    audio_output_callback_end=perf_counter()
-    audio_output_callback_inside += audio_output_callback_end-audio_output_callback_start
-    audio_output_callback_prev=audio_output_callback_end
-
-#def wasapi_exclusive_callback(sender=None, app_data=None):
-#    l_info(f'wasapi_exclusive_callback:{sender},{app_data}')
-#    out_stream_init()
+    if DEBUG:
+        audio_output_callback_end=perf_counter()
+        audio_output_callback_inside += audio_output_callback_end-audio_output_callback_start
+        audio_output_callback_prev=audio_output_callback_end
 
 def vsync_callback(sender=None, app_data=None):
     l_info(f'vsync_callback:{sender},{app_data}')
@@ -468,7 +500,7 @@ exiting=False
 
 current_sample_db=-120
 
-samples_chunks_fifo_chunks_new=0
+input_callbacks_count=0
 samples_chunks_fifo_new=0
 samples_chunks_fifo=deque(maxlen=32)
 samples_chunks_fifo_put=samples_chunks_fifo.append
@@ -480,19 +512,23 @@ audio_input_callback_inside=0
 audio_input_callback_prev=perf_counter()
 
 def audio_input_callback(indata, frames, time_info, status):
-    global samples_chunks_fifo_new,samples_chunks_fifo_chunks_new,audio_input_callback_prev,audio_input_callback_inside,audio_input_callback_outside
-    audio_input_callback_start=perf_counter()
-    audio_input_callback_outside += audio_input_callback_start-audio_input_callback_prev
+    global samples_chunks_fifo_new,input_callbacks_count,DEBUG
+
+    if DEBUG:
+        global audio_input_callback_outside,audio_input_callback_inside,audio_input_callback_prev
+        audio_input_callback_start=perf_counter()
+        audio_input_callback_outside += audio_input_callback_start-audio_input_callback_prev
 
     new_samples=len(indata[:, 0])
     samples_chunks_fifo_put(indata[:, 0].copy())
 
     samples_chunks_fifo_new+=new_samples
-    samples_chunks_fifo_chunks_new+=1
+    input_callbacks_count+=1
 
-    audio_input_callback_end=perf_counter()
-    audio_input_callback_inside += audio_input_callback_end-audio_input_callback_start
-    audio_input_callback_prev=audio_input_callback_end
+    if DEBUG:
+        audio_input_callback_end=perf_counter()
+        audio_input_callback_inside += audio_input_callback_end-audio_input_callback_start
+        audio_input_callback_prev=audio_input_callback_end
 
 @catch
 def go_to_homepage():
@@ -564,7 +600,7 @@ out_blocksize_default=256
 out_latency_default='low'
 
 in_blocksize_values=(512,256,128,64,0)
-in_blocksize_default=256
+in_blocksize_default=64
 in_latency_default='low'
 
 out_channel_buffer_mod_index=0
@@ -648,6 +684,7 @@ def out_stream_init():
     try:
         if environ['SAS_WASAPI_EXCLUSIVE']:
             extra_settings=WasapiSettings(exclusive=True)
+            print('WASAPI Exclusive mode !')
     except:
         pass
 
@@ -692,7 +729,7 @@ def in_channel_changed(sender=None, app_data=None,user_data=False):
         in_stream_init()
 
 def in_stream_init():
-    global stream_in,device_in_current,device_in_channels_stream_option,in_channel_buffer_mod_index
+    global stream_in,device_in_current,in_channel_buffer_mod_index
 
     device=int(device_in_current['index'])
     samplerate=float(get_value('in_samplerate'))
@@ -711,7 +748,6 @@ def in_stream_init():
             blocksize=blocksize,
             channels=channels
         )
-        #channels=device_in_channels_stream_option
         # dtype="float32"
         stream_in.start()
 
@@ -764,7 +800,7 @@ def resetrack_press(sender=None, app_data=None):
     global recorded_track,redraw_tracks_lines
     if recorded_track!='none':
         sweep_abort()
-        track_line_data_y[recorded_track]=[dbinit]*spectrum_buckets_quant
+        track_line_data_y[recorded_track]=[dbinit]*cfg['buckets_tracks']
         redraw_tracks_lines=True
     else:
         print('recording not enabled for track',track)
@@ -828,9 +864,7 @@ logf_min_audio,logf_max_audio=log10(fmin_audio),log10(fmax_audio)
 current_f=fini
 current_logf=logf_ini
 
-spectrum_buckets_quant=16
-
-current_bucket=logf_to_bucket(current_logf)
+current_bucket=logf_to_bucket_tracks(current_logf)
 
 dbmin=-122.0
 dbmin_display=-123.0
@@ -902,17 +936,19 @@ def api_changed(sender=None, app_data=None):
 
     in_dev_changed(None,None,True)
 
-@catch
 def record_track_changed(sender=None, app_data=None):
+    l_info(f'record_track_changed:{sender},{app_data}')
     track_to_record=get_value('rec_track')
 
     sweep_abort()
 
-    global recorded_track
+    global recorded_track,line_theme
 
     if track_to_record=='none':
-        recorded_track=None
-        bind_item_theme(f"track{recorded_track}",line_theme)
+        print(f'record_track_changed:{recorded_track=}')
+        if recorded_track:
+            bind_item_theme(f"track{recorded_track}",line_theme)
+            recorded_track=None
     else:
         if track_to_record=='1':
             recorded_track=0
@@ -939,66 +975,71 @@ def record_track_changed(sender=None, app_data=None):
 
         bind_item_theme(f"track{recorded_track}",reddark_line_theme)
 
-prev_fft='blackman'
 def fft_toggle():
-    global prev_fft
-    fft_window_name=get_value('fft_window')
+    l_info('fft_toggle')
 
-    if fft_window_name=='none':
+    global prev_fft,cfg
+    cfg['fft_window_name']=get_value('fft_window')
+
+    if cfg['fft_window_name']=='none':
         set_value('fft_window', prev_fft)
         configure_item("fft_line", show=True)
     else:
         set_value('fft_window', 'none')
         configure_item("fft_line", show=False)
-        prev_fft=fft_window_name
+        prev_fft=cfg['fft_window_name']
 
+FFT_SIZE=0
 def fft_change(sender=None, app_data=None):
-    print(f'fft_change:{sender},{app_data}')
-    global fft_size,fft_points
+    l_info(f'fft_change:{sender},{app_data}')
+    global cfg,fft_points,FFT_SIZE
 
-    fft_size=int(get_value('fft_size'))
-    fft_points=int(fft_size/2+1)
+    FFT_SIZE=cfg['fft_size']=int(get_value('fft_size'))
+    fft_points=int(cfg['fft_size']/2+1)
 
     fft_window_changed()
 
 def fft_window_changed(sender=None, app_data=None):
-    fft_window_name=get_value('fft_window')
+    global fft_on,fft_window,window_correction,cfg
 
-    global fft_on,fft_window,window_correction
-    if fft_window_name=='off':
+    cfg['fft_window_name']=get_value('fft_window')
+
+    if cfg['fft_window_name']=='off':
         fft_on=False
     else:
         fft_on=True
-        if fft_window_name=='ones':
-            fft_window=ones(fft_size)
-        elif fft_window_name=='hanning':
-            fft_window=hanning(fft_size)
-        elif fft_window_name=='hamming':
-            fft_window=hamming(fft_size)
-        elif fft_window_name=='blackman':
-            fft_window=blackman(fft_size)
-        elif fft_window_name=='bartlett':
-            fft_window=bartlett(fft_size)
+        if cfg['fft_window_name']=='ones':
+            fft_window=ones(cfg['fft_size'])
+        elif cfg['fft_window_name']=='hanning':
+            fft_window=hanning(cfg['fft_size'])
+        elif cfg['fft_window_name']=='hamming':
+            fft_window=hamming(cfg['fft_size'])
+        elif cfg['fft_window_name']=='blackman':
+            fft_window=blackman(cfg['fft_size'])
+        elif cfg['fft_window_name']=='bartlett':
+            fft_window=bartlett(cfg['fft_size'])
         else:
-            l_error(f'unknown window:{fft_window_name}')
+            l_error(f'unknown window:{cfg["fft_window_name"]}')
 
     window_correction = np_sum(fft_window)
     configure_item("fft_line", show=fft_on)
 
-    l_info(f'fft_window_changed:{sender},{app_data},{fft_window_name},{len(fft_window)}')
+    l_info(f'fft_window_changed:{sender},{app_data},{cfg["fft_window_name"]},{len(fft_window)}')
 
     common_precalc()
-    #fft_window = eval(f'{fft_window_name}({fft_size})')()
 
-bucket_freqs=[0]
-bucket_edges=[0]
+    if DEBUG:
+        save_window()
+
+bucket_fft_freqs=[0]
+bucket_fft_edges=[0]
 
 fft_line_data_x_border_index=0
 bucket_freqs_border_index=0
 track_line_data_y={}
 
 time_to_collect_sample=0.125 #[s]
-#1/4s
+
 spectrum_sub_bucket_samples=4
 sweeping_delay=time_to_collect_sample*1.5/spectrum_sub_bucket_samples
 l_info(f'{sweeping_delay=}')
@@ -1007,100 +1048,140 @@ logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
 postprocessing=False
 def postprocessing_callback(sender=None, app_data=None):
+    l_info(f'postprocessing_callback:{sender},{app_data}')
     global postprocessing
-    print(f'postprocessing_callback:{sender},{app_data}')
-    postprocessing=get_value('postprocessing')
+    postprocessing=app_data
     common_precalc()
 
-def buckets_quant_change(sender=None, app_data=None):
-    print(f'buckets_quant_change:{sender},{app_data}')
+def buckets_quant_change(sender=None, app_data=None, call_common=True):
+    l_info(f'buckets_quant_change:{sender},{app_data},{call_common}')
+    global sweep_steps,scale_factor_logf_to_bucket_fft,logf_sweep_step,log_bucket_fft_width,log_bucket_fft_width_by2,redraw_tracks_lines,cfg
 
-    global spectrum_buckets_quant,sweep_steps,scale_factor_logf_to_bucket,logf_sweep_step,log_bucket_width,log_bucket_width_by2,redraw_tracks_lines
+    cfg['buckets_fft']=int(get_value('buckets_fft'))
 
-    spectrum_buckets_quant=int(get_value('buckets'))
-    sweep_steps=spectrum_buckets_quant*spectrum_sub_bucket_samples
+    scale_factor_logf_to_bucket_fft=cfg['buckets_fft']/logf_max_audio_m_logf_min_audio
+    log_bucket_fft_width=logf_max_audio_m_logf_min_audio/cfg['buckets_fft']
+    log_bucket_fft_width_by2=log_bucket_fft_width*0.5
+
+    global sweep_steps,scale_factor_logf_to_bucket_tracks,logf_sweep_step,log_bucket_tracks_width,log_bucket_tracks_width_by2
+
+    cfg['buckets_tracks']=int(get_value('buckets_tracks'))
+
+    sweep_steps=cfg['buckets_tracks']*spectrum_sub_bucket_samples
     logf_sweep_step=logf_max_audio_m_logf_min_audio/sweep_steps
 
-    scale_factor_logf_to_bucket=spectrum_buckets_quant/logf_max_audio_m_logf_min_audio
-    log_bucket_width=logf_max_audio_m_logf_min_audio/spectrum_buckets_quant
-    log_bucket_width_by2=log_bucket_width*0.5
+    scale_factor_logf_to_bucket_tracks=cfg['buckets_tracks']/logf_max_audio_m_logf_min_audio
+    log_bucket_tracks_width=logf_max_audio_m_logf_min_audio/cfg['buckets_tracks']
+    log_bucket_tracks_width_by2=log_bucket_tracks_width*0.5
 
-    common_precalc()
+    if call_common:
+        common_precalc()
 
     redraw_tracks_lines=True
 
 def common_precalc():
-    global two_pi_by_in_samplerate,in_samplerate_by_fft_size,fft_size
-    global sweep_steps,fft_line_data_x_border_index,spectrum_buckets_quant,track_line_data_y,time_to_collect_sample,log_bucket_width,log_bucket_width_by2,bucket_freqs_border_index
+    l_info('common_precalc')
 
-    in_samplerate_by_fft_size = in_samplerate / fft_size
+    global two_pi_by_in_samplerate,in_samplerate_by_fft_size,cfg,fft_duration
+    global sweep_steps,fft_line_data_x_border_index,track_line_data_y,time_to_collect_sample,log_bucket_width,log_bucket_fft_width,log_bucket_tracks_width,log_bucket_fft_width_by2,log_bucket_tracks_width_by2,bucket_freqs_border_index
 
-    global bucket_freqs,fft_line_data_x,fft_line_data_y,bucket_edges,bin_indices,bin_counts
+    in_samplerate_by_fft_size = in_samplerate / FFT_SIZE
+    fft_duration= 1.0/in_samplerate_by_fft_size
 
+    global bucket_fft_freqs,fft_line_data_x,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,border_f,bucket_tracks_freqs
+
+    dummy_data=[200]*fft_points
     fft_line_data_x=[0]*fft_points
     fft_line_data_y=[-110]*fft_points
 
     for i_fft in range(fft_points):
         fft_line_data_x[i_fft]=i_fft * in_samplerate_by_fft_size
 
-    bin_indices = digitize(fft_line_data_x, bucket_edges)
-    l_info(f'bin_indices={len(bin_indices)}')
-    bin_counts = bincount(bin_indices)
-    l_info(f'bin_counts={len(bin_counts)}')
+    bucket_fft_freqs=[0]*cfg['buckets_fft']
+    bucket_fft_edges=[0]*(cfg['buckets_fft']+1)
 
-    bucket_freqs=[0]*spectrum_buckets_quant
-    bucket_edges=[0]*(spectrum_buckets_quant+1)
+    for b in range(cfg['buckets_fft']):
+        bucket_fft_freqs[b]= 10**(logf_min_audio + log_bucket_fft_width_by2 + log_bucket_fft_width * b)
+        bucket_fft_edges[b+1]= 10**(logf_min_audio + log_bucket_fft_width * (b+1))
 
-    for b in range(spectrum_buckets_quant):
-        bucket_freqs[b]= 10**(logf_min_audio + log_bucket_width_by2 + log_bucket_width * b)
-        bucket_edges[b+1]= 10**(logf_min_audio + log_bucket_width * (b+1))
+    bucket_tracks_freqs=[0]*cfg['buckets_tracks']
 
-    save_buckets()
-    save_buckets_edges()
-    save_fft_points()
-    save_bin_indices()
-    save_bin_counts()
+    for b in range(cfg['buckets_tracks']):
+        bucket_tracks_freqs[b]= 10**(logf_min_audio + log_bucket_tracks_width_by2 + log_bucket_tracks_width * b)
+
+    fft_bin_indices = digitize(fft_line_data_x, bucket_fft_edges)
+    l_info(f'fft_bin_indices={len(fft_bin_indices)}')
+    fft_bin_counts = bincount(fft_bin_indices)
+    l_info(f'fft_bin_counts={len(fft_bin_counts)}')
+
+    if DEBUG:
+        save_buckets()
+        save_buckets_edges()
+        save_fft_points()
+        save_fft_bin_indices()
+        save_fft_bin_counts()
 
     border=0
     border_f=1
 
-    prev_ind=-1
-    for f,ind in zip(fft_line_data_x,bin_indices):
-        if prev_ind!=ind:
-            prev_ind=ind
+    dummy_ff_values = bincount(fft_bin_indices, weights=dummy_data)[1:] / fft_bin_counts[1:]
+    dummy_ff_values_isnan=isnan(dummy_ff_values)
+
+    for i,val in reversed(list(enumerate(zip(fft_line_data_x,dummy_ff_values_isnan)))):
+        x,is_val_nan=val
+        if not is_val_nan:
+            border=i
+            border_f=x
         else:
-            border=int(ind)
-            border_f=f
             break
 
     l_info('')
     l_info(f'{border=}')
     l_info(f'{border_f=}')
+    fft_line_data_x_border_index=border
+    #sys_exit(10)
 
-    for i,f in enumerate(fft_line_data_x):
-        if f<border_f:
-            continue
-        else:
-            fft_line_data_x_border_index=i
-            break
+    if False:
+        border=0
+        border_f=1
 
-    for i,f in enumerate(bucket_freqs):
+        prev_ind=-1
+        for f,ind in zip(fft_line_data_x,fft_bin_indices):
+            if prev_ind!=ind:
+                prev_ind=ind
+            else:
+                border=int(ind)
+                border_f=f
+                break
+
+
+        for i,f in enumerate(fft_line_data_x):
+            if f<border_f:
+                continue
+            else:
+                fft_line_data_x_border_index=i
+                break
+
+    for i,f in enumerate(bucket_fft_freqs):
         if f>=border_f:
             bucket_freqs_border_index=i
             break
 
     l_info(f'{fft_line_data_x_border_index=} / {len(fft_line_data_x)}')
-    l_info(f'{bucket_freqs_border_index=} / {len(bucket_freqs)}')
+    l_info(f'{bucket_freqs_border_index=} / {len(bucket_fft_freqs)}')
 
     for track in range(tracks):
-        track_line_data_y[track]=[dbmin]*spectrum_buckets_quant
+        track_line_data_y[track]=[dbmin]*cfg['buckets_tracks']
 
     global fft_line_new_x
     if postprocessing:
-        #fft_line_new_x=tuple(fft_line_data_x[1:fft_line_data_x_border_index] + bucket_freqs[bucket_freqs_border_index:])
-        fft_line_new_x=fft_line_data_x[:fft_line_data_x_border_index] + bucket_freqs[bucket_freqs_border_index:]
-        fft_line_new_x[0]=5
-        fft_line_new_x=fft_line_new_x
+        if bucket_freqs_border_index==0:
+            fft_line_new_x=bucket_fft_freqs[:]
+        else:
+            fft_line_new_x=fft_line_data_x[1:fft_line_data_x_border_index] + bucket_fft_freqs[bucket_freqs_border_index:]
+            #fft_line_new_x=fft_line_data_x[:fft_line_data_x_border_index] + bucket_fft_freqs[bucket_freqs_border_index:]
+            fft_line_new_x[0]=5
+            fft_line_new_x=fft_line_new_x
     else:
         fft_line_new_x=fft_line_data_x
 
@@ -1173,8 +1254,9 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
         in_stream_init()
 
 def on_click(sender, app_data):
-    print('on_click')
+    #print('on_click')
     hide_info()
+    set_value('help_text1','')
 
 def on_click_plot(sender, app_data):
     #print('on_click_plot',sender, app_data)
@@ -1224,7 +1306,7 @@ def wheel_callback(sender, val):
         slide_change('slider')
 
 def on_mouse_release(sender, app_data):
-    print('on_mouse_release',sender, app_data)
+    #print('on_mouse_release',sender, app_data)
     button_nr=app_data
 
     if button_nr==0:
@@ -1285,24 +1367,25 @@ def on_mouse_down(sender, app_data):
         elif offset_x>vw-30 and offset_y>vh-30:
             is_resizing = True
 
-set_viewport_pos_scheduled=False
+set_viewport_pos_scheduled=cfg['viewport_pos']
+set_viewport_size_scheduled=cfg['viewport_size']
+
 def on_mouse_move(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
 
     #mouse_x, mouse_y = app_data
     mouse_x, mouse_y = dpg.get_mouse_pos()
+
     if is_dragging:
         curr_vp_x = curr_vp_x + mouse_x - offset_x
         curr_vp_y = curr_vp_y + mouse_y - offset_y
 
-        #print('dpg.set_viewport_pos:',curr_vp_x, curr_vp_y)
-        #dpg.set_viewport_pos([curr_vp_x, curr_vp_y])
         global set_viewport_pos_scheduled
         set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
 
     elif is_resizing:
-        dpg.set_viewport_height(mouse_y)
-        dpg.set_viewport_width(mouse_x)
+        global set_viewport_size_scheduled
+        set_viewport_size_scheduled=[mouse_x,mouse_y]
 
 LIGHT_BG = (240, 240, 240, 255)
 LIGHT_CHILD_BG = (255, 255, 255, 255)
@@ -1447,7 +1530,7 @@ with theme() as reddark_line_theme:
             category=dpg.mvThemeCat_Plots
         )
 
-with theme() as gray_line_theme:
+with theme() as dark_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
             dpg.mvPlotCol_Line,
@@ -1460,7 +1543,7 @@ with theme() as gray_line_theme:
             category=dpg.mvThemeCat_Plots
         )
 
-with theme() as white_line_theme:
+with theme() as light_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
             dpg.mvPlotCol_Line,
@@ -1505,9 +1588,32 @@ def widget_tooltip(message,widget=None):
     with tooltip(widget, delay=0.3):
         add_text(message)
 
+def show_help():
+    set_value('help_text1','''
+            H - show this help
+
+            F12 - settings
+            F11 - show debug info
+
+            F1 / F2 - about / license
+            L / D - light / dark theme
+
+            V - VSync toggle
+            F - FFT toggle
+            P - postprocessing toggle
+
+            S / C - save screenshot / csv
+
+            1,2,3,4,5,6,7,8 - show/hide track
+    ''')
+
+one_time_dump=False
+
 def key_callback(sender, app_data):
     set_status('')
     hide_info()
+    set_value('help_text1','')
+
     if app_data==dpg.mvKey_1:
         show_press(None,None,(0,True))
     elif app_data==dpg.mvKey_2:
@@ -1534,10 +1640,22 @@ def key_callback(sender, app_data):
         scroll_mod(-1,0.0001)
     elif app_data==dpg.mvKey_F1:
         about_wrapper()
+    elif app_data==dpg.mvKey_F2:
+        license_wrapper()
+    elif app_data==dpg.mvKey_F5:
+        global one_time_dump
+        one_time_dump=True
+
     elif app_data==dpg.mvKey_F12:
         settings_wrapper()
+    elif app_data==dpg.mvKey_F11:
+        set_value('debug',(True,False)[get_value('debug')])
+        debug_callback()
     elif app_data==dpg.mvKey_L:
         theme_light_callback()
+    elif app_data==dpg.mvKey_P:
+        set_value('postprocessing',(True,False)[get_value('postprocessing')])
+        postprocessing_callback()
     elif app_data==dpg.mvKey_D:
         theme_dark_callback()
     elif app_data==dpg.mvKey_S:
@@ -1550,12 +1668,12 @@ def key_callback(sender, app_data):
         set_value('vsync',vsync)
         vsync_callback(None,vsync)
     elif app_data==dpg.mvKey_H:
-        set_value('debug_text2','H - help\nF12 - settings\n\nF1 - about\nL - light theme\nD - dark theme\n\nV - VSync toggle\n\n1,2,3,4,5,6,7,8 - show/hide track\n\nS - take screenshot\nC - save csv\nF - toggle FFT')
+        show_help()
     elif app_data==dpg.mvKey_Escape:
         global lock_frequency,sweeping
         lock_frequency=False
         sweeping=False
-        set_value('debug_text2','')
+        set_value('help_text1','')
     else:
         pass
 
@@ -1564,7 +1682,7 @@ def slide_change(sender):
     dpg.set_axis_limits("y_axis", dbmin_display*val/100, dbmax_display)
 
 vsync_default=False
-settings_height=120
+settings_height=154
 
 decorated=False
 try:
@@ -1580,41 +1698,49 @@ plot_axis_height=40
 viewport_height_min=plot_min_height+status_height+title_hight
 
 def theme_light_callback():
+    l_info('theme_light_callback')
+    global line_theme
     dpg.bind_theme(theme_light)
-    line_theme=gray_line_theme
+    line_theme=dark_line_theme
     bind_item_theme("fft_line",line_theme)
     for track in range(tracks):
         bind_item_theme(f"track{track}",line_theme)
     configure_item('plotbg',texture_tag=ico['bg'])
+    cfg['theme']='light'
 
 def theme_dark_callback():
+    l_info('theme_dark_callback')
+    global line_theme
     dpg.bind_theme(theme_dark)
-    line_theme=white_line_theme
+    line_theme=light_line_theme
     bind_item_theme("fft_line",line_theme)
     for track in range(tracks):
         bind_item_theme(f"track{track}",line_theme)
 
     configure_item('plotbg',texture_tag=ico['bg_dark'])
+    cfg['theme']='dark'
 
+DEBUG=False
 def debug_callback():
     set_value('debug_text','')
+    global DEBUG
+    DEBUG=get_value('debug')
 
 create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=vsync_default,decorated=decorated)
 
-bottom_shown=True
+settings_shown=True
 
 def settings_wrapper():
-    global bottom_shown
-    bottom_shown=(True,False)[bottom_shown]
-    l_info(f'settings_wrapper:{bottom_shown}')
+    global cfg,settings_shown
+    l_info(f'settings_wrapper:{settings_shown}')
 
-    if bottom_shown:
+    settings_shown=(True,False)[settings_shown]
+
+    if settings_shown:
         show_item('settings_table')
-        #show_item('settings_window')
         h=max(viewport_height_min,get_viewport_height()+settings_height)
     else:
         hide_item('settings_table')
-        #hide_item('settings_window')
         h=max(viewport_height_min,get_viewport_height()-settings_height)
 
     set_viewport_height(h)
@@ -1638,11 +1764,11 @@ def on_viewport_resize(sender=None, app_data=None):
     vw = get_viewport_client_width()
     vh = get_viewport_client_height()
 
-    global info_chars,settings_height
+    global info_chars,settings_height,settings_shown
 
     info_chars=int(vw/7)
 
-    plot_height  = max(plot_min_height, vh - (settings_height if bottom_shown else 0) - status_height - title_hight)
+    plot_height  = max(plot_min_height, vh - (settings_height if settings_shown else 0) - status_height - title_hight)
 
     set_item_height('slider', plot_height-plot_axis_height)
     set_item_pos('slider',[5,title_hight+23])
@@ -1652,7 +1778,10 @@ def on_viewport_resize(sender=None, app_data=None):
 
     set_item_pos('info_window',[0,title_hight])
     set_item_pos('debug_text',[85,24+title_hight])
-    set_item_pos('debug_text2',[385,24+title_hight])
+    set_item_pos('help_text1',[385,24+title_hight])
+
+    set_item_pos('central_info',[(vw-64-100)/2,(plot_height)/2])
+
     set_item_width('info_window', vw)
     set_item_height('info_window', vh)
 
@@ -1764,7 +1893,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 with dpg.table_row():
                     dpg.add_spacer(height=6)
                     add_image_button(ico["rec"],tag='recx',callback=rec_press)
-                    add_combo(tag='rec_track',items=['none','1','2','3','4','5','6','7','8'],default_value='1',callback=record_track_changed,width=-1)
+                    add_combo(tag='rec_track',items=['none','1','2','3','4','5','6','7','8'],default_value='none',callback=record_track_changed,width=-1)
                     add_image_button(ico["reset"],tag=f'resetrack',callback=resetrack_press,label="X")
                     widget_tooltip(' Reset selected track samples.')
 
@@ -1793,7 +1922,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 with dpg.table(tag='settings_table',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
 
                     add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
-                    add_table_column(width_fixed=True, init_width_or_weight=46, width=46)
+                    add_table_column(width_fixed=True, init_width_or_weight=66, width=66)
                     add_table_column(width_fixed=True, init_width_or_weight=140, width=140)
                     add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
                     add_table_column(width_stretch=True, init_width_or_weight=300)
@@ -1806,22 +1935,27 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_text(default_value='')
                         with dpg.group():
                             add_text(default_value='API')
-                            #add_text(default_value='')
-                            add_text(default_value='FFT')
-                            add_text(default_value=' window')
-                            add_text(default_value=' size')
+                            add_text(default_value='')
+                            add_text(default_value='')
+                            add_text(default_value='window')
+                            add_text(default_value='size')
+                            add_text(default_value='buckets')
+                            add_text(default_value='')
+                            add_text(default_value='')
                             add_text(default_value='buckets')
 
                         with dpg.group(width=-1):
                             add_combo(tag='api',default_value='',callback=api_changed)
-                            #add_checkbox(tag='exclusive',label='WASAPI Exclusive',callback=wasapi_exclusive_callback,default_value=False,enabled=windows)
                             add_text(default_value='')
 
+                            add_text(default_value='FFT')
                             add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
                             widget_tooltip(' Show live Fast Fourier Transform graph \n with window function specified')
-                            add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value='2048',callback=fft_change)
-                            add_combo(tag='buckets',items=['64','128','256','512','1024','2048','4096'],default_value='512',callback=buckets_quant_change)
-                            add_checkbox(tag='postprocessing',label='FFT Postprocessing',callback=postprocessing_callback,default_value=postprocessing)
+                            add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value=cfg['fft_size'],callback=fft_change)
+                            add_combo(tag='buckets_fft',items=['64','128','256','512','1024','2048','4096'],default_value=cfg['buckets_fft'],callback=buckets_quant_change,user_data=True)
+                            add_checkbox(tag='postprocessing',label='Postprocessing',callback=postprocessing_callback,default_value=postprocessing)
+                            add_text(default_value='TRACKS')
+                            add_combo(tag='buckets_tracks',items=['64','128','256'],default_value=cfg['buckets_tracks'],callback=buckets_quant_change,user_data=True)
 
                         with dpg.group():
                             add_text(default_value=' ')
@@ -1853,7 +1987,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         with dpg.group():
                             add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=vsync_default)
                             add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=False)
-                            add_text(default_value='')
 
                             with dpg.group(horizontal=True):
                                 add_image_button(ico["light"],callback=theme_light_callback,width=16)
@@ -1866,7 +1999,8 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             dpg.add_spacer(width=6)
 
     add_text(tag='debug_text',default_value='')
-    add_text(tag='debug_text2',default_value='')
+    add_text(tag='help_text1',default_value='')
+    add_text(tag='central_info',default_value='')
 
     with dpg.handler_registry():
         dpg.add_mouse_click_handler(callback=on_click)
@@ -1886,8 +2020,13 @@ dpg.setup_dearpygui()
 
 ########################################################################
 
-theme_dark_callback()
-line_theme=white_line_theme
+try:
+    if cfg['theme']=='dark':
+        theme_dark_callback()
+    else:
+        theme_light_callback()
+except:
+    theme_dark_callback()
 
 try:
     distro_info=Path(path_join(EXECUTABLE_DIR,'distro.info.txt')).read_text(encoding='utf-8')
@@ -1905,22 +2044,23 @@ sweeping=False
 stream_in=None
 stream_out=None
 
+fft_duration=0
+
 refresh_devices()
 
+settings_wrapper()
 
 show_viewport()
 set_viewport_height(460)
-settings_wrapper()
 
 fft_on=True
 
-buckets_quant_change()
+buckets_quant_change(None,None,False)
 fft_change()
-#->fft_window_changed()
 
 api_changed()
 
-data=zeros(fft_size)
+data=zeros(cfg['fft_size'])
 next_sweep_time=0
 
 status_text=''
@@ -1936,16 +2076,17 @@ def set_status(text,alert=False):
         #    bind_item_theme("status_text", text_ok)
 
 
-next_fps = perf_counter()+1
+next_fps = perf_counter()+1.0
 frames = 0
-rec_callbacks = 0
+input_callbacks_all = 0
 rec_samples = 0
 
 record_track_changed()
-dpg.configure_app(init_file=ini_file,load_init_file=True)
+
+dpg.configure_app()
+show_help()
 
 while is_dearpygui_running():
-    #get_delta_time
     if sweeping:
         now=perf_counter()
         if now>next_sweep_time:
@@ -1962,97 +2103,125 @@ while is_dearpygui_running():
                 sweeping=False
                 play_stop()
 
-    try:
-        #print(f'{samples_chunks_fifo_new=}')
-        if samples_chunks_fifo_new:
-            data=np_append(data,np_concatenate(samples_chunks_fifo))[-fft_size:]
-            rec_callbacks+=samples_chunks_fifo_chunks_new
-            rec_samples+=samples_chunks_fifo_new
+    if samples_chunks_fifo_new:
+        data=np_append(data,np_concatenate(samples_chunks_fifo))[-FFT_SIZE:]
 
-            #from numpy.random import randn
-            #data = randn(fft_size)
+        input_callbacks_all+=input_callbacks_count
+        input_callbacks_count=0
 
-            samples_chunks_fifo_new=0
-            samples_chunks_fifo_chunks_new=0
+        rec_samples+=samples_chunks_fifo_new
+        samples_chunks_fifo_new=0
 
-            current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
-            if fft_on:
-                fft_values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / fft_size + 1e-12)
-                fft_values_means_in_buckets = bincount(bin_indices, weights=fft_values)[1:] / bin_counts[1:]
+        #from numpy.random import randn
+        #data = randn(cfg['fft_size'])
 
-                #set_value("fft_line", [fft_line_new_x, np_concatenate([fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])])
+        current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
+        if fft_on:
+            fft_values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / FFT_SIZE + 1e-12)
+            fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values)[1:] / fft_bin_counts[1:]
 
-                if postprocessing:
-                    #1,0
-                    #print(fft_line_data_x_border_index,bucket_freqs_border_index)
-                    if bucket_freqs_border_index==0:
-                        set_value("fft_line", [fft_line_new_x, fft_values_means_in_buckets] )
-                    else:
-                        set_value("fft_line", [fft_line_new_x, np_concatenate([array([-120.0]),fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]]) ])
-                else:
-                    set_value("fft_line", [fft_line_new_x, fft_values ])
+            #set_value("fft_line", [fft_line_new_x, np_concatenate([fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])])
 
+            if one_time_dump:
+                one_time_dump=False
+                with open("one_time_dump.txt",'w',encoding='utf-8') as fh:
+                    fh.write("#fft_values_means_in_buckets\n")
+                    for db in fft_values_means_in_buckets:
+                        fh.write(f'{db}\n')
+                    fh.write("\n#fft_line_new_x\n")
+                    for f in fft_line_new_x:
+                        fh.write(f'{f}\n')
+                with open("one_time_dump2.txt",'w',encoding='utf-8') as fh:
+                    fh.write("#fft_values\n")
+                    for db in fft_values:
+                        fh.write(f'{db}\n')
 
-                #print(f'fft_line_new_x:{len(fft_line_new_x)}')
-                #print(f'fft_size:{fft_size},fft_values:{len(fft_values)}')
-                #print(f'fft_values_means_in_buckets:{len(fft_values_means_in_buckets)}')
+            if postprocessing:
+                #1,0
+                #if bucket_freqs_border_index==0:
+                #    set_value("fft_line", [fft_line_new_x, fft_values_means_in_buckets] )
+                #else:
 
-                #vals=np_concatenate([fft_values[:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]])
-                #vals[0]=-120
-                #set_value("fft_line", [fft_line_new_x, vals])
+                set_value("fft_line", [fft_line_new_x, np_concatenate([array([-120.0]),fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]]) ])
+                #set_value("fft_line", [fft_line_new_x, np_concatenate([fft_values[1:fft_line_data_x_border_index],fft_values_means_in_buckets[bucket_freqs_border_index:]]) ])
+            else:
+                set_value("fft_line", [fft_line_new_x, fft_values ])
 
-            if playing_state and recorded_track is not None:
-                track_line_data_y[recorded_track][current_bucket]=current_sample_db if played_bucket_callbacks>record_blocks_len else ( track_line_data_y[recorded_track][current_bucket]*record_blocks_len_part1 + current_sample_db*record_blocks_len_part2 ) / record_blocks_len
-                redraw_tracks_lines=True
+        if playing_state==2 and recorded_track is not None:
+            #track_line_data_y[recorded_track][current_bucket]=current_sample_db
+            track_line_data_y[recorded_track][current_bucket]=current_sample_db if played_bucket_callbacks>record_blocks_len else ( track_line_data_y[recorded_track][current_bucket]*record_blocks_len_part1 + current_sample_db*record_blocks_len_part2 ) / record_blocks_len
+            redraw_tracks_lines=True
 
-            set_value('cursor_db_txt', (25000, current_sample_db))
-            configure_item('cursor_db_txt',label=f'{round(current_sample_db)}dB')
+        set_value('cursor_db_txt', (25000, current_sample_db))
+        configure_item('cursor_db_txt',label=f'{round(current_sample_db)}dB')
 
-            if current_sample_db<-110:
-                set_status('No signal / Mic not connected ...',1)
+        if current_sample_db<-110:
+            set_status('No signal / Mic not connected ...',1)
+            set_value('central_info','''
+ No signal !
+(Mic not connected ?)''')
+            set_value('help_text1','')
+        else:
+            set_value('central_info','')
 
         if redraw_tracks_lines:
             for track,show in enumerate(show_track):
                 configure_item(f"track{track}",show=show)
                 if show:
-                    set_value(f"track{track}", [bucket_freqs, track_line_data_y[track]])
+                    set_value(f"track{track}", [bucket_tracks_freqs, track_line_data_y[track]])
 
                     #TODO
                     if track!=recorded_track:
                         bind_item_theme(f"track{track}",line_theme)
 
+
             redraw_tracks_lines=False
 
         if set_viewport_pos_scheduled:
             dpg.set_viewport_pos(set_viewport_pos_scheduled)
+            cfg['viewport_pos']=set_viewport_pos_scheduled
             set_viewport_pos_scheduled=False
+        elif set_viewport_size_scheduled:
+            dpg.set_viewport_width(set_viewport_size_scheduled[0])
+            dpg.set_viewport_height(set_viewport_size_scheduled[1])
+            cfg['viewport_size']=set_viewport_size_scheduled
+            set_viewport_size_scheduled=None
+
         render_dearpygui_frame()
 
         ##################################
-        frames += 1
-        now = perf_counter()
-        if now >= next_fps and get_value('debug'):
-            out_sum=audio_output_callback_outside+audio_output_callback_inside
-            out_ratio = 0 if out_sum==0 else audio_output_callback_inside/out_sum
+        if DEBUG:
+            frames += 1
+            now = perf_counter()
+            if now > next_fps :
+                out_sum=audio_output_callback_outside+audio_output_callback_inside
+                out_ratio = 0 if out_sum==0 else audio_output_callback_inside/out_sum
 
-            in_sum=audio_input_callback_outside+audio_input_callback_inside
-            in_ratio = 0 if in_sum==0 else audio_input_callback_inside/in_sum
+                in_sum=audio_input_callback_outside+audio_input_callback_inside
+                in_ratio = 0 if in_sum==0 else audio_input_callback_inside/in_sum
 
-            set_value('debug_text',f'FPS:{frames}\n\n{rec_callbacks=}\n{rec_samples=}\n\nOUT  {out_ratio}\nIN   {in_ratio}')
+                set_value('debug_text',f'''
+    FPS:{frames} VSync:{get_value("vsync")}\n
+    {input_callbacks_all=}
+    {rec_samples=}\n
+    OUT  {out_ratio}
+    IN   {in_ratio}\n
+    FFT Window duration: {fft_duration}s
+    {postprocessing=}   {fft_line_data_x_border_index} / {len(fft_values)} - {bucket_freqs_border_index} / {len(fft_values_means_in_buckets)}
+    {border_f=} Hz
+    ''')
 
-            frames = 0
-            rec_callbacks = 0
-            rec_samples = 0
-            next_fps = now+1.0
+                frames = 0
+                input_callbacks_all = 0
+                rec_samples = 0
+                next_fps = now+1.0
 
-            audio_output_callback_outside=0
-            audio_output_callback_inside=0
+                audio_output_callback_outside=0
+                audio_output_callback_inside=0
 
-            audio_input_callback_outside=0
-            audio_input_callback_inside=0
+                audio_input_callback_outside=0
+                audio_input_callback_inside=0
         ##################################
-    except Exception as loop_e:
-        print('main loop exception:',loop_e)
 
     if exiting:
         break
@@ -2070,7 +2239,8 @@ if stream_in:
     stream_in.stop()
     stream_in.close()
 
-dpg.save_init_file(ini_file)
+with open(cfg_file, "w", encoding="utf-8") as f:
+    f.write(dumps(cfg))
 
 destroy_context()
 l_info('Exiting.')
