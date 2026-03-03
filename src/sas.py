@@ -33,6 +33,7 @@ from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_vi
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration
 
 from time import strftime,time,localtime,perf_counter
+#from gc import disable as gc_disable, enable as gc_enable,collect as gc_collect
 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array, add as np_add
 from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
@@ -372,13 +373,14 @@ def load_csv():
 schedule_screenshot=False
 def save_image():
     global schedule_screenshot,filename_full_screenshot
-    schedule_screenshot=True
     filename_full_screenshot = path_join(INTERNAL_DIR_IMAGES, 'sas.png')
+
     if os.path.isfile(filename_full_screenshot):
         os.remove(filename_full_screenshot)
 
     dpg.output_frame_buffer(filename_full_screenshot)
-    #set_status(f'saving {filename_full_screenshot} ...')
+
+    schedule_screenshot=True
 
 scale_factor_logf_to_bucket_fft=1
 scale_factor_logf_to_bucket_tracks=1
@@ -392,7 +394,7 @@ def logf_to_bucket_tracks(logf):
 phase_step=1.0
 
 def change_f(fpar):
-    global current_logf,current_bucket,phase_step,current_bucket,two_pi_by_in_samplerate
+    global current_logf,current_bucket,phase_step,current_bucket,two_pi_by_in_samplerate,schedule_screenshot
 
     if fmin_audio<fpar<fmax_audio:
         current_logf=log10(fpar)
@@ -415,9 +417,12 @@ audio_output_callback_prev=perf_counter()
 def audio_output_callback(outdata, frames, time, status):
     global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,DEBUG
     if DEBUG:
-        global audio_output_callback_outside,audio_output_callback_inside,audio_output_callback_prev
+        global audio_output_callback_outside,audio_output_callback_inside,audio_output_callback_prev,output_callbacks_count,samples_chunks_requested_new
         audio_output_callback_start=perf_counter()
         audio_output_callback_outside += audio_output_callback_start-audio_output_callback_prev
+
+        output_callbacks_count+=1
+        samples_chunks_requested_new+=len(outdata)
 
     if playing_state:
         phase_arr=(phase + phase_step * phase_i) % two_pi
@@ -508,8 +513,6 @@ def play_stop():
 
     sweep_abort()
 
-    redraw_tracks_lines=False
-
 exiting=False
 
 current_sample_db=-120
@@ -519,6 +522,8 @@ samples_chunks_fifo_new=0
 samples_chunks_fifo=deque(maxlen=32)
 samples_chunks_fifo_put=samples_chunks_fifo.append
 
+output_callbacks_count=0
+samples_chunks_requested_new=0
 ###########################################################
 
 audio_input_callback_outside=0
@@ -614,7 +619,7 @@ out_blocksize_default=256
 out_latency_default='low'
 
 in_blocksize_values=(512,256,128,64,0)
-in_blocksize_default=256
+in_blocksize_default=64
 in_latency_default='low'
 
 out_channel_buffer_mod_index=0
@@ -644,20 +649,6 @@ def out_latency_changed(sender=None, app_data=None,user_data=False):
 
 def in_blocksize_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_blocksize_changed:{sender},{app_data},{user_data}')
-
-    global record_blocks_len,time_to_collect_sample
-
-    in_blocksize=int(get_value('in_blocksize'))
-
-    if in_blocksize:
-        record_blocks_len=int((in_samplerate*time_to_collect_sample)/in_blocksize)
-        #record_blocks_len_part1=int(record_blocks_len/2)
-        #record_blocks_len_part2=record_blocks_len-record_blocks_len_part1
-    else:
-        #TODO
-        record_blocks_len=128
-        #record_blocks_len_part1=64
-        #record_blocks_len_part2=64
 
     if user_data:
         in_stream_init()
@@ -694,6 +685,10 @@ def latency_for_stream(latency):
 def out_stream_init():
     global stream_out,device_out_current,out_channel_buffer_mod_index
 
+    if stream_out:
+        stream_out.stop()
+        stream_out.close()
+
     extra_settings=None
     try:
         if environ['SAS_WASAPI_EXCLUSIVE']:
@@ -722,7 +717,8 @@ def out_stream_init():
             samplerate=samplerate,
             latency=latency,
             blocksize=blocksize,
-            channels=channels
+            channels=channels,
+            dither_off=True
         )
         #dtype="float32",
         stream_out.start()
@@ -732,7 +728,6 @@ def out_stream_init():
         configure_item('out_status',texture_tag=ico['out_off'])
     else:
         l_info('OutputStream init DONE.')
-
 
 in_channel_buffer_mod_index=0
 @catch
@@ -746,9 +741,13 @@ def in_channel_changed(sender=None, app_data=None,user_data=False):
         in_stream_init()
 
 def in_stream_init():
-    configure_item('rec_button',texture_tag=ico['rec'])
+    configure_item('in_status',texture_tag=ico['in_off'])
 
     global stream_in,device_in_current,in_channel_buffer_mod_index
+
+    if stream_in:
+        stream_in.stop()
+        stream_in.close()
 
     device=int(device_in_current['index'])
     samplerate=float(get_value('in_samplerate'))
@@ -765,11 +764,12 @@ def in_stream_init():
             samplerate=samplerate,
             latency=latency,
             blocksize=blocksize,
-            channels=channels
+            channels=channels,
+            dither_off=True
         )
         # dtype="float32"
         stream_in.start()
-        configure_item('rec_button',texture_tag=ico['rec_ready'])
+        configure_item('in_status',texture_tag=ico['in_on'])
 
     except Exception as e:
         l_error(f'InputStream init error:{e}')
@@ -845,7 +845,7 @@ def track_press(sender=None,app_data=None,track_combo=None):
 
     track_pressed(track)
 
-    global show_track,redraw_tracks_lines,ico,recorded_track
+    global show_track,recorded_track
     if press:
         show_track[track]=(True,False)[show_track[track]]
         bind_item_theme(f"track{track}",line_theme)
@@ -960,18 +960,17 @@ def api_changed(sender=None, app_data=None):
             else:
                 set_value("in_dev",in_values[0])
 
-    in_dev_changed(None,None,True)
+    in_dev_changed(None,None)
 
 def record_track_changed(sender=None, app_data=None):
     l_info(f'record_track_changed:{sender},{app_data}')
-    #track_selection=get_value('rec_track')
     track_selection=app_data
 
     sweep_abort()
 
     global recorded_track,line_theme
 
-    if track_selection=='-':
+    if track_selection is None:
         print(f'record_track_changed:{recorded_track=}')
         if recorded_track is not None:
             bind_item_theme(f"track{recorded_track}",line_theme)
@@ -1204,8 +1203,7 @@ device_out_current=None
 def out_dev_changed(sender=None, app_data=None,user_data=False):
     l_info(f'out_dev_changed:{sender},{app_data},{user_data}')
 
-    global device_out_current,fft_ready
-    fft_ready=False
+    global device_out_current
 
     out_dev_name=get_value("out_dev")
 
@@ -1228,13 +1226,12 @@ def out_dev_changed(sender=None, app_data=None,user_data=False):
     out_latency_changed(None,out_latency_default)
     out_blocksize_changed(None,out_blocksize_default)
 
-    if user_data:
-        out_stream_init()
+    out_stream_init()
 
 device_in_current=None
 
-def in_dev_changed(sender=None, app_data=None,user_data=False):
-    l_info(f'in_dev_changed:{sender},{app_data},{user_data}')
+def in_dev_changed(sender=None, app_data=None):
+    l_info(f'in_dev_changed:{sender},{app_data}')
 
     global device_in_current,fft_ready
     fft_ready=False
@@ -1266,8 +1263,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
 
     common_precalc()
 
-    if user_data:
-        in_stream_init()
+    in_stream_init()
 
 def on_click(sender, app_data):
     #print('on_click')
@@ -1525,7 +1521,7 @@ with dpg.theme() as theme_dark:
 
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
-        #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
+        #4dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
         #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
@@ -2004,9 +2000,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         bind_item_handler_registry(f'showcheck{track_temp}', "tracks_handlers")
 
                     dpg.add_spacer(height=6)
-                    add_image_button(ico["rec"],tag='rec_button',callback=rec_press)
-                    widget_tooltip('Input Stream status')
-                    dpg.add_spacer(height=6)
 
                     add_image_button(ico["rec_off"],tag='recording_select',label="Track to record")
                     widget_tooltip('Select track for recording.')
@@ -2035,9 +2028,9 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                 with dpg.table_row():
                     dpg.add_spacer(height=6)
+                    dpg.add_spacer(height=6)
 
-                    add_image_button(ico["out_off"],tag='out_status')
-                    widget_tooltip('Output Stream status')
+
 
                     add_text(tag='status',default_value='')
 
@@ -2109,7 +2102,19 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         with dpg.group(width=-1):
                             add_combo(tag='api',default_value='',callback=api_changed)
                             add_text(default_value=' ')
-                            add_text(default_value='Output')
+
+                            with dpg.table(tag='out_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
+                                add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                                add_table_column(width_fixed=True, init_width_or_weight=66)
+                                with dpg.table_row():
+                                    dpg.add_image(ico["out_off"],tag='out_status',width=16)
+                                    widget_tooltip('Output Stream status')
+                                    add_text(default_value='Output')
+
+                            #with dpg.group():
+                                #with child_window(border=False,autosize_y=False,autosize_x=True,height=-1):
+                                #with dpg.group():
+
                             add_combo(tag='out_dev',default_value='',callback=out_dev_changed,user_data=True)
                             add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
                             add_text(tag='out_samplerate')
@@ -2120,8 +2125,16 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         with dpg.group(width=-1):
                             add_text(default_value=' ')
                             add_text(default_value=' ')
-                            add_text(default_value='Input')
-                            add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True)
+                            with dpg.table(tag='in_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
+                                add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                                add_table_column(width_fixed=True, init_width_or_weight=66)
+                                with dpg.table_row():
+                                    dpg.add_image(ico["in_off"],tag='in_status')
+                                    widget_tooltip('Input Stream status')
+                                    add_text(default_value='Input')
+
+
+                            add_combo(tag='in_dev',default_value='',callback=in_dev_changed)
                             add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
                             add_text(tag='in_samplerate')
 
@@ -2221,6 +2234,9 @@ frames = 0
 input_callbacks_all = 0
 rec_samples = 0
 
+output_callbacks_all = 0
+output_samples = 0
+
 record_track_changed()
 
 dpg.configure_app()
@@ -2242,6 +2258,12 @@ while is_dearpygui_running():
             else:
                 sweeping=False
                 play_stop()
+    if DEBUG:
+        output_callbacks_all+=output_callbacks_count
+        output_callbacks_count=0
+
+        output_samples+=samples_chunks_requested_new
+        samples_chunks_requested_new=0
 
     if samples_chunks_fifo_new:
         data=np_append(data,np_concatenate(samples_chunks_fifo))[-FFT_SIZE:]
@@ -2286,17 +2308,7 @@ while is_dearpygui_running():
                 print('FFT Exception:',exception_fft)
 
         if playing_state==2 and recorded_track is not None and current_bucket<BUCKETS_TRACKS:
-            #track_line_data_y[recorded_track][current_bucket]=current_sample_db
-
-            #tda_tracks=0.0
-            #tda_tracks_1m=1.0
-
-
             track_line_data_y[recorded_track][current_bucket]=( track_line_data_y[recorded_track][current_bucket]*tda_tracks + current_sample_db*tda_tracks_1m )
-            #/ record_blocks_len
-
-            #current_sample_db if played_bucket_callbacks>record_blocks_len else
-
             redraw_tracks_lines=True
             #except Exception as exception_line:
             #    l_error('RLine Exception:',exception_line)
@@ -2340,9 +2352,19 @@ while is_dearpygui_running():
         cfg['viewport_size']=set_viewport_size_scheduled
         set_viewport_size_scheduled=None
 
+    if schedule_screenshot:
+        hide_item('cursor_db_txt')
+        hide_item('cursor_f_txt')
+        hide_item('cursor_f')
+        render_dearpygui_frame()
+
     render_dearpygui_frame()
 
     if schedule_screenshot:
+        #show_item('cursor_db_txt')
+        #show_item('cursor_f_txt')
+        #show_item('cursor_f')
+
         if os.path.isfile(filename_full_screenshot):
             x, y = dpg.get_item_rect_min("plot")
             w, h = dpg.get_item_rect_size("plot")
@@ -2375,6 +2397,8 @@ while is_dearpygui_running():
 FPS:{frames} VSync:{VSYNC_STATE_NAME}\n
 IN callbcks: {input_callbacks_all}/s
 IN samples : {rec_samples}/s\n
+OUT callbcks: {output_callbacks_all}/s
+OUT samples : {output_samples}/s\n
 OUT-sat {round(out_ratio,6)}
  IN-sat {round(in_ratio,6)}\n
 FFT Window: {round(fft_duration,3)}s
@@ -2386,6 +2410,10 @@ TDA: {TDA_FFT}
             frames = 0
             input_callbacks_all = 0
             rec_samples = 0
+
+            output_callbacks_all = 0
+            output_samples = 0
+
             next_fps = now+1.0
 
             audio_output_callback_outside=0
