@@ -112,15 +112,13 @@ try:
 except Exception as e:
     print(f'cfg file "{cfg_file}" opening error {e}')
 
-cfg.setdefault('fft_size',1024)
+cfg.setdefault('fft_size',8192)
 cfg.setdefault('fft_window_name','blackman')
-prev_fft=cfg['fft_window_name']
-#blackman'
 cfg.setdefault('theme','dark')
 
-BUCKETS_FFT=1024
-cfg.setdefault('buckets_fft',1024)
-BUCKETS_TRACKS=1024
+BUCKETS_FFT=256
+cfg.setdefault('buckets_fft',256)
+BUCKETS_TRACKS=256
 cfg.setdefault('buckets_tracks',256)
 
 cfg.setdefault('viewport_pos',[100,100])
@@ -146,7 +144,6 @@ if windows:
     from sounddevice import WasapiSettings
 
 np_fft_rfft=np_fft.rfft
-
 
 f_current=0
 tracks=8
@@ -793,7 +790,7 @@ def show_info(message):
 def about_wrapper():
     text1= f'Simple Audio Sweeper {VER_TIMESTAMP}\nAuthor: Piotr Jochymek\n\n{HOMEPAGE}\n\nPJ.soft.dev.x@gmail.com\n'
     text2='\n' + distro_info + '\n'
-    show_info('\n' + text1+text2)
+    show_info('\n' + text1+text2 + '\n\nPress H for help')
 
 def normalize_text(text,width):
     res=[]
@@ -817,7 +814,7 @@ def license_wrapper():
 
 fft_on=True
 
-def resetrack_press(sender=None, app_data=None):
+def reset_track_press(sender=None, app_data=None):
     l_info(f'resetrack:{sender},{app_data}')
 
     global recorded_track,redraw_tracks_lines
@@ -840,9 +837,11 @@ def configure_track_button(track):
         configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_off"])
 
 show_track=[False]*tracks
-def show_press(sender=None,app_data=None,track_combo=None):
-    l_info(f'show_press:{sender},{app_data},{track_combo}')
+def track_press(sender=None,app_data=None,track_combo=None):
+    l_info(f'track_press:{sender},{app_data},{track_combo}')
     track,press=track_combo
+
+    Ctrl = is_key_down(dpg.mvKey_LControl)
 
     track_pressed(track)
 
@@ -1005,33 +1004,21 @@ def record_track_changed(sender=None, app_data=None):
 
         if recorded_track is not None:
             show_track[recorded_track]=True
-            show_press(sender,True,(recorded_track,False))
+            track_press(sender,True,(recorded_track,False))
             bind_item_theme(f"track{recorded_track}",reddark_line_theme)
             configure_item('recording_select',texture_tag=ico["rec_on"])
 
     hide_item("rec_track_popup")
 
-def fft_toggle():
-    l_info('fft_toggle')
-
-    global prev_fft,cfg
-    cfg['fft_window_name']=get_value('fft_window')
-
-    if cfg['fft_window_name']=='none':
-        set_value('fft_window', prev_fft)
-        configure_item("fft_line", show=True)
-    else:
-        set_value('fft_window', 'none')
-        configure_item("fft_line", show=False)
-        prev_fft=cfg['fft_window_name']
-
 FFT_SIZE=0
 def fft_change(sender=None, app_data=None):
     l_info(f'fft_change:{sender},{app_data}')
-    global cfg,fft_points,FFT_SIZE
+    global cfg,fft_points,FFT_SIZE,fft_ready
+    fft_ready=False
 
     FFT_SIZE=cfg['fft_size']=int(get_value('fft_size'))
     fft_points=int(cfg['fft_size']/2+1)
+    set_status(f'fft_change:{FFT_SIZE}')
 
     fft_window_changed()
 
@@ -1217,7 +1204,8 @@ device_out_current=None
 def out_dev_changed(sender=None, app_data=None,user_data=False):
     l_info(f'out_dev_changed:{sender},{app_data},{user_data}')
 
-    global device_out_current
+    global device_out_current,fft_ready
+    fft_ready=False
 
     out_dev_name=get_value("out_dev")
 
@@ -1447,7 +1435,6 @@ LIGHT_BUTTON_HOVER = (180, 180, 255, 255)
 LIGHT_BUTTON_ACTIVE = (150, 150, 255, 255)
 LIGHT_ACCENT = (50, 50, 200, 255)  # check, slider grab, etc.
 
-#DARK_BG = (45, 45, 48, 200)
 DARK_BG = (60, 60, 60, 255)
 DARK_BG_LIGHTER = (40, 40, 40, 128)
 DARK_CHILD_BG = (60, 60, 65, 255)
@@ -1460,6 +1447,9 @@ DARK_BUTTON = DARK_BG #(90, 90, 100, 255)
 DARK_BUTTON_HOVER = (120, 120, 180, 255)
 DARK_BUTTON_ACTIVE = (150, 150, 200, 255)
 DARK_ACCENT = (100, 150, 255, 255)  # check, slider grab, etc.
+
+LIGHT_TOOLTIP_BG = (210, 210, 0, 255)
+DARK_TOOLTIP_BG = (160, 160, 0, 255)
 
 with dpg.theme() as theme_light:
     with dpg.theme_component(dpg.mvAll):
@@ -1493,8 +1483,15 @@ with dpg.theme() as theme_light:
         dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
         #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
         #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
-        #dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
+    with dpg.theme_component(dpg.mvTooltip):
+        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_color(dpg.mvThemeCol_PopupBg,LIGHT_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
+        dpg.add_theme_color(dpg.mvThemeCol_Border,LIGHT_TOOLTIP_BG, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
+        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize,2,category=dpg.mvThemeCat_Core)
+        dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,4)
 
 with dpg.theme() as theme_dark:
     with dpg.theme_component(dpg.mvAll):
@@ -1537,7 +1534,16 @@ with dpg.theme() as theme_dark:
         dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
-        pass
+
+    with dpg.theme_component(dpg.mvTooltip):
+        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_color(dpg.mvThemeCol_PopupBg,DARK_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
+        dpg.add_theme_color(dpg.mvThemeCol_Border,DARK_TOOLTIP_BG, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_color(dpg.mvThemeCol_Text, DARK_TEXT)
+        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize,2,category=dpg.mvThemeCat_Core)
+        dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,4)
+
+
 
 #with theme() as text_ok:
  #   with theme_component(dpg.mvText):
@@ -1647,17 +1653,24 @@ def widget_tooltip(message,widget=None):
         add_text(message)
 
 def show_help():
-    set_value('help_text1','''
-            H - show this help
+    set_value('help_text1',
+         '''            H - show this help
 
             F12 - settings
             F11 - show debug info
+
+            F3 / Shift+F3 - FFT window / off
+            F4 / Shift+F4 - FFT size
+            F5 / Shift+F5 - FFT FBA
+            F6 / Shift+F6 - FFT TDA
+            F7 / Shift+F7 - Recorded Tracks
+                            Frequency "buckets"
+            F8 / Shift+F8 - Recorded Tracks TDA
 
             F1 / F2 - about / license
             L / D - light / dark theme
 
             V - VSync toggle
-            F - FFT toggle
             S / C - save screenshot / csv
 
             1,2,3,4,5,6,7,8 - show/hide track
@@ -1672,35 +1685,35 @@ def key_callback(sender, app_data):
     Shift = is_key_down(dpg.mvKey_LShift)
 
     if app_data==dpg.mvKey_1:
-        show_press(None,None,(0,True))
+        track_press(None,None,(0,True))
         if Ctrl:
             record_track_changed(None,'1')
     elif app_data==dpg.mvKey_2:
-        show_press(None,None,(1,True))
+        track_press(None,None,(1,True))
         if Ctrl:
             record_track_changed(None,'2')
     elif app_data==dpg.mvKey_3:
-        show_press(None,None,(2,True))
+        track_press(None,None,(2,True))
         if Ctrl:
             record_track_changed(None,'3')
     elif app_data==dpg.mvKey_4:
-        show_press(None,None,(3,True))
+        track_press(None,None,(3,True))
         if Ctrl:
             record_track_changed(None,'4')
     elif app_data==dpg.mvKey_5:
-        show_press(None,None,(4,True))
+        track_press(None,None,(4,True))
         if Ctrl:
             record_track_changed(None,'5')
     elif app_data==dpg.mvKey_6:
-        show_press(None,None,(5,True))
+        track_press(None,None,(5,True))
         if Ctrl:
             record_track_changed(None,'6')
     elif app_data==dpg.mvKey_7:
-        show_press(None,None,(6,True))
+        track_press(None,None,(6,True))
         if Ctrl:
             record_track_changed(None,'7')
     elif app_data==dpg.mvKey_8:
-        show_press(None,None,(7,True))
+        track_press(None,None,(7,True))
         if Ctrl:
             record_track_changed(None,'8')
     elif app_data==dpg.mvKey_Left:
@@ -1715,6 +1728,10 @@ def key_callback(sender, app_data):
         about_wrapper()
     elif app_data==dpg.mvKey_F2:
         license_wrapper()
+    elif app_data==dpg.mvKey_F3:
+        items=get_item_configuration('fft_window')['items']
+        configure_item('fft_window',default_value=items[(items.index(get_value('fft_window'))+(1,-1)[Shift]) % len(items)])
+        fft_window_changed()
     elif app_data==dpg.mvKey_F4:
         items=get_item_configuration('fft_size')['items']
         configure_item('fft_size',default_value=items[(items.index(get_value('fft_size'))+(1,-1)[Shift]) % len(items)])
@@ -1746,8 +1763,6 @@ def key_callback(sender, app_data):
         theme_dark_callback()
     elif app_data==dpg.mvKey_S:
         save_image()
-    elif app_data==dpg.mvKey_F:
-        fft_toggle()
     elif app_data==dpg.mvKey_V:
         vsync=get_value('vsync')
         vsync=(True,False)[vsync]
@@ -1757,7 +1772,7 @@ def key_callback(sender, app_data):
         show_help()
     elif app_data==dpg.mvKey_Escape:
         global lock_frequency,sweeping
-        lock_frequency=False
+        play_stop()
         sweeping=False
         set_value('help_text1','')
     else:
@@ -1846,6 +1861,22 @@ def settings_wrapper():
 
     except Exception as e:
         l_error(f'settings_wrapper:{e}')
+
+status_text=''
+def set_status(text,alert=False,timeout=2):
+    global status_text,status_timeout
+    if text!=status_text:
+        set_value('status',text)
+        set_value('help_text1',text)
+        status_text=text
+
+        if timeout:
+            status_timeout=perf_counter()+timeout
+
+        #if alert:
+        #    bind_item_theme("status_text", text_alert)
+        #else:
+        #    bind_item_theme("status_text", text_ok)
 
 info_chars=0
 
@@ -1969,8 +2000,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_item_hover_handler(event_type=mvEventType_Leave,callback=on_mouse_move_tracks_leave)
 
                     for track_temp in range(tracks):
-                        add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=show_press,user_data=(track_temp,True))
-                        widget_tooltip(f'Show/Hide track:{track_temp+1}')
+                        add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=track_press,user_data=(track_temp,True)); widget_tooltip(f'Show/Hide track:{track_temp+1}')
                         bind_item_handler_registry(f'showcheck{track_temp}', "tracks_handlers")
 
                     dpg.add_spacer(height=6)
@@ -1987,7 +2017,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_radio_button(tag='rec_track',items=['-'] + [track+1 for track in range(tracks)], callback=record_track_changed,horizontal=False)
 
                     dpg.add_spacer(height=6)
-                    add_image_button(ico["reset"],tag=f'resetrack',callback=resetrack_press,label="X")
+                    add_image_button(ico["reset"],tag=f'resetrack',callback=reset_track_press,label="X")
                     widget_tooltip(' Reset selected track samples.')
 
         with dpg.table_row():
@@ -2047,29 +2077,25 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_text(default_value='')
                         with dpg.group():
                             add_text(default_value='')
-                            add_text(default_value='window')
-                            add_text(default_value='size')
-                            add_text(default_value='FBA'); widget_tooltip('Frequency bin aggregation')
-                            add_text(default_value='TDA'); widget_tooltip('Time domain averaging')
+                            add_text(default_value='window'); FFT_tooltip1='FFT window\nF3 / Shift+F3' ; widget_tooltip(FFT_tooltip1)
+                            add_text(default_value='size'); FFT_tooltip2='FFT size\nF4 / Shift+F4'; widget_tooltip(FFT_tooltip2)
+                            add_text(default_value='FBA'); FFT_tooltip3='Frequency bin aggregation\nF5 / Shift+F5'; widget_tooltip(FFT_tooltip3)
+                            add_text(default_value='TDA'); FFT_tooltip4='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tooltip4)
 
                             add_text(default_value='')
-                            add_text(default_value='buckets')
-                            add_text(default_value='TDA'); widget_tooltip('Time domain averaging')
+                            add_text(default_value='buckets'); FFT_tooltip5='Recorded Tracks Frequency "buckets"\nF7 / Shift+F7'; widget_tooltip(FFT_tooltip5)
+                            add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging\nF8 / Shift+F8'; widget_tooltip(FFT_tooltip6)
 
                         with dpg.group(width=-1):
                             add_text(default_value='FFT')
-                            add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed)
-                            widget_tooltip(' Show live Fast Fourier Transform graph \n with window function specified')
-                            add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value=cfg['fft_size'],callback=fft_change)
-                            add_combo(tag='buckets_fft',items=['0','64','128','256','512','1024','2048','4096'],default_value=cfg['buckets_fft'],callback=buckets_quant_change,user_data=True); widget_tooltip('Frequency bin aggregation')
-                            add_combo(tag='tda_fft',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value='0.0',callback=tda_fft_callback); widget_tooltip('Time domain averaging')
-                            widget_tooltip('Time domain averaging')
+                            add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed); widget_tooltip(FFT_tooltip1)
+                            add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value=cfg['fft_size'],callback=fft_change); widget_tooltip(FFT_tooltip2)
+                            add_combo(tag='buckets_fft',items=['0','64','128','256','512','1024','2048','4096'],default_value=cfg['buckets_fft'],callback=buckets_quant_change,user_data=True); widget_tooltip(FFT_tooltip3)
+                            add_combo(tag='tda_fft',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value='0.0',callback=tda_fft_callback); widget_tooltip(FFT_tooltip4)
 
                             add_text(default_value='TRACKS')
-                            add_combo(tag='buckets_tracks',items=['64','128','256'],default_value=cfg['buckets_tracks'],callback=buckets_quant_change,user_data=True)
-
-                            add_combo(tag='tda_tracks',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=0.7,callback=tda_tracks_callback); widget_tooltip('Time domain averaging')
-                            widget_tooltip('Time domain averaging')
+                            add_combo(tag='buckets_tracks',items=['64','128','256'],default_value=cfg['buckets_tracks'],callback=buckets_quant_change,user_data=True); widget_tooltip(FFT_tooltip5)
+                            add_combo(tag='tda_tracks',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=0.7,callback=tda_tracks_callback); widget_tooltip(FFT_tooltip6)
 
                         with dpg.group():
                             add_text(default_value='API')
@@ -2184,20 +2210,13 @@ api_changed()
 data=zeros(cfg['fft_size'])
 next_sweep_time=0
 
-status_text=''
-def set_status(text,alert=False):
-    global status_text
-    if text!=status_text:
-        set_value('status',text)
-        status_text=text
-
-        #if alert:
-        #    bind_item_theme("status_text", text_alert)
-        #else:
-        #    bind_item_theme("status_text", text_ok)
-
+status_timeout=0
 
 next_fps = 0
+status_shown=True
+status_hide_time=0
+
+hide_info()
 frames = 0
 input_callbacks_all = 0
 rec_samples = 0
@@ -2208,7 +2227,6 @@ dpg.configure_app()
 show_help()
 
 while is_dearpygui_running():
-
     if sweeping:
         now=perf_counter()
         if now>next_sweep_time:
@@ -2290,9 +2308,13 @@ while is_dearpygui_running():
         if current_sample_db<-110:
             set_status('No signal / Mic not connected ...',1)
             set_value('central_info','''
- No signal !
+     No signal !
 (Mic not connected ?)''')
             set_value('help_text1','')
+        elif status_timeout!=0:
+            if perf_counter()>status_timeout:
+                set_value('help_text1','')
+                status_timeout=0
         else:
             set_value('central_info','')
 
@@ -2305,7 +2327,6 @@ while is_dearpygui_running():
                     #TODO
                     if track!=recorded_track:
                         bind_item_theme(f"track{track}",line_theme)
-
 
             redraw_tracks_lines=False
 
@@ -2323,20 +2344,21 @@ while is_dearpygui_running():
 
     if schedule_screenshot:
         if os.path.isfile(filename_full_screenshot):
-            schedule_screenshot=False
-
             x, y = dpg.get_item_rect_min("plot")
             w, h = dpg.get_item_rect_size("plot")
-
-            img = Image.open(filename_full_screenshot)
-
-            cropped_img = img.crop((x, y, x+w, y+h))
 
             timestamp=strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) )
             filename_cut=path_join(INTERNAL_DIR_IMAGES, f'sas-{timestamp}.png')
 
             set_status(f'saving {filename_cut} ...')
-            cropped_img.save(filename_cut)
+
+            try:
+                Image.open(filename_full_screenshot).crop((x, y, x+w, y+h)).save(filename_cut)
+            except Exception as exception_img:
+                l_error(f'exception_img:{exception_img}')
+                print(f'exception_img:{exception_img}')
+            else:
+                schedule_screenshot=False
 
     ##################################
     if DEBUG:
