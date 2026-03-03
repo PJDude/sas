@@ -11,8 +11,9 @@
 - Live FFT graph with selectable window functions
 - Input and output device selection
 
-**Simple Audio Sweeper** uses the [sounddevice](https://python-sounddevice.readthedocs.io) module to interact with system audio hardware, and [NumPy](https://numpy.org/) for audio processing and FFT analysis. The executable file is created with [Pyinstaller](https://pyinstaller.org). The GUI is built using [DearPyGui](https://github.com/hoffstadt/DearPyGui)
-
+**Simple Audio Sweeper** uses the [SoundDevice](https://python-sounddevice.readthedocs.io) module to interact with system audio hardware, and [NumPy](https://numpy.org/) for audio processing and FFT analysis. The executable file is created with [Pyinstaller](https://pyinstaller.org). The GUI is built using [DearPyGui](https://github.com/hoffstadt/DearPyGui)
+![image info](./info/sas.png)
+("old" 1.x version based on TkInter)
 ![image info](./info/sas.gif)
 
 ### Usage:

@@ -27,19 +27,17 @@
 ####################################################################################
 
 import dearpygui.dearpygui as dpg
-
-from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,add_scatter_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_deactivated_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_release_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_button,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
+from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
-from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration
+from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group
 
 from time import strftime,time,localtime,perf_counter
-#from gc import disable as gc_disable, enable as gc_enable,collect as gc_collect
+from gc import disable as gc_disable, collect as gc_collect
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array, add as np_add
-from sounddevice import Stream,InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array
+from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 
 from collections import deque
-from queue import Queue
 
 from math import pi, log10, ceil, floor
 from PIL import Image
@@ -101,8 +99,6 @@ log_file = path_join(INTERNAL_DIR_LOGS, strftime('%Y_%m_%d-%H_%M_%S',localtime_c
 cfg_file = path_join(INTERNAL_DIR, 'sas.cfg')
 
 print(f'{log_file=}')
-
-#fft_points = 4
 
 cfg={}
 
@@ -322,8 +318,8 @@ def save_csv():
                 for track,show in enumerate(show_track):
                     if show:
                         db=track_line_data_y[track][i]
-                        logf=bucket_to_logf(i)
-                        values.append(f"{round(100*(10**logf))/100},{round(1000*db)/1000}")
+                        freq=bucket_tracks_freqs[i]
+                        values.append(f"{round(100*freq)/100},{round(1000*db)/1000}")
                 f.write(','.join(values) + '\n')
     except Exception as e:
         l_error(f'save_csv_error:{e}')
@@ -378,7 +374,7 @@ def save_image():
     if os.path.isfile(filename_full_screenshot):
         os.remove(filename_full_screenshot)
 
-    dpg.output_frame_buffer(filename_full_screenshot)
+    output_frame_buffer(filename_full_screenshot)
 
     schedule_screenshot=True
 
@@ -1111,7 +1107,7 @@ def tda_fft_callback(sender=None, app_data=None):
     global TDA_FFT,fft_ready,TDA_FFT_1m
     fft_ready=False
     TDA_FFT=float(app_data)
-    TDA_FFT_1m=(1.0-TDA_FFT)
+    TDA_FFT_1m=1.0-TDA_FFT
     common_precalc()
 
 tda_tracks=0.0
@@ -1120,7 +1116,7 @@ def tda_tracks_callback(sender=None, app_data=None):
     l_info(f'tda_tracks_callback:{sender},{app_data}')
     global tda_tracks,tracks_ready,tda_tracks_1m
     tda_tracks=float(app_data)
-    tda_tracks_1m=(1.0-tda_tracks)
+    tda_tracks_1m=1.0-tda_tracks
     common_precalc()
 
 FFT_ACTUAL_BUCKETS=0
@@ -1317,18 +1313,18 @@ def on_mouse_release(sender, app_data):
     button_nr=app_data
 
     if button_nr==0:
-        global sweeping,lock_frequency
+        #global sweeping,lock_frequency
         global is_dragging,is_resizing
         is_dragging = False
         is_resizing = False
 
-        lock_frequency=False
+        #lock_frequency=False
 
-        if not sweeping:
-            play_stop()
-            status_set_frequency()
-    elif button_nr==1:
-        sweep_abort()
+        #if not sweeping:
+        #    play_stop()
+        #    status_set_frequency()
+    #elif button_nr==1:
+    #    sweep_abort()
     else:
         l_info(f'another button:{button_nr}')
 
@@ -1811,6 +1807,21 @@ def theme_dark_callback():
     configure_item('exit_button',texture_tag=ico['exit_dark'])
     cfg['theme']='dark'
 
+DETECT_PEAKS=False
+def peaks_detect_callback():
+    global DETECT_PEAKS
+    DETECT_PEAKS=get_value('peaks_detect')
+
+DETECT_PEAKS_DIST=0.1
+def peaks_detect_dist_change():
+    global DETECT_PEAKS_DIST
+    DETECT_PEAKS_DIST=get_value('peaks_detect_dist')
+
+DETECT_PEAKS_THRESHOLD=10
+def peaks_detect_threshold_change():
+    global DETECT_PEAKS_THRESHOLD
+    DETECT_PEAKS_THRESHOLD=get_value('peaks_detect_threshold')
+
 DEBUG=False
 def debug_callback():
     set_value('debug_text','')
@@ -1902,7 +1913,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
     set_primary_window(main, True)
 
     if not decorated:
-        with dpg.table(header_row=False,resizable=False, policy=dpg.mvTable_SizingStretchProp,borders_outerH=False, borders_innerV=False, borders_outerV=False):
+        with table(header_row=False,resizable=False, policy=dpg.mvTable_SizingStretchProp,borders_outerH=False, borders_innerV=False, borders_outerV=False):
             dpg.add_table_column( width_fixed=True, init_width_or_weight=5)
             dpg.add_table_column( width_fixed=True, init_width_or_weight=16)
             dpg.add_table_column( width_fixed=True, init_width_or_weight=300)
@@ -1910,10 +1921,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
             dpg.add_table_column( width_fixed=True, init_width_or_weight=16)
             dpg.add_table_column( width_fixed=True, init_width_or_weight=3)
 
-            with dpg.table_row():
+            with table_row():
                 dpg.add_spacer(height=3)
 
-            with dpg.table_row():
+            with table_row():
                 dpg.add_spacer(width=3)
                 add_image_button(ico["sas_small"],callback=None)
                 dpg.add_text(title)
@@ -1922,22 +1933,22 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 widget_tooltip('Exit')
                 dpg.add_spacer(width=3)
 
-            with dpg.table_row():
+            with table_row():
                 dpg.add_spacer(height=3)
 
     with window(tag='info_window',no_close=True,menubar=False,no_title_bar=True,autosize=False,no_scrollbar=True):
         add_text(tag='info_text',default_value='')
         hide_item('info_window')
 
-    with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
+    with table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
         borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
         row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
         no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
 
         add_table_column(width_stretch=True, init_width_or_weight=-1)
 
-        with dpg.table_row():
-            with dpg.group(tag='plot_combo',horizontal=True):
+        with table_row():
+            with group(tag='plot_combo',horizontal=True):
                 dpg.add_spacer(width=6)
 
                 dpg.add_slider_float(tag='slider',callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,format="",width=10,track_offset=0.5)
@@ -1981,7 +1992,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                     bind_item_handler_registry("plot", "plot_handlers")
 
-                with dpg.group(tag='buttons'):
+                with group(tag='buttons'):
                     dpg.add_spacer(height=6)
                     with item_handler_registry(tag="tracks_handlers"):
                         add_item_hover_handler(event_type=mvEventType_Enter,callback=on_mouse_move_tracks_enter)
@@ -2002,11 +2013,11 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_radio_button(tag='rec_track',items=['-'] + [track+1 for track in range(tracks)], callback=record_track_changed,horizontal=False)
 
                     dpg.add_spacer(height=6)
-                    add_image_button(ico["reset"],tag=f'resetrack',callback=reset_track_press,label="X")
+                    add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press,label="X")
                     widget_tooltip(' Reset selected track samples.')
 
-        with dpg.table_row():
-            with dpg.table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
+        with table_row():
+            with table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
                 borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
                 row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
                 no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
@@ -2016,13 +2027,13 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
                 add_table_column(width_fixed=True, init_width_or_weight=255, width=255)
 
-                with dpg.table_row():
+                with table_row():
                     dpg.add_spacer(height=6)
                     dpg.add_spacer(height=6)
 
                     add_text(tag='status',default_value='')
 
-                    with dpg.group(horizontal=True):
+                    with group(horizontal=True):
                         add_image_button(ico["play"],tag='sweep',callback=sweep_press)
                         widget_tooltip('Run frequency sweep')
                         dpg.add_spacer(width=16)
@@ -2041,119 +2052,124 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         widget_tooltip("Show 'About' Dialog")
                         add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper)
                         widget_tooltip("Show settings")
-        with dpg.table_row():
-                with dpg.table(tag='settings_table',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
+        with table_row():
+            with table(tag='settings_table',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
 
-                    add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
-                    add_table_column(width_fixed=True, init_width_or_weight=66, width=66)
-                    add_table_column(width_fixed=True, init_width_or_weight=140, width=140)
-                    add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
-                    add_table_column(width_stretch=True, init_width_or_weight=300)
-                    add_table_column(width_stretch=True, init_width_or_weight=300)
-                    add_table_column(width_fixed=True, init_width_or_weight=20, width=20)
-                    add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
-                    add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
+                add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
+                add_table_column(width_fixed=True, init_width_or_weight=66, width=66)
+                add_table_column(width_fixed=True, init_width_or_weight=140, width=140)
+                add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
+                add_table_column(width_stretch=True, init_width_or_weight=300)
+                add_table_column(width_stretch=True, init_width_or_weight=300)
+                add_table_column(width_fixed=True, init_width_or_weight=20, width=20)
+                add_table_column(width_fixed=True, init_width_or_weight=200, width=200)
+                add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
 
-                    with dpg.table_row():
+                with table_row():
+                    add_text(default_value='')
+                    with group():
                         add_text(default_value='')
-                        with dpg.group():
-                            add_text(default_value='')
-                            add_text(default_value='window'); FFT_tooltip1='FFT window\nF3 / Shift+F3' ; widget_tooltip(FFT_tooltip1)
-                            add_text(default_value='size'); FFT_tooltip2='FFT size\nF4 / Shift+F4'; widget_tooltip(FFT_tooltip2)
-                            add_text(default_value='FBA'); FFT_tooltip3='Frequency bin aggregation\nF5 / Shift+F5'; widget_tooltip(FFT_tooltip3)
-                            add_text(default_value='TDA'); FFT_tooltip4='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tooltip4)
+                        add_text(default_value='window'); FFT_tooltip1='FFT window\nF3 / Shift+F3' ; widget_tooltip(FFT_tooltip1)
+                        add_text(default_value='size'); FFT_tooltip2='FFT size\nF4 / Shift+F4'; widget_tooltip(FFT_tooltip2)
+                        add_text(default_value='FBA'); FFT_tooltip3='Frequency bin aggregation\nF5 / Shift+F5'; widget_tooltip(FFT_tooltip3)
+                        add_text(default_value='TDA'); FFT_tooltip4='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tooltip4)
 
-                            add_text(default_value='')
-                            add_text(default_value='buckets'); FFT_tooltip5='Recorded Tracks Frequency "buckets"\nF7 / Shift+F7'; widget_tooltip(FFT_tooltip5)
-                            add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging\nF8 / Shift+F8'; widget_tooltip(FFT_tooltip6)
+                        add_text(default_value='')
+                        add_text(default_value='buckets'); FFT_tooltip5='Recorded Tracks Frequency "buckets"\nF7 / Shift+F7'; widget_tooltip(FFT_tooltip5)
+                        add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging\nF8 / Shift+F8'; widget_tooltip(FFT_tooltip6)
 
-                        with dpg.group(width=-1):
-                            add_text(default_value='FFT')
-                            add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed); widget_tooltip(FFT_tooltip1)
-                            add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value=cfg['fft_size'],callback=fft_change); widget_tooltip(FFT_tooltip2)
-                            add_combo(tag='buckets_fft',items=['0','64','128','256','512','1024','2048','4096'],default_value=cfg['buckets_fft'],callback=buckets_quant_change,user_data=True); widget_tooltip(FFT_tooltip3)
-                            add_combo(tag='tda_fft',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value='0.0',callback=tda_fft_callback); widget_tooltip(FFT_tooltip4)
+                    with group(width=-1):
+                        add_text(default_value='FFT')
+                        add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed); widget_tooltip(FFT_tooltip1)
+                        add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value=cfg['fft_size'],callback=fft_change); widget_tooltip(FFT_tooltip2)
+                        add_combo(tag='buckets_fft',items=['0','64','128','256','512','1024','2048','4096'],default_value=cfg['buckets_fft'],callback=buckets_quant_change,user_data=True); widget_tooltip(FFT_tooltip3)
+                        add_combo(tag='tda_fft',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value='0.0',callback=tda_fft_callback); widget_tooltip(FFT_tooltip4)
 
-                            add_text(default_value='TRACKS')
-                            add_combo(tag='buckets_tracks',items=['64','128','256'],default_value=cfg['buckets_tracks'],callback=buckets_quant_change,user_data=True); widget_tooltip(FFT_tooltip5)
-                            add_combo(tag='tda_tracks',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=0.7,callback=tda_tracks_callback); widget_tooltip(FFT_tooltip6)
+                        add_text(default_value='TRACKS')
+                        add_combo(tag='buckets_tracks',items=['64','128','256'],default_value=cfg['buckets_tracks'],callback=buckets_quant_change,user_data=True); widget_tooltip(FFT_tooltip5)
+                        add_combo(tag='tda_tracks',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=0.7,callback=tda_tracks_callback); widget_tooltip(FFT_tooltip6)
 
-                        with dpg.group():
-                            add_text(default_value='API')
-                            add_text(default_value=' ')
-                            add_text(default_value=' ')
-                            add_text(default_value='Device:')
-                            add_text(default_value='channels:')
-                            add_text(default_value='Samplerate:')
-                            add_text(default_value='latency:')
-                            add_text(default_value='blckocksize:')
-                        with dpg.group(width=-1):
-                            add_combo(tag='api',default_value='',callback=api_changed)
-                            add_text(default_value=' ')
+                    with group():
+                        add_text(default_value='API')
+                        add_text(default_value=' ')
+                        add_text(default_value=' ')
+                        add_text(default_value='Device:')
+                        add_text(default_value='channels:')
+                        add_text(default_value='Samplerate:')
+                        add_text(default_value='latency:')
+                        add_text(default_value='blckocksize:')
+                    with group(width=-1):
+                        add_combo(tag='api',default_value='',callback=api_changed)
+                        add_text(default_value=' ')
 
-                            with dpg.table(tag='out_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
-                                add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
-                                add_table_column(width_fixed=True, init_width_or_weight=66)
-                                with dpg.table_row():
-                                    dpg.add_image(ico["out_off"],tag='out_status',width=16)
-                                    widget_tooltip('Output Stream status')
-                                    add_text(default_value='Output')
+                        with table(tag='out_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
+                            add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                            add_table_column(width_fixed=True, init_width_or_weight=66)
+                            with table_row():
+                                dpg.add_image(ico["out_off"],tag='out_status',width=16)
+                                widget_tooltip('Output Stream status')
+                                add_text(default_value='Output')
 
-                            #with dpg.group():
-                                #with child_window(border=False,autosize_y=False,autosize_x=True,height=-1):
-                                #with dpg.group():
+                        #with group():
+                            #with child_window(border=False,autosize_y=False,autosize_x=True,height=-1):
+                            #with group():
 
-                            add_combo(tag='out_dev',default_value='',callback=out_dev_changed,user_data=True)
-                            add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
-                            add_text(tag='out_samplerate')
+                        add_combo(tag='out_dev',default_value='',callback=out_dev_changed,user_data=True)
+                        add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
+                        add_text(tag='out_samplerate')
 
-                            add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
-                            add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
+                        add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
+                        add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
 
-                        with dpg.group(width=-1):
-                            add_text(default_value=' ')
-                            add_text(default_value=' ')
-                            with dpg.table(tag='in_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
-                                add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
-                                add_table_column(width_fixed=True, init_width_or_weight=66)
-                                with dpg.table_row():
-                                    dpg.add_image(ico["in_off"],tag='in_status')
-                                    widget_tooltip('Input Stream status')
-                                    add_text(default_value='Input')
+                    with group(width=-1):
+                        add_text(default_value=' ')
+                        add_text(default_value=' ')
+                        with table(tag='in_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
+                            add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                            add_table_column(width_fixed=True, init_width_or_weight=66)
+                            with table_row():
+                                dpg.add_image(ico["in_off"],tag='in_status')
+                                widget_tooltip('Input Stream status')
+                                add_text(default_value='Input')
 
 
-                            add_combo(tag='in_dev',default_value='',callback=in_dev_changed)
-                            add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
-                            add_text(tag='in_samplerate')
+                        add_combo(tag='in_dev',default_value='',callback=in_dev_changed)
+                        add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
+                        add_text(tag='in_samplerate')
 
-                            add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
-                            add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
+                        add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
+                        add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
 
-                        dpg.add_spacer(width=20)
+                    dpg.add_spacer(width=20)
 
-                        with dpg.group():
-                            add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=vsync_default)
-                            add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=False)
+                    with group():
+                        add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=vsync_default)
+                        add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=False)
 
-                            with dpg.group(horizontal=True):
-                                add_image_button(ico["light"],callback=theme_light_callback,width=16)
-                                widget_tooltip("light theme ")
+                        with group(horizontal=True):
+                            add_image_button(ico["light"],callback=theme_light_callback,width=16)
+                            widget_tooltip("light theme ")
 
-                                add_image_button(ico["dark"],callback=theme_dark_callback,width=16)
-                                widget_tooltip("dark theme ")
+                            add_image_button(ico["dark"],callback=theme_dark_callback,width=16)
+                            widget_tooltip("dark theme ")
 
-                        with dpg.group():
-                            dpg.add_spacer(width=6)
+                        add_checkbox(tag='peaks_detect',label='Detect Peaks',callback=peaks_detect_callback,default_value=DETECT_PEAKS)
+
+                        dpg.add_slider_float(tag='peaks_detect_dist',callback=peaks_detect_dist_change,max_value=0.5,min_value=0.01,default_value=DETECT_PEAKS_DIST,format="%.3f",width=200,track_offset=0.5)
+                        dpg.add_slider_float(tag='peaks_detect_threshold',callback=peaks_detect_threshold_change,max_value=30,min_value=1,default_value=DETECT_PEAKS_THRESHOLD,format="%.3f",width=200,track_offset=0.5)
+
+                    with group():
+                        dpg.add_spacer(width=6)
 
     add_text(tag='debug_text',default_value='')
     add_text(tag='help_text1',default_value='')
     add_text(tag='central_info',default_value='')
 
     with dpg.handler_registry():
-        dpg.add_mouse_click_handler(callback=on_click)
-        dpg.add_mouse_release_handler(callback=on_mouse_release)
-        dpg.add_mouse_wheel_handler(callback=wheel_callback)
-        dpg.add_key_press_handler(callback=key_callback)
+        add_mouse_click_handler(callback=on_click)
+        add_mouse_release_handler(callback=on_mouse_release)
+        add_mouse_wheel_handler(callback=wheel_callback)
+        add_key_press_handler(callback=key_callback)
 
         dpg.add_mouse_down_handler(button=0, callback=on_mouse_down)
         dpg.add_mouse_move_handler(callback=on_mouse_move)
@@ -2230,6 +2246,10 @@ record_track_changed()
 dpg.configure_app()
 show_help()
 
+peaks_annos=set()
+
+gc_disable
+
 while is_dearpygui_running():
     if sweeping:
         now=perf_counter()
@@ -2266,6 +2286,11 @@ while is_dearpygui_running():
         #data = randn(cfg['fft_size'])
 
         current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
+
+        for (tag,f,val) in peaks_annos:
+            dpg.delete_item(tag)
+        peaks_annos.clear()
+
         if fft_on and fft_ready:
             try:
                 fft_values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / FFT_SIZE + 1e-12)
@@ -2286,17 +2311,40 @@ while is_dearpygui_running():
                     fft_values_final_y=TDA_FFT_1m*array(fft_values_final_y) + TDA_FFT*array(fft_values_final_y_prev)
                 except:
                     pass
-                #fft_values_final_y_prev=fft_values_final_y.copy()
                 fft_values_final_y_prev=fft_values_final_y
 
                 set_value("fft_line", [fft_line_final_x, fft_values_final_y ])
+
+                peak_index=0
+
+                if DETECT_PEAKS:
+                    dist=round(FFT_ACTUAL_BUCKETS*DETECT_PEAKS_DIST)
+                    threshold=DETECT_PEAKS_THRESHOLD
+                    for i,(f,v) in enumerate(zip(fft_line_final_x,fft_values_final_y)):
+                        w_max=-300
+                        for j in range(i-dist,i+dist):
+                            try:
+                                w=fft_values_final_y[j]
+                                if w>w_max+threshold:
+                                    w_max=w
+                            except Exception as cc:
+                                #print(cc)
+                                pass
+
+
+                        if w_max==v:
+                            tag=f'peak{peak_index}'
+                            fint=int(f)
+                            peaks_annos.add((tag,f,v))
+                            dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 255), offset=(20,-10))
+                            peak_index+=1
 
             except Exception as exception_fft:
                 l_error('FFT Exception:',exception_fft)
                 print('FFT Exception:',exception_fft)
 
         if playing_state==2 and recorded_track is not None and current_bucket<BUCKETS_TRACKS:
-            track_line_data_y[recorded_track][current_bucket]=( track_line_data_y[recorded_track][current_bucket]*tda_tracks + current_sample_db*tda_tracks_1m )
+            track_line_data_y[recorded_track][current_bucket]=track_line_data_y[recorded_track][current_bucket]*tda_tracks + current_sample_db*tda_tracks_1m
             redraw_tracks_lines=True
             #except Exception as exception_line:
             #    l_error('RLine Exception:',exception_line)
@@ -2349,9 +2397,9 @@ while is_dearpygui_running():
     render_dearpygui_frame()
 
     if schedule_screenshot:
-        #show_item('cursor_db_txt')
-        #show_item('cursor_f_txt')
-        #show_item('cursor_f')
+        show_item('cursor_db_txt')
+        show_item('cursor_f_txt')
+        show_item('cursor_f')
 
         if os.path.isfile(filename_full_screenshot):
             x, y = dpg.get_item_rect_min("plot")
@@ -2414,6 +2462,8 @@ TDA: {TDA_FFT}
     if exiting:
         break
 
+    gc_collect
+
 print('exiting')
 sweeping=False
 lock_frequency=False
@@ -2433,4 +2483,3 @@ with open(cfg_file, "w", encoding="utf-8") as f:
 destroy_context()
 l_info('Exiting.')
 sys_exit(0)
-
