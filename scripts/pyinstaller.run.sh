@@ -32,6 +32,7 @@ pyinstaller --onefile --noconsole --noconfirm --clean --optimize 2 --strip --nou
     --exclude-module scipy.sparse \
     --exclude-module numpy.polynomial \
     --add-data="distro.info.txt:." --add-data="version.txt:." --add-data="../LICENSE:." \
+    --add-data="../src/icons:./icons" \
     --contents-directory=internal --distpath=$outdir --additional-hooks-dir=. \
     ./sas.py
 

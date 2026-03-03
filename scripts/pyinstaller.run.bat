@@ -33,6 +33,7 @@ pyinstaller --onefile --windowed --noconfirm --clean --optimize 2 --noupx --icon
     --exclude-module numpy.polynomial ^
     --version-file=version.pi.txt ^
     --add-data="distro.info.txt:." --add-data="version.txt;." --add-data="../LICENSE;." ^
+    --add-data="../src/icons;./icons" ^
     --contents-directory=internal  --distpath=%OUTDIR%  --additional-hooks-dir=. ^
     sas.py  || exit /b 2
 
