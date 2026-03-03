@@ -33,7 +33,7 @@ VSVersionInfo(
         StringStruct(u'FileDescription', u'SAS'),
         StringStruct(u'FileVersion', u'0.0.0.0'),
         StringStruct(u'InternalName', u'Simple Audio Sweeper'),
-        StringStruct(u'LegalCopyright', u'Piotr Jochymek 2025'),
+        StringStruct(u'LegalCopyright', u'Piotr Jochymek 2026'),
         StringStruct(u'OriginalFilename', u'sas.exe'),
         StringStruct(u'ProductName', u'Simple Audio Sweeper'),
         StringStruct(u'ProductVersion', u'VER_TO_REPLACE')])
