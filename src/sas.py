@@ -619,7 +619,7 @@ out_blocksize_default=256
 out_latency_default='low'
 
 in_blocksize_values=(512,256,128,64,0)
-in_blocksize_default=64
+in_blocksize_default=64 if windows else 256
 in_latency_default='low'
 
 out_channel_buffer_mod_index=0
@@ -1052,7 +1052,11 @@ def fft_window_changed(sender=None, app_data=None):
     common_precalc()
 
     if DEBUG:
-        save_window()
+        try:
+            if environ['SAS_DEBUG_CSV']:
+                save_window()
+        except:
+            pass
 
 bucket_fft_freqs=[0]
 bucket_fft_edges=[0]
@@ -1155,26 +1159,24 @@ def common_precalc():
     fft_bin_counts = bincount(fft_bin_indices)
     l_info(f'fft_bin_counts={len(fft_bin_counts)}')
 
+
     if DEBUG:
-        save_buckets_tracks()
-        save_buckets_edges()
-        save_buckets_fft()
-        save_fft_points()
-        save_fft_bin_indices()
-        save_fft_bin_counts()
+        try:
+            if environ['SAS_DEBUG_CSV']:
+                save_buckets_tracks()
+                save_buckets_edges()
+                save_buckets_fft()
+                save_fft_points()
+                save_fft_bin_indices()
+                save_fft_bin_counts()
+        except:
+            pass
 
     dummy_fft_values = bincount(fft_bin_indices, weights=dummy_data)[1:] / fft_bin_counts[1:]
     global fft_bin_indices_selected,fft_x_vec,fft_ready,FFT_ACTUAL_BUCKETS
     fft_bin_indices_selected=array([i for i,i_n in enumerate(isnan(dummy_fft_values)) if not i_n])
     FFT_ACTUAL_BUCKETS=len(fft_bin_indices_selected)
     fft_x_vec=tuple([bucket_fft_freqs[i] for i in fft_bin_indices_selected[:-1]])
-
-    #print('fft_bin_indices_selected',fft_bin_indices_selected,'lens:',len(fft_bin_indices_selected),len(dummy_fft_values))
-
-    #l_info('')
-
-    #l_info(f'{fft_line_data_x_border_index=} / {len(fft_line_data_x)}')
-    #l_info(f'{bucket_freqs_border_index=} / {len(bucket_fft_freqs)}')
 
     for track in range(tracks):
         track_line_data_y[track]=[dbmin]*cfg['buckets_tracks']
@@ -1184,14 +1186,7 @@ def common_precalc():
     fft_values_final_y_prev=[0]*len(bucket_fft_freqs)
 
     if BUCKETS_FFT:
-
         fft_line_new_x=bucket_fft_freqs
-        #if bucket_freqs_border_index==0:
-        #else:
-        #    fft_line_new_x=fft_line_data_x[1:fft_line_data_x_border_index] + bucket_fft_freqs[bucket_freqs_border_index:]
-            #fft_line_new_x=fft_line_data_x[:fft_line_data_x_border_index] + bucket_fft_freqs[bucket_freqs_border_index:]
-        #    fft_line_new_x[0]=5
-        #    fft_line_new_x=fft_line_new_x
     else:
         fft_line_new_x=fft_line_data_x
 
@@ -1336,7 +1331,6 @@ def on_mouse_release(sender, app_data):
         sweep_abort()
     else:
         l_info(f'another button:{button_nr}')
-
 
 def on_mouse_move_tracks_enter(sender, app_data):
     #print('on_mouse_move_tracks:',sender,app_data)
@@ -1538,8 +1532,6 @@ with dpg.theme() as theme_dark:
         dpg.add_theme_color(dpg.mvThemeCol_Text, DARK_TEXT)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize,2,category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,4)
-
-
 
 #with theme() as text_ok:
  #   with theme_component(dpg.mvText):
@@ -2021,16 +2013,12 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                 add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
                 add_table_column(width_fixed=True, init_width_or_weight=18, width=18)
-                #add_table_column(width_fixed=True, init_width_or_weight=60, width=60)
-                #add_table_column(width_fixed=True, init_width_or_weight=18, width=18)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
                 add_table_column(width_fixed=True, init_width_or_weight=255, width=255)
 
                 with dpg.table_row():
                     dpg.add_spacer(height=6)
                     dpg.add_spacer(height=6)
-
-
 
                     add_text(tag='status',default_value='')
 
