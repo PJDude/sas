@@ -29,13 +29,14 @@
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
-from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group
+from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app
 
 from time import strftime,time,localtime,perf_counter
 from gc import disable as gc_disable, collect as gc_collect
 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array
 from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
+import numpy as np
 
 from collections import deque
 
@@ -774,7 +775,6 @@ def in_stream_init():
 
 def hide_info():
     hide_item('info_window')
-    set_value('info_text','')
     on_viewport_resize()
 
 def show_info(message):
@@ -823,45 +823,33 @@ def reset_track_press(sender=None, app_data=None):
 
 recorded_track=None
 
-def configure_track_button(track):
-    if show_track[track]:
-        if track==recorded_track:
-            configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_sel"])
-        else:
-            configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_on"])
-    else:
-        configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_off"])
-
 show_track=[False]*tracks
-def track_press(sender=None,app_data=None,track_combo=None):
-    l_info(f'track_press:{sender},{app_data},{track_combo}')
-    track,press=track_combo
+def track_action_callback(sender=None,app_data=None,track=None):
+    l_info(f'track_action_callback:{sender},{app_data},{track}')
 
     Ctrl = is_key_down(dpg.mvKey_LControl)
 
-    track_pressed(track)
-
     global show_track,recorded_track
-    if press:
-        show_track[track]=(True,False)[show_track[track]]
-        bind_item_theme(f"track{track}",line_theme)
-
-    configure_track_button(track)
-
-    if not show_track[track]:
-        if recorded_track==track:
-            recorded_track=None
-            set_value('rec_track','-')
-            record_track_changed(None,'-')
-
-def track_pressed(track):
-    global redraw_tracks_lines,lock_frequency
 
     lock_frequency=False
     sweep_abort()
     play_stop()
     status_set_frequency()
-    redraw_tracks_lines=True
+
+    if Ctrl:
+        if recorded_track==track:
+            show_track[track]=True
+            recorded_track=None
+        else:
+            show_track[track]=True
+            recorded_track=track
+    else:
+        show_track[track]=not show_track[track]
+        if not show_track[track]:
+            if recorded_track==track:
+                recorded_track=None
+
+    refresh_tracks()
 
 try:
     VER_TIMESTAMP=Path(path_join(dirname(__file__),VERSION_FILE)).read_text(encoding='ASCII').strip()
@@ -958,52 +946,23 @@ def api_changed(sender=None, app_data=None):
 
     in_dev_changed(None,None)
 
-def record_track_changed(sender=None, app_data=None):
-    l_info(f'record_track_changed:{sender},{app_data}')
-    track_selection=app_data
-
-    sweep_abort()
-
-    global recorded_track,line_theme
-
-    if track_selection is None:
-        print(f'record_track_changed:{recorded_track=}')
-        if recorded_track is not None:
-            bind_item_theme(f"track{recorded_track}",line_theme)
-            configure_item(f'showcheck{recorded_track}',texture_tag=ico[f"{recorded_track+1}_off"])
-            recorded_track=None
-        configure_item('recording_select',texture_tag=ico["rec_off"])
-
-    else:
-        if recorded_track is not None:
-            configure_item(f'showcheck{recorded_track}',texture_tag=ico[f"{recorded_track+1}_off"])
-
-        if track_selection=='1':
-            recorded_track=0
-        elif track_selection=='2':
-            recorded_track=1
-        elif track_selection=='3':
-            recorded_track=2
-        elif track_selection=='4':
-            recorded_track=3
-        elif track_selection=='5':
-            recorded_track=4
-        elif track_selection=='6':
-            recorded_track=5
-        elif track_selection=='7':
-            recorded_track=6
-        elif track_selection=='8':
-            recorded_track=7
+def refresh_tracks():
+    for track in range(tracks):
+        if track==recorded_track:
+            configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_sel"])
+            bind_item_theme(f"track{track}",reddark_line_theme)
+            configure_item(f"track{track}",show=True)
+        elif show_track[track]:
+            configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_on"])
+            bind_item_theme(f"track{track}",line_theme)
+            configure_item(f"track{track}",show=True)
         else:
-            l_error(f'unknown track:{track_selection}')
+            configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_off"])
+            bind_item_theme(f"track{track}",line_theme)
+            configure_item(f"track{track}",show=False)
 
-        if recorded_track is not None:
-            show_track[recorded_track]=True
-            track_press(sender,True,(recorded_track,False))
-            bind_item_theme(f"track{recorded_track}",reddark_line_theme)
-            configure_item('recording_select',texture_tag=ico["rec_on"])
-
-    hide_item("rec_track_popup")
+    global redraw_tracks_lines
+    redraw_tracks_lines=True
 
 FFT_SIZE=0
 def fft_change(sender=None, app_data=None):
@@ -1057,7 +1016,6 @@ def fft_window_changed(sender=None, app_data=None):
 bucket_fft_freqs=[0]
 bucket_fft_edges=[0]
 
-#fft_line_data_x_border_index=0
 track_line_data_y={}
 
 time_to_collect_sample=0.125 #[s]
@@ -1208,7 +1166,7 @@ def out_dev_changed(sender=None, app_data=None,user_data=False):
     out_channel_value=get_value("out_channel")
 
     if not out_channel_value or out_channel_value not in output_channels:
-        out_channel_value=2
+        out_channel_value=1
         set_value("out_channel",out_channel_value)
 
     set_value("out_samplerate",device_out_current['default_samplerate'])
@@ -1256,38 +1214,54 @@ def in_dev_changed(sender=None, app_data=None):
 
     in_stream_init()
 
-def on_click(sender, app_data):
-    #print('on_click')
+def click_callback(sender, button_nr):
+    #print('click_callback',sender, button_nr)
     hide_info()
-    set_value('help_text1','')
 
-def on_click_plot(sender, app_data):
-    #print('on_click_plot',sender, app_data)
+    if is_item_hovered("plot"):
+        global sweeping,lock_frequency
+        if button_nr==0:
+            sweep_abort()
 
-    button_nr=app_data[0]
+            if lock_frequency:
+                lock_frequency=False
+                play_stop()
+            else:
+                play_start()
+                status_set_frequency()
 
-    global sweeping,lock_frequency
+        elif button_nr==1:
+            sweep_abort()
+
+            if lock_frequency:
+                lock_frequency=False
+                play_stop()
+            else:
+                lock_frequency=True
+
+                play_start()
+                status_set_frequency()
+
+def release_callback(sender, button_nr):
+    #print('release_callback',sender, button_nr)
     if button_nr==0:
-        sweep_abort()
-
-        if lock_frequency:
-            lock_frequency=False
+        if is_item_hovered("plot"):
+            #if not sweeping:
             play_stop()
         else:
-            play_start()
-            status_set_frequency()
 
-    elif button_nr==1:
-        sweep_abort()
+            #global sweeping,lock_frequency
+            global is_dragging,is_resizing
+            is_dragging = False
+            is_resizing = False
 
-        if lock_frequency:
-            lock_frequency=False
-            play_stop()
-        else:
-            lock_frequency=True
+        #lock_frequency=False
 
-            play_start()
-            status_set_frequency()
+        #if not sweeping:
+        #    play_stop()
+        #    status_set_frequency()
+    #elif button_nr==1:
+    #    sweep_abort()
     else:
         l_info(f'another button:{button_nr}')
 
@@ -1308,26 +1282,6 @@ def wheel_callback(sender, val):
         set_value('slider',slide_val)
         slide_change('slider')
 
-def on_mouse_release(sender, app_data):
-    #print('on_mouse_release',sender, app_data)
-    button_nr=app_data
-
-    if button_nr==0:
-        #global sweeping,lock_frequency
-        global is_dragging,is_resizing
-        is_dragging = False
-        is_resizing = False
-
-        #lock_frequency=False
-
-        #if not sweeping:
-        #    play_stop()
-        #    status_set_frequency()
-    #elif button_nr==1:
-    #    sweep_abort()
-    else:
-        l_info(f'another button:{button_nr}')
-
 def on_mouse_move_tracks_enter(sender, app_data):
     #print('on_mouse_move_tracks:',sender,app_data)
     button_alias=app_data
@@ -1345,28 +1299,6 @@ def on_mouse_move_tracks_leave(sender, app_data):
     #print('track_nr:',track)
 
     bind_item_theme(f"track{track}",thin_line_theme)
-
-prev_mouse_x=0
-def on_mouse_move_plot(sender, app_data):
-    if not is_item_hovered("plot"):
-        return
-
-    plot_x, _ = get_plot_mouse_pos()
-
-    if plot_x is not None:
-        #x = int(plot_x)
-        x = plot_x
-        global prev_mouse_x,f_current
-
-        if x != prev_mouse_x:
-            prev_mouse_x = x
-
-            if not sweeping and not lock_frequency:
-                f_current=x
-                status_set_frequency()
-                change_f(f_current)
-
-import dearpygui.dearpygui as dpg
 
 dpg.create_context()
 
@@ -1392,22 +1324,37 @@ def on_mouse_down(sender, app_data):
 set_viewport_pos_scheduled=cfg['viewport_pos']
 set_viewport_size_scheduled=cfg['viewport_size']
 
+prev_plot_x=0
 def on_mouse_move(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
 
-    #mouse_x, mouse_y = app_data
-    mouse_x, mouse_y = dpg.get_mouse_pos()
+    if is_item_hovered("plot"):
+        #print('move - plot')
+        plot_x, plot_y = get_plot_mouse_pos()
 
-    if is_dragging:
-        curr_vp_x = curr_vp_x + mouse_x - offset_x
-        curr_vp_y = curr_vp_y + mouse_y - offset_y
+        if plot_x is not None:
+            global prev_plot_x,f_current
 
-        global set_viewport_pos_scheduled
-        set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
+            if plot_x != prev_plot_x:
+                prev_plot_x = plot_x
 
-    elif is_resizing:
-        global set_viewport_size_scheduled
-        set_viewport_size_scheduled=[mouse_x,mouse_y]
+                if not sweeping and not lock_frequency:
+                    f_current=plot_x
+                    status_set_frequency()
+                    change_f(f_current)
+    else:
+        #mouse_x, mouse_y = app_data
+        mouse_x, mouse_y = dpg.get_mouse_pos()
+        if is_dragging:
+            curr_vp_x = curr_vp_x + mouse_x - offset_x
+            curr_vp_y = curr_vp_y + mouse_y - offset_y
+
+            global set_viewport_pos_scheduled
+            set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
+
+        elif is_resizing:
+            global set_viewport_size_scheduled
+            set_viewport_size_scheduled=[mouse_x,mouse_y]
 
 LIGHT_BG = (240, 240, 240, 255)
 LIGHT_CHILD_BG = (255, 255, 255, 255)
@@ -1557,7 +1504,7 @@ with theme() as red_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
             dpg.mvPlotCol_Line,
-            (255, 0, 0, 255),
+            (255, 60, 60, 255),
             category=dpg.mvThemeCat_Plots
         )
         dpg.add_theme_style(
@@ -1569,7 +1516,7 @@ with theme() as reddark_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
             dpg.mvPlotCol_Line,
-            (128, 0, 0, 255),
+            (160, 30, 30, 255),
             category=dpg.mvThemeCat_Plots
         )
         dpg.add_theme_style(
@@ -1636,70 +1583,28 @@ def widget_tooltip(message,widget=None):
     with tooltip(widget, delay=0.3):
         add_text(message)
 
-def show_help():
-    set_value('help_text1',
-         '''            H - show this help
-
-            F12 - settings
-            F11 - show debug info
-
-            F3 / Shift+F3 - FFT window / off
-            F4 / Shift+F4 - FFT size
-            F5 / Shift+F5 - FFT FBA
-            F6 / Shift+F6 - FFT TDA
-            F7 / Shift+F7 - Recorded Tracks
-                            Frequency "buckets"
-            F8 / Shift+F8 - Recorded Tracks TDA
-
-            F1 / F2 - about / license
-            L / D - light / dark theme
-
-            V - VSync toggle
-            S / C - save screenshot / csv
-
-            1,2,3,4,5,6,7,8 - show/hide track
-    ''')
-
-def key_callback(sender, app_data):
+def key_press_callback(sender, app_data):
     set_status('')
     hide_info()
-    set_value('help_text1','')
 
-    Ctrl = is_key_down(dpg.mvKey_LControl)
     Shift = is_key_down(dpg.mvKey_LShift)
 
     if app_data==dpg.mvKey_1:
-        track_press(None,None,(0,True))
-        if Ctrl:
-            record_track_changed(None,'1')
+        track_action_callback(None,None,0)
     elif app_data==dpg.mvKey_2:
-        track_press(None,None,(1,True))
-        if Ctrl:
-            record_track_changed(None,'2')
+        track_action_callback(None,None,1)
     elif app_data==dpg.mvKey_3:
-        track_press(None,None,(2,True))
-        if Ctrl:
-            record_track_changed(None,'3')
+        track_action_callback(None,None,2)
     elif app_data==dpg.mvKey_4:
-        track_press(None,None,(3,True))
-        if Ctrl:
-            record_track_changed(None,'4')
+        track_action_callback(None,None,3)
     elif app_data==dpg.mvKey_5:
-        track_press(None,None,(4,True))
-        if Ctrl:
-            record_track_changed(None,'5')
+        track_action_callback(None,None,4)
     elif app_data==dpg.mvKey_6:
-        track_press(None,None,(5,True))
-        if Ctrl:
-            record_track_changed(None,'6')
+        track_action_callback(None,None,5)
     elif app_data==dpg.mvKey_7:
-        track_press(None,None,(6,True))
-        if Ctrl:
-            record_track_changed(None,'7')
+        track_action_callback(None,None,6)
     elif app_data==dpg.mvKey_8:
-        track_press(None,None,(7,True))
-        if Ctrl:
-            record_track_changed(None,'8')
+        track_action_callback(None,None,7)
     elif app_data==dpg.mvKey_Left:
         scroll_mod(-1,0.001)
     elif app_data==dpg.mvKey_Right:
@@ -1753,12 +1658,19 @@ def key_callback(sender, app_data):
         set_value('vsync',vsync)
         vsync_callback(None,vsync)
     elif app_data==dpg.mvKey_H:
-        show_help()
+        help_val=get_value('help')
+        help_val=(True,False)[help_val]
+        set_value('help',help_val)
+        help_callback()
+    elif app_data==dpg.mvKey_P:
+        peaks_val=get_value('peaks')
+        peaks_val=(True,False)[peaks_val]
+        set_value('peaks',peaks_val)
+        peaks_callback()
     elif app_data==dpg.mvKey_Escape:
         global lock_frequency,sweeping
         play_stop()
         sweeping=False
-        set_value('help_text1','')
     else:
         pass
 
@@ -1793,6 +1705,7 @@ def theme_light_callback():
     configure_item('plotbg',texture_tag=ico['bg'])
     configure_item('exit_button',texture_tag=ico['exit_light'])
     cfg['theme']='light'
+    refresh_tracks()
 
 def theme_dark_callback():
     l_info('theme_dark_callback')
@@ -1806,27 +1719,65 @@ def theme_dark_callback():
     configure_item('plotbg',texture_tag=ico['bg_dark'])
     configure_item('exit_button',texture_tag=ico['exit_dark'])
     cfg['theme']='dark'
+    refresh_tracks()
 
 DETECT_PEAKS=False
-def peaks_detect_callback():
+def peaks_callback():
     global DETECT_PEAKS
-    DETECT_PEAKS=get_value('peaks_detect')
+    DETECT_PEAKS=get_value('peaks')
 
 DETECT_PEAKS_DIST=0.1
-def peaks_detect_dist_change():
+def peaks_dist_change():
     global DETECT_PEAKS_DIST
-    DETECT_PEAKS_DIST=get_value('peaks_detect_dist')
+    DETECT_PEAKS_DIST=get_value('peaks_dist')
 
 DETECT_PEAKS_THRESHOLD=10
-def peaks_detect_threshold_change():
+def peaks_threshold_change():
     global DETECT_PEAKS_THRESHOLD
-    DETECT_PEAKS_THRESHOLD=get_value('peaks_detect_threshold')
+    DETECT_PEAKS_THRESHOLD=get_value('peaks_threshold')
 
 DEBUG=False
 def debug_callback():
     set_value('debug_text','')
     global DEBUG,next_fps
     DEBUG=get_value('debug')
+    next_fps=0
+
+def help_off():
+    set_value('help',False)
+    help_callback()
+
+HELP=True
+def help_callback():
+    l_info('help_callback')
+    global HELP,next_fps
+    HELP=get_value('help')
+
+    if HELP:
+        set_value('help_text','''H - show this help
+
+F12 - settings
+F11 - show debug info
+
+F3 / Shift+F3 - FFT window / off
+F4 / Shift+F4 - FFT size
+F5 / Shift+F5 - FFT FBA
+F6 / Shift+F6 - FFT TDA
+F7 / Shift+F7 - Recorded Tracks
+                Frequency "buckets"
+F8 / Shift+F8 - Recorded Tracks TDA
+
+F1 / F2 - about / license
+L / D - light / dark theme
+
+V - VSync toggle
+S / C - save screenshot / csv
+P - peaks detection
+1,2,3,4,5,6,7,8 - show/hide track
+        ''')
+    else:
+        set_value('help_text','')
+
     next_fps=0
 
 create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=vsync_default,decorated=decorated)
@@ -1866,7 +1817,7 @@ def set_status(text,alert=False,timeout=2):
     global status_text,status_timeout
     if text!=status_text:
         set_value('status',text)
-        set_value('help_text1',text)
+        #set_value('help_text',text)
         status_text=text
 
         if timeout:
@@ -1897,7 +1848,7 @@ def on_viewport_resize(sender=None, app_data=None):
 
     set_item_pos('info_window',[0,title_hight])
     set_item_pos('debug_text',[85,24+title_hight])
-    set_item_pos('help_text1',[385,24+title_hight])
+    set_item_pos('help_text',[385,24+title_hight])
 
     set_item_pos('central_info',[(vw-64-100)/2,(plot_height)/2])
 
@@ -1937,7 +1888,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 dpg.add_spacer(height=3)
 
     with window(tag='info_window',no_close=True,menubar=False,no_title_bar=True,autosize=False,no_scrollbar=True):
-        add_text(tag='info_text',default_value='')
+        add_text(tag='info_text')
         hide_item('info_window')
 
     with table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
@@ -1986,12 +1937,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         for track in range(tracks):
                             add_line_series([20], [-120], tag=f"track{track}",label=f"track{track+1}",user_data=track,show=False)
 
-                    with item_handler_registry(tag="plot_handlers"):
-                        add_item_hover_handler(callback=on_mouse_move_plot)
-                        add_item_clicked_handler(callback=on_click_plot)
-
-                    bind_item_handler_registry("plot", "plot_handlers")
-
                 with group(tag='buttons'):
                     dpg.add_spacer(height=6)
                     with item_handler_registry(tag="tracks_handlers"):
@@ -1999,21 +1944,11 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_item_hover_handler(event_type=mvEventType_Leave,callback=on_mouse_move_tracks_leave)
 
                     for track_temp in range(tracks):
-                        add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=track_press,user_data=(track_temp,True)); widget_tooltip(f'Show/Hide track:{track_temp+1}')
+                        add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=track_action_callback,user_data=track_temp); widget_tooltip(f'Show/Hide track:{track_temp+1}\nwith Ctrl - toggle recording')
                         bind_item_handler_registry(f'showcheck{track_temp}', "tracks_handlers")
 
-                    dpg.add_spacer(height=6)
-
-                    add_image_button(ico["rec_off"],tag='recording_select',label="Track to record")
-                    widget_tooltip('Select track for recording.')
-
-                    dpg.add_spacer(height=6)
-
-                    with popup("recording_select",tag='rec_track_popup', mousebutton=mvMouseButton_Left):
-                        add_radio_button(tag='rec_track',items=['-'] + [track+1 for track in range(tracks)], callback=record_track_changed,horizontal=False)
-
-                    dpg.add_spacer(height=6)
-                    add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press,label="X")
+                    dpg.add_spacer(height=-1)
+                    add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press)
                     widget_tooltip(' Reset selected track samples.')
 
         with table_row():
@@ -2145,6 +2080,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                     with group():
                         add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=vsync_default)
                         add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=False)
+                        add_checkbox(tag='help',label='Help',callback=help_callback,default_value=HELP)
 
                         with group(horizontal=True):
                             add_image_button(ico["light"],callback=theme_light_callback,width=16)
@@ -2153,23 +2089,23 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             add_image_button(ico["dark"],callback=theme_dark_callback,width=16)
                             widget_tooltip("dark theme ")
 
-                        add_checkbox(tag='peaks_detect',label='Detect Peaks',callback=peaks_detect_callback,default_value=DETECT_PEAKS)
+                        add_checkbox(tag='peaks',label='Detect Peaks',callback=peaks_callback,default_value=DETECT_PEAKS)
 
-                        dpg.add_slider_float(tag='peaks_detect_dist',callback=peaks_detect_dist_change,max_value=0.5,min_value=0.01,default_value=DETECT_PEAKS_DIST,format="%.3f",width=200,track_offset=0.5)
-                        dpg.add_slider_float(tag='peaks_detect_threshold',callback=peaks_detect_threshold_change,max_value=30,min_value=1,default_value=DETECT_PEAKS_THRESHOLD,format="%.3f",width=200,track_offset=0.5)
+                        dpg.add_slider_float(tag='peaks_dist',callback=peaks_dist_change,max_value=0.5,min_value=0.01,default_value=DETECT_PEAKS_DIST,format="%.3f",width=200,track_offset=0.5)
+                        dpg.add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=30,min_value=1,default_value=DETECT_PEAKS_THRESHOLD,format="%.3f",width=200,track_offset=0.5)
 
                     with group():
                         dpg.add_spacer(width=6)
 
     add_text(tag='debug_text',default_value='')
-    add_text(tag='help_text1',default_value='')
+    add_text(tag='help_text',default_value='')
     add_text(tag='central_info',default_value='')
 
     with dpg.handler_registry():
-        add_mouse_click_handler(callback=on_click)
-        add_mouse_release_handler(callback=on_mouse_release)
+        add_mouse_click_handler(callback=click_callback)
+        add_mouse_release_handler(callback=release_callback)
         add_mouse_wheel_handler(callback=wheel_callback)
-        add_key_press_handler(callback=key_callback)
+        add_key_press_handler(callback=key_press_callback)
 
         dpg.add_mouse_down_handler(button=0, callback=on_mouse_down)
         dpg.add_mouse_move_handler(callback=on_mouse_move)
@@ -2241,14 +2177,13 @@ rec_samples = 0
 output_callbacks_all = 0
 output_samples = 0
 
-record_track_changed()
-
-dpg.configure_app()
-show_help()
+configure_app()
+help_callback()
 
 peaks_annos=set()
 
-gc_disable
+#gc_disable()
+CENTRAL_INFO_SHOWN=False
 
 while is_dearpygui_running():
     if sweeping:
@@ -2311,33 +2246,57 @@ while is_dearpygui_running():
                     fft_values_final_y=TDA_FFT_1m*array(fft_values_final_y) + TDA_FFT*array(fft_values_final_y_prev)
                 except:
                     pass
-                fft_values_final_y_prev=fft_values_final_y
 
-                set_value("fft_line", [fft_line_final_x, fft_values_final_y ])
+
 
                 peak_index=0
 
                 if DETECT_PEAKS:
                     dist=round(FFT_ACTUAL_BUCKETS*DETECT_PEAKS_DIST)
+                    #window = 3
+                    kernel = np.ones(dist) / dist
+                    #print(dist,kernel)
+
+                    #arr = np.asarray(fft_values_final_y).ravel()
+                    arr = fft_values_final_y
+
+                    avg = np.convolve(arr, kernel, mode='same')
+                    #print(fft_values_final_y-avg,'\n')
+                    #print(type(fft_values_final_y),type(avg),'\n')
+
+                    #mask = np.r_[True, avg[1:] > avg[:-1]] & np.r_[avg[:-1] > avg[1:], True]
+                    mask = (avg[1:-1] > avg[:-2]) & (avg[1:-1] > avg[2:])
+
+                    #fft_values_final_y=avg.copy()
                     threshold=DETECT_PEAKS_THRESHOLD
-                    for i,(f,v) in enumerate(zip(fft_line_final_x,fft_values_final_y)):
-                        w_max=-300
-                        for j in range(i-dist,i+dist):
-                            try:
-                                w=fft_values_final_y[j]
-                                if w>w_max+threshold:
-                                    w_max=w
-                            except Exception as cc:
-                                #print(cc)
-                                pass
+                    for i,(f,v,peak,avg) in enumerate(zip(fft_line_final_x,fft_values_final_y,mask,avg)):
+                        if peak:
+                            if v>avg+threshold:
+                                tag=f'peak{peak_index}'
+                                fint=int(f)
+                                peaks_annos.add((tag,f,v))
+                                dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 255), offset=(20,-10))
+                                peak_index+=1
 
+                    #for i,(f,v) in enumerate(zip(fft_line_final_x,fft_values_final_y)):
+                    #    w_max=-300
+                    #    for j in range(i-dist,i+dist):
+                    #        try:
+                    #            w=fft_values_final_y[j]
+                    #            if w>w_max+threshold:
+                    #                w_max=w
+                    #        except Exception as cc:
+                    #            #print(cc)
+                    #            pass
+                    #    if w_max==v:
+                    #        tag=f'peak{peak_index}'
+                    #        fint=int(f)
+                    #        peaks_annos.add((tag,f,v))
+                    #        dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 255), offset=(20,-10))
+                    #        peak_index+=1
 
-                        if w_max==v:
-                            tag=f'peak{peak_index}'
-                            fint=int(f)
-                            peaks_annos.add((tag,f,v))
-                            dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 255), offset=(20,-10))
-                            peak_index+=1
+                set_value("fft_line", [fft_line_final_x, fft_values_final_y ])
+                fft_values_final_y_prev=fft_values_final_y
 
             except Exception as exception_fft:
                 l_error('FFT Exception:',exception_fft)
@@ -2355,26 +2314,24 @@ while is_dearpygui_running():
 
         if current_sample_db<-110:
             set_status('No signal / Mic not connected ...',1)
+            CENTRAL_INFO_SHOWN=True
             set_value('central_info','''
      No signal !
 (Mic not connected ?)''')
-            set_value('help_text1','')
+            #set_value('help_text','')
+            help_off()
         elif status_timeout!=0:
             if perf_counter()>status_timeout:
-                set_value('help_text1','')
+                #set_value('help_text','')
                 status_timeout=0
-        else:
+        elif CENTRAL_INFO_SHOWN :
             set_value('central_info','')
+            CENTRAL_INFO_SHOWN=False
 
         if redraw_tracks_lines:
             for track,show in enumerate(show_track):
-                configure_item(f"track{track}",show=show)
                 if show:
                     set_value(f"track{track}", [bucket_tracks_freqs, track_line_data_y[track]])
-
-                    #TODO
-                    if track!=recorded_track:
-                        bind_item_theme(f"track{track}",line_theme)
 
             redraw_tracks_lines=False
 
@@ -2442,7 +2399,6 @@ FFT  / FBA  / act:
 {len(fft_values)} / {BUCKETS_FFT} / {FFT_ACTUAL_BUCKETS}
 TDA: {TDA_FFT}
 ''')
-
             frames = 0
             input_callbacks_all = 0
             rec_samples = 0
@@ -2462,7 +2418,7 @@ TDA: {TDA_FFT}
     if exiting:
         break
 
-    gc_collect
+    #gc_collect()
 
 print('exiting')
 sweeping=False
