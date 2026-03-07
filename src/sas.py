@@ -29,12 +29,12 @@
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
-from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer
+from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation
 
 from time import strftime,time,localtime,perf_counter
 from gc import disable as gc_disable, collect as gc_collect, freeze as gc_freeze
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where
 from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 import numpy as np
 
@@ -135,7 +135,7 @@ cfg_setdefault('fft_fba_size',1024)
 cfg_setdefault('fft_tda',False)
 cfg_setdefault('fft_tda_factor',0.1)
 
-cfg_setdefault('peaks',True)
+cfg_setdefault('peaks',False)
 cfg_setdefault('peaks_dist',0.1)
 cfg_setdefault('peaks_threshold',1.0)
 
@@ -229,7 +229,7 @@ def save_fft_points():
         with open(file,'w',encoding='utf-8') as fh:
             fh.write(f"#fft_size:{cfg['fft_size']},fft_points:{fft_points}\n")
             fh.write("#index,frequency[Hz]\n")
-            for i,f in enumerate(fft_line_data_x):
+            for i,f in enumerate(fft_values_x_all):
                 fh.write(f'{i},{f}\n')
     except Exception as e:
         print(f'save_fft_points_error:{e}')
@@ -383,7 +383,6 @@ def load_csv_file_selected(sender, app_data):
 def load_csv():
     show_item("file_dialog_load")
 
-
 schedule_screenshot=False
 def save_image():
     global schedule_screenshot,filename_full_screenshot
@@ -511,7 +510,8 @@ def play_start():
     redraw_tracks_lines=True
 
     if recorded_track is not None:
-        bind_item_theme(f"track{recorded_track}",red_line_theme)
+        bind_item_theme(f"track{recorded_track}_bg",recorded_track_bg_theme)
+        bind_item_theme(f"track{recorded_track}",recorded_track_core_theme)
 
 @catch
 def play_stop():
@@ -523,8 +523,8 @@ def play_stop():
     bind_item_theme("cursor_f",green_line_theme)
     #playing_state=0
 
-    if recorded_track is not None:
-        bind_item_theme(f"track{recorded_track}",reddark_line_theme)
+    #if recorded_track is not None:
+    #    bind_item_theme(f"track{recorded_track}",reddark_line_theme)
 
     sweep_abort()
 
@@ -581,6 +581,7 @@ default_api_nr=0
 device_default_input=None
 device_default_output=None
 
+@catch
 def refresh_devices():
     l_info('refresh_devices')
     global apis,default_api_nr,devices,device_default_input,device_default_output
@@ -800,6 +801,7 @@ def show_info(message):
     on_viewport_resize()
     set_value('info_text',normalize_text(message,info_chars))
     show_item('info_window')
+    #bind_item_theme('info_window', semi_bg_theme)
 
 @catch
 def about_wrapper():
@@ -991,15 +993,23 @@ def refresh_tracks():
     for track in range(tracks):
         if track==recorded_track:
             configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_sel"])
-            bind_item_theme(f"track{track}",reddark_line_theme)
+            bind_item_theme(f"track{track}_bg",recorded_track_bg_theme)
+            bind_item_theme(f"track{track}",recorded_track_core_theme)
+
+            configure_item(f"track{track}_bg",show=True)
             configure_item(f"track{track}",show=True)
         elif show_track[track]:
             configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_on"])
-            bind_item_theme(f"track{track}",line_theme)
+
+            bind_item_theme(f"track{track}_bg",track_bg_theme)
+            bind_item_theme(f"track{track}",track_core_theme)
+
+            configure_item(f"track{track}_bg",show=True)
             configure_item(f"track{track}",show=True)
         else:
             configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_off"])
-            bind_item_theme(f"track{track}",line_theme)
+
+            configure_item(f"track{track}_bg",show=False)
             configure_item(f"track{track}",show=False)
 
     global redraw_tracks_lines
@@ -1058,9 +1068,9 @@ def fft_window_changed(sender=None, app_data=None):
         l_error(f'unknown window:{cfg["fft_window"]}')
 
     window_correction = np_sum(fft_window)
-    configure_item("fft_line", show=FFT)
-    configure_item("fft_line2", show=FFT)
     configure_item("fft_line_avg", show=FFT)
+    configure_item("fft_line2", show=FFT)
+    configure_item("fft_line", show=FFT)
 
     l_info(f'fft_window_changed:{sender},{app_data},{cfg["fft_window"]},{len(fft_window)}')
 
@@ -1167,14 +1177,16 @@ def common_precalc():
     in_samplerate_by_fft_size = in_samplerate / FFT_SIZE
     fft_duration= 1.0/in_samplerate_by_fft_size
 
-    global bucket_fft_freqs,fft_line_data_x,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,bucket_tracks_freqs,next_fps
+    global bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,bucket_tracks_freqs,next_fps
 
     dummy_data=[200]*fft_points
-    fft_line_data_x=[0]*fft_points
+    fft_values_x_all=[0]*fft_points
     fft_line_data_y=[-110]*fft_points
 
     for i_fft in range(fft_points):
-        fft_line_data_x[i_fft]=i_fft * in_samplerate_by_fft_size
+        fft_values_x_all[i_fft]=i_fft * in_samplerate_by_fft_size
+
+    fft_values_x_all=np_array(fft_values_x_all)
 
     bucket_fft_freqs=[0]*FFT_FBA_SIZE
     bucket_fft_edges=[0]*(FFT_FBA_SIZE+1)
@@ -1188,7 +1200,7 @@ def common_precalc():
     for b in range(cfg['track_buckets']):
         bucket_tracks_freqs[b]= 10**(logf_min_audio + log_bucket_tracks_width_by2 + log_bucket_tracks_width * b)
 
-    fft_bin_indices = digitize(fft_line_data_x, bucket_fft_edges)
+    fft_bin_indices = digitize(fft_values_x_all, bucket_fft_edges)
     l_info(f'fft_bin_indices={len(fft_bin_indices)}')
     fft_bin_counts = bincount(fft_bin_indices)
     l_info(f'fft_bin_counts={len(fft_bin_counts)}')
@@ -1205,22 +1217,16 @@ def common_precalc():
         except:
             pass
 
-    global fft_bin_indices_selected,fft_x_vec,fft_ready,FFT_ACTUAL_BUCKETS
+    global fft_bin_indices_selected,fft_values_x_bins,fft_ready,FFT_ACTUAL_BUCKETS
     fft_bin_indices_selected=np_array([i for i,i_n in enumerate(isnan(bincount(fft_bin_indices, weights=dummy_data)[1:] / fft_bin_counts[1:])) if not i_n])
     FFT_ACTUAL_BUCKETS=len(fft_bin_indices_selected)
-    fft_x_vec=np_array([bucket_fft_freqs[i] for i in fft_bin_indices_selected[:-1]])
+    fft_values_x_bins=np_array([bucket_fft_freqs[i] for i in fft_bin_indices_selected[:-1]])
 
     for track in range(tracks):
         track_line_data_y[track]=[dbmin]*cfg['track_buckets']
 
-    global fft_line_new_x,fft_values_final_y_prev
-
-    fft_values_final_y_prev=[0]*len(bucket_fft_freqs)
-
-    if FFT_FBA:
-        fft_line_new_x=bucket_fft_freqs
-    else:
-        fft_line_new_x=fft_line_data_x
+    global fft_values_y_prev
+    fft_values_y_prev=[0]*len(bucket_fft_freqs)
 
     fft_ready=True
     next_fps = 0
@@ -1370,15 +1376,17 @@ def on_mouse_move_tracks_enter(sender, app_data):
 
     bind_item_theme(f"track{track}",thick_line_theme)
 
-    #mvPlotStyleVar_LineWeight
-    #configure_item(f"track{track}")
+    configure_item(f"track{track}_bg",show=True)
+    configure_item(f"track{track}",show=True)
+
+    bind_item_theme(f"track{track}_bg",sel_track_bg_theme)
+    bind_item_theme(f"track{track}",sel_track_core_theme)
 
 def on_mouse_move_tracks_leave(sender, app_data):
     button_alias=app_data
     track=int(button_alias[-1])
-    #print('track_nr:',track)
 
-    bind_item_theme(f"track{track}",thin_line_theme)
+    refresh_tracks()
 
 is_dragging = False
 is_resizing = False
@@ -1434,6 +1442,8 @@ def on_mouse_move(sender, app_data):
             global set_viewport_size_scheduled
             set_viewport_size_scheduled=[mouse_x,mouse_y]
 
+BG_SEMI = (128, 128, 128, 220)
+
 LIGHT_BG = (240, 240, 240, 255)
 LIGHT_CHILD_BG = (255, 255, 255, 255)
 LIGHT_BORDER = (200, 200, 200, 255)
@@ -1461,6 +1471,10 @@ DARK_ACCENT = (150, 150, 200, 255)  # check, slider grab, etc.
 
 LIGHT_TOOLTIP_BG = (210, 210, 0, 255)
 DARK_TOOLTIP_BG = (160, 160, 0, 255)
+
+with dpg.theme() as semi_bg_theme:
+    with dpg.theme_component(dpg.mvAll):
+        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, BG_SEMI)
 
 with dpg.theme() as theme_light:
     with dpg.theme_component(dpg.mvAll):
@@ -1627,6 +1641,80 @@ with theme() as red_line_theme:
             1.0,
             category=dpg.mvThemeCat_Plots
         )
+with theme() as sel_track_core_theme:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Line,
+            (255, 200, 100, 255),
+            category=dpg.mvThemeCat_Plots
+        )
+        dpg.add_theme_style(
+            dpg.mvPlotStyleVar_LineWeight,
+            1.0,
+            category=dpg.mvThemeCat_Plots
+        )
+with theme() as recorded_track_core_theme:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Line,
+            (255, 128, 60, 255),
+            category=dpg.mvThemeCat_Plots
+        )
+        dpg.add_theme_style(
+            dpg.mvPlotStyleVar_LineWeight,
+            1.0,
+            category=dpg.mvThemeCat_Plots
+        )
+with theme() as track_core_theme:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Line,
+            (128, 128, 128, 128),
+            category=dpg.mvThemeCat_Plots
+        )
+        dpg.add_theme_style(
+            dpg.mvPlotStyleVar_LineWeight,
+            1.0,
+            category=dpg.mvThemeCat_Plots
+        )
+
+with theme() as recorded_track_bg_theme:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Line,
+            (255, 128, 60, 128),
+            category=dpg.mvThemeCat_Plots
+        )
+        dpg.add_theme_style(
+            dpg.mvPlotStyleVar_LineWeight,
+            3.0,
+            category=dpg.mvThemeCat_Plots
+        )
+with theme() as sel_track_bg_theme:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Line,
+            (255, 200, 10, 128),
+            category=dpg.mvThemeCat_Plots
+        )
+        dpg.add_theme_style(
+            dpg.mvPlotStyleVar_LineWeight,
+            3.0,
+            category=dpg.mvThemeCat_Plots
+        )
+with theme() as track_bg_theme:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Line,
+            (128, 128, 128, 128),
+            category=dpg.mvThemeCat_Plots
+        )
+        dpg.add_theme_style(
+            dpg.mvPlotStyleVar_LineWeight,
+            3.0,
+            category=dpg.mvThemeCat_Plots
+        )
+
 with theme() as reddark_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
@@ -1657,7 +1745,7 @@ with theme() as dark_line_theme1:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
             dpg.mvPlotCol_Line,
-            (128, 128, 128, 100),
+            (128, 128, 128, 80),
             category=dpg.mvThemeCat_Plots
         )
         dpg.add_theme_style(
@@ -1852,12 +1940,13 @@ def theme_light_callback():
     global line_theme
     dpg.bind_theme(theme_light)
     line_theme=dark_line_theme
-    bind_item_theme("fft_line",line_theme)
-    bind_item_theme("fft_line2",dark_line_theme1)
     bind_item_theme("fft_line_avg",std_dev_cloud_theme)
+    bind_item_theme("fft_line2",dark_line_theme1)
+    bind_item_theme("fft_line",line_theme)
 
     for track in range(tracks):
         bind_item_theme(f"track{track}",line_theme)
+
     configure_item('plotbg',texture_tag=ico['bg'])
     configure_item('exit_button',texture_tag=ico['exit_light'])
     cfg['theme']='light'
@@ -1868,9 +1957,9 @@ def theme_dark_callback():
     global line_theme
     dpg.bind_theme(theme_dark)
     line_theme=light_line_theme
-    bind_item_theme("fft_line",line_theme)
-    bind_item_theme("fft_line2",light_line_theme1)
     bind_item_theme("fft_line_avg",std_dev_cloud_theme)
+    bind_item_theme("fft_line2",light_line_theme1)
+    bind_item_theme("fft_line",line_theme)
 
     for track in range(tracks):
         bind_item_theme(f"track{track}",line_theme)
@@ -1960,27 +2049,28 @@ def settings_wrapper():
         hide_item('settings_group')
         h=max(viewport_height_min,get_viewport_height()-settings_height)
 
-    set_viewport_height(h)
-    on_viewport_resize()
-
     try:
-        values=[ api['name'] for api in apis if api['devices'] ]
-        configure_item('api_out',items=values)
-        configure_item('api_in',items=values)
+        if settings_shown:
+            values=[ api['name'] for api in apis if api['devices'] ]
+            configure_item('api_out',items=values)
+            configure_item('api_in',items=values)
 
-        api_out_name=get_value('api_out')
-        if api_out_name not in values:
-            if values:
-                set_value('api_out',values[0]['name'])
+            api_out_name=get_value('api_out')
+            if api_out_name not in values:
+                if values:
+                    set_value('api_out',values[0]['name'])
 
-        api_in_name=get_value('api_in')
+            api_in_name=get_value('api_in')
 
-        if api_in_name not in values:
-            if values:
-                set_value('api_in',values[0]['name'])
+            if api_in_name not in values:
+                if values:
+                    set_value('api_in',values[0]['name'])
 
     except Exception as e:
         l_error(f'settings_wrapper:{e}')
+
+    set_viewport_height(h)
+    on_viewport_resize()
 
 status_text=''
 def set_status(text,alert=False,timeout=2):
@@ -2008,7 +2098,8 @@ def on_viewport_resize(sender=None, app_data=None):
 
     info_chars=int(vw/7)
 
-    plot_height  = max(plot_min_height, vh - (settings_height if settings_shown else 0) - status_height - title_hight)
+    #30 -magic factor ...
+    plot_height  = max(plot_min_height, vh - (settings_height if settings_shown else 0) - status_height - title_hight + 30)
 
     set_item_height('slider', plot_height-plot_axis_height)
     set_item_pos('slider',[5,title_hight+23])
@@ -2080,8 +2171,8 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                     xticks = (('',10),("20Hz",20),('',30),('',40),('',50),('',60),('',70),('',80),('',90), ("100Hz",100),
                         ('',200),('',300),('',400),('',500),('',600),('',700),('',800),('',900),("1kHz",1000),
                         ("",2000),("",3000),("",4000),("",5000),("",6000),("",7000),("",8000),("",9000),("10kHz",10000),("20kHz",20000))
-                    dpg.add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
-                    dpg.add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
+                    add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
+                    add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
 
                     with dpg.plot_axis(dpg.mvXAxis, tag='x_axis',no_highlight=True) as xaxis:
                         configure_item(dpg.last_item(),scale=dpg.mvPlotScale_Log10)
@@ -2107,7 +2198,8 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 bind_item_theme(f'stick{val}',grid_line_theme)
 
                         for track in range(tracks):
-                            add_line_series([20], [-120], tag=f"track{track}",label=f"track{track+1}",user_data=track,show=False)
+                            add_line_series([20], [-120], tag=f"track{track}",user_data=track,show=False)
+                            add_line_series([20], [-120], tag=f"track{track}_bg",user_data=track,show=False)
 
                 with group(tag='buttons'):
                     add_spacer(height=6)
@@ -2175,7 +2267,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
                                     row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
                                     no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
-
 
                             add_table_column(width_fixed=True, init_width_or_weight=c0width, width=c0width)
                             add_table_column(width_fixed=True, init_width_or_weight=c1width, width=c1width)
@@ -2270,7 +2361,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 add_combo(tag='fft_tda_factor',items=['0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=cfg['fft_tda_factor'],callback=fft_tda_factor_callback,width=c2width); widget_tooltip(FFT_tda_tooltip)
 
                             with table_row():
-                                add_checkbox(tag='peaks',label='Peaks',callback=peaks_callback,default_value=cfg['peaks'])
+                                add_checkbox(tag='peaks',label='Peaks',callback=peaks_callback,default_value=cfg['peaks']); widget_tooltip('Peaks detection\n(Under development)')
 
                         dpg.add_slider_float(tag='peaks_dist',callback=peaks_dist_change,max_value=0.5,min_value=0.01,default_value=cfg['peaks_dist'],format="%.3f",width=200,track_offset=0.5)
 
@@ -2449,153 +2540,80 @@ while is_dearpygui_running():
 
         current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
 
-        for (tag,f,val) in peaks_annos:
-            dpg.delete_item(tag)
-        peaks_annos.clear()
+        if not PEAKS:
+            for fint in peaks_annos:
+                delete_item(f'peak{fint}')
+            peaks_annos.clear()
 
         if FFT and fft_ready:
             try:
-                fft_values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / FFT_SIZE + 1e-12)
+                fft_values_y=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / FFT_SIZE + 1e-12)
 
                 if FFT_FBA:
-                    fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values)[1:] / fft_bin_counts[1:]
-                    fft_values_final_y=[fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]]
-                    fft_line_final_x = fft_x_vec
+                    fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
+                    fft_values_y=np_array([fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]])
+                    fft_values_x = fft_values_x_bins
                 else:
-                    fft_values_final_y = fft_values
-                    fft_line_final_x = fft_line_new_x
+                    fft_values_x = fft_values_x_all
 
                 if FFT_TDA:
                     try:
-                        fft_values_final_y=FFT_TDA_FACTOR_1m*np_array(fft_values_final_y) + FFT_TDA_FACTOR*np_array(fft_values_final_y_prev)
+                        fft_values_y=FFT_TDA_FACTOR_1m*np_array(fft_values_y) + FFT_TDA_FACTOR*np_array(fft_values_y_prev)
                     except:
                         pass
-                else:
-                    #fft_values_final_y=fft_values_final_y
-                    pass
-
-
-                peak_index=0
 
                 if PEAKS:
-                    arr = fft_values_final_y
-                    dist=3
-                    #round(FFT_ACTUAL_BUCKETS*PEAKS_DIST)
-                    dist2=round(len(fft_values_final_y)*PEAKS_DIST)
-                    #print('dist;',dist,'dist2:',dist2,'arr:',len(arr))
+                    peak_index=0
 
-                    #window = 3
-                    #kernel = np.ones(dist) / dist
+                    dist=round(len(fft_values_y)*PEAKS_DIST)
+
                     kernel = ones(dist)
                     kernel /= kernel.sum()
 
-                    kernel2 = ones(dist2)
-                    kernel2 /= kernel2.sum()
+                    padded=np_pad(fft_values_y,dist,'reflect' )
+                    avg = np_convolve(padded, kernel, mode='same')[dist:-dist]
 
-                    #print(dist,kernel)
-                    #arr = np.asarray(fft_values_final_y).ravel()
-                    padded=np.pad(arr,dist,'reflect' )
-                    padded2=np.pad(arr,dist2,'reflect' )
-
-                    avg = np.convolve(padded, kernel, mode='same')[dist:-dist]
-                    avg2 = np.convolve(padded2, kernel2, mode='same')[dist2:-dist2]
-                    #print('padded:',len(padded),'padded2;',len(padded2))
-                    #print('avg:',len(avg),'avg2;',len(avg2))
-
-                    diff_vec = arr-avg2
+                    diff_vec = fft_values_y-avg
                     diff_square_vec = diff_vec**2
 
-                    #kernel3 = hanning(dist2)
-                    diff_square_vec_padded=np.pad(diff_square_vec,dist2,'reflect')
-                    diff_square_vec_sum = np.convolve(diff_square_vec_padded, kernel2, mode='same')[dist2:-dist2]
-                    diff_square_vec_sum_sqrt = np.sqrt(diff_square_vec_sum)
+                    diff_square_vec_padded=np_pad(diff_square_vec,dist,'reflect')
+                    diff_square_vec_sum = np_convolve(diff_square_vec_padded, kernel, mode='same')[dist:-dist]
+                    diff_square_vec_sum_sqrt = np_sqrt(diff_square_vec_sum)
                     diff_square_vec_sum_sqrt_x_thrs=diff_square_vec_sum_sqrt*PEAKS_THRESHOLD
 
-                    # works!
-                    #diff = (arr-avg2)/np.abs(avg2)
+                    set_value("fft_line_avg", [fft_values_x, avg-diff_square_vec_sum_sqrt_x_thrs, avg+diff_square_vec_sum_sqrt_x_thrs ])
 
+                    mask = (avg[1:-1] > avg[:-2]) & (avg[1:-1] > avg[2:]) & (diff_vec[1:-1]>diff_square_vec_sum_sqrt_x_thrs[1:-1])
 
-                    #diff = diff_vec/diff_square_vec_sum_sqrt
-                    diff = diff_vec
-                    #print(diff)
-                    #/np.abs(avg2)
-                    #print(ratio)
+                    sel_indices=np_where(mask)[0]+1
 
-                    #idx = np.argsort(ratio)           # indeksy porządkujące wg a
-                    #fft_line_final_x_sorted = a[idx]
-                    #fft_values_final_y = b[idx]
+                    sel_diff_values=diff_vec[sel_indices]
+                    sel_x=np_array(fft_values_x)[sel_indices]
+                    sel_y=np_array(fft_values_y)[sel_indices]
 
-                    #print('avg:',avg,type(avg))
-                    mask = (avg[1:-1] > avg[:-2]) & (avg[1:-1] > avg[2:]) & (diff[1:-1]>PEAKS_THRESHOLD)
-                    #mask = (arr[1:-1] > arr[:-2]) & (arr[1:-1] > arr[2:])
-                    #print('mask:',mask,type(mask))
-                    if True:
-                        sel_indices=np.where(mask)[0]+1
-                        #print('sel_indices:',sel_indices)
+                    sel_diff_values_sorted_indices=np_argsort(sel_diff_values)[::-1]
 
-                        sel_diff_values=diff[sel_indices]
-                        sel_x=np_array(fft_line_final_x)[sel_indices]
-                        sel_y=np_array(fft_values_final_y)[sel_indices]
+                    sel_diff_values_sorted=sel_diff_values[sel_diff_values_sorted_indices]
+                    sel_y_values_sorted=sel_y[sel_diff_values_sorted_indices]
+                    sel_x_values_sorted=sel_x[sel_diff_values_sorted_indices]
 
-                        sel_diff_values_sorted_indices=np.argsort(sel_diff_values)[::-1]
+                    for fint in peaks_annos:
+                        delete_item(f'peak{fint}')
+                    peaks_annos.clear()
 
-                        sel_diff_values_sorted=sel_diff_values[sel_diff_values_sorted_indices]
-                        sel_y_values_sorted=sel_y[sel_diff_values_sorted_indices]
-                        sel_x_values_sorted=sel_x[sel_diff_values_sorted_indices]
+                    for f,v in zip(sel_x_values_sorted,sel_y_values_sorted):
+                        fint=int(f)
+                        peaks_annos.add(fint)
+                        add_plot_annotation(tag=f'peak{fint}',label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(100, 100, 100, 130), offset=(16,-10))
 
-                        for f,v in zip(sel_x_values_sorted,sel_y_values_sorted):
-                            tag=f'peak{peak_index}'
-                            fint=int(f)
-                            peaks_annos.add((tag,f,v))
-                            dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 130), offset=(16,-10))
-                            #print(peak_index,fint,v)
-                            peak_index+=1
-                            if peak_index>4:
-                                break
-                    #print(mask)
+                set_value("fft_line", [fft_values_x, fft_values_y])
+                set_value("fft_line2", [fft_values_x, fft_values_y])
 
-                    #print(fft_values_final_y-avg,'\n')
-                    #print(type(fft_values_final_y),type(avg),'\n')
-
-                    #mask = np.r_[True, avg[1:] > avg[:-1]] & np.r_[avg[:-1] > avg[1:], True]
-
-                    set_value("fft_line_avg", [fft_line_final_x, avg2-diff_square_vec_sum_sqrt_x_thrs, avg2+diff_square_vec_sum_sqrt_x_thrs ])
-                    #fft_values_final_y=avg.copy()
-
-                    if False:
-                        threshold=PEAKS_THRESHOLD
-                        for i,(f,v,a1,a2,msk,rat) in enumerate(zip(fft_line_final_x,fft_values_final_y,avg,avg2,mask,ratio)):
-                            if msk:
-                                if rat>0 and v/a2>threshold:
-                                    tag=f'peak{peak_index}'
-                                    fint=int(f)
-                                    peaks_annos.add((tag,f,v))
-                                    dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 255), offset=(20,-10))
-                                    peak_index+=1
-
-                    #for i,(f,v) in enumerate(zip(fft_line_final_x,fft_values_final_y)):
-                    #    w_max=-300
-                    #    for j in range(i-dist,i+dist):
-                    #        try:
-                    #            w=fft_values_final_y[j]
-                    #            if w>w_max+threshold:
-                    #                w_max=w
-                    #        except Exception as cc:
-                    #            #print(cc)
-                    #            pass
-                    #    if w_max==v:
-                    #        tag=f'peak{peak_index}'
-                    #        fint=int(f)
-                    #        peaks_annos.add((tag,f,v))
-                    #        dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 255), offset=(20,-10))
-                    #        peak_index+=1
-
-                set_value("fft_line", [fft_line_final_x, fft_values_final_y ])
-                set_value("fft_line2", [fft_line_final_x, fft_values_final_y ])
-                fft_values_final_y_prev=fft_values_final_y
+                if FFT_TDA:
+                    fft_values_y_prev=fft_values_y
 
             except Exception as exception_fft:
-                l_error('FFT Exception:',exception_fft)
+                l_error(f'FFT Exception:{exception_fft}')
                 print('FFT Exception:',exception_fft)
 
         if playing_state==2 and recorded_track is not None and current_bucket<TRACK_BUCKETS:
@@ -2628,6 +2646,7 @@ while is_dearpygui_running():
             for track,show in enumerate(show_track):
                 if show:
                     set_value(f"track{track}", [bucket_tracks_freqs, track_line_data_y[track]])
+                    set_value(f"track{track}_bg", [bucket_tracks_freqs, track_line_data_y[track]])
 
             redraw_tracks_lines=False
 
