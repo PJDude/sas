@@ -29,12 +29,12 @@
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
-from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app
+from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer
 
 from time import strftime,time,localtime,perf_counter
-from gc import disable as gc_disable, collect as gc_collect
+from gc import disable as gc_disable, collect as gc_collect, freeze as gc_freeze
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array
 from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 import numpy as np
 
@@ -102,6 +102,7 @@ cfg_file = path_join(INTERNAL_DIR, 'sas.cfg')
 print(f'{log_file=}')
 
 cfg={}
+cfg_setdefault=cfg.setdefault
 
 try:
     with open(cfg_file, "r", encoding="utf-8") as f:
@@ -110,17 +111,33 @@ try:
 except Exception as e:
     print(f'cfg file "{cfg_file}" opening error {e}')
 
-cfg.setdefault('fft_size',8192)
-cfg.setdefault('fft_window_name','blackman')
-cfg.setdefault('theme','dark')
+cfg_setdefault('theme','dark')
 
-BUCKETS_FFT=256
-cfg.setdefault('buckets_fft',256)
-BUCKETS_TRACKS=256
-cfg.setdefault('buckets_tracks',256)
+TRACK_BUCKETS=256
+cfg_setdefault('track_buckets',256)
 
-cfg.setdefault('viewport_pos',[100,100])
-cfg.setdefault('viewport_size',[1300,400])
+cfg_setdefault('viewport_pos',[100,100])
+cfg_setdefault('viewport_size',[1300,400])
+
+cfg_setdefault('help',True)
+HELP=cfg['help']
+
+cfg_setdefault('debug',True)
+
+
+cfg_setdefault('vsync',False)
+
+cfg_setdefault('fft',True)
+cfg_setdefault('fft_size',8192)
+cfg_setdefault('fft_window','blackman')
+cfg_setdefault('fft_fba',True)
+cfg_setdefault('fft_fba_size',1024)
+cfg_setdefault('fft_tda',False)
+cfg_setdefault('fft_tda_factor',0.1)
+
+cfg_setdefault('peaks',True)
+cfg_setdefault('peaks_dist',0.1)
+cfg_setdefault('peaks_threshold',1.0)
 
 print(f'{cfg=}')
 
@@ -171,7 +188,7 @@ def status_set_frequency():
     global show_track
     res_list = []
     res_list_append = res_list.append
-    if current_bucket<cfg['buckets_tracks']:
+    if current_bucket<cfg['track_buckets']:
         for track,show in enumerate(show_track):
             if show:
                 db_temp = round(track_line_data_y[track][current_bucket])
@@ -219,7 +236,7 @@ def save_fft_points():
         #l_error()
 
 def save_window():
-    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'fft_window-{cfg["fft_size"]}-{cfg["fft_window_name"]}.csv')
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'fft_window-{cfg["fft_size"]}-{cfg["fft_window"]}.csv')
     print(file)
 
     try:
@@ -232,14 +249,14 @@ def save_window():
         print(f'save_fft_window_error:{e}')
 
 def save_buckets_tracks():
-    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'buckets-tracks-{cfg["buckets_tracks"]}.csv')
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'buckets-tracks-{cfg["track_buckets"]}.csv')
     print(file)
 
     try:
         with open(file,'w',encoding='utf-8') as fh:
-            fh.write(f"#buckets:{cfg["buckets_tracks"]}\n")
+            fh.write(f"#buckets:{cfg["track_buckets"]}\n")
             fh.write("#index,frequency[Hz]\n")
-            for b in range(cfg['buckets_tracks']):
+            for b in range(cfg['track_buckets']):
                 f=bucket_tracks_freqs[b]
                 fh.write(f'{b},{f}\n')
     except Exception as e:
@@ -247,14 +264,14 @@ def save_buckets_tracks():
         #l_error()
 
 def save_buckets_fft():
-    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'buckets-fft-{cfg["buckets_fft"]}.csv')
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'buckets-fft-{cfg["fft_fba_size"]}.csv')
     print(file)
 
     try:
         with open(file,'w',encoding='utf-8') as fh:
-            fh.write(f"#buckets:{cfg["buckets_fft"]}\n")
+            fh.write(f"#buckets:{cfg["fft_fba_size"]}\n")
             fh.write("#index,frequency[Hz]\n")
-            for b in range(cfg['buckets_fft']):
+            for b in range(cfg['fft_fba_size']):
                 f=bucket_fft_freqs[b]
                 fh.write(f'{b},{f}\n')
     except Exception as e:
@@ -314,7 +331,7 @@ def save_csv():
         with open(filename,'w',encoding='utf-8') as f:
             f.write("# Created with " + title + " #\n")
             f.write("frequency[Hz],level[dBFS]\n")
-            for i in range(cfg["buckets_tracks"]):
+            for i in range(cfg["track_buckets"]):
                 values=[]
                 for track,show in enumerate(show_track):
                     if show:
@@ -391,7 +408,7 @@ def logf_to_bucket_tracks(logf):
 phase_step=1.0
 
 def change_f(fpar):
-    global current_logf,current_bucket,phase_step,current_bucket,two_pi_by_in_samplerate,schedule_screenshot
+    global current_logf,current_bucket,phase_step,current_bucket,two_pi_by_out_samplerate,schedule_screenshot
 
     if fmin_audio<fpar<fmax_audio:
         current_logf=log10(fpar)
@@ -402,7 +419,7 @@ def change_f(fpar):
         set_value('cursor_f_txt', (fpar, -3))
         configure_item('cursor_f_txt',label=f'{round(fpar)}Hz')
 
-        phase_step = two_pi_by_in_samplerate * fpar
+        phase_step = two_pi_by_out_samplerate * fpar
 
 played_bucket=0
 played_bucket_callbacks=0
@@ -452,6 +469,7 @@ def vsync_callback(sender=None, app_data=None):
     set_viewport_vsync(app_data)
     global VSYNC_STATE_NAME,next_fps
     VSYNC_STATE_NAME=('OFF','ON')[app_data]
+    cfg['vsync']=app_data
     next_fps=0
 
 def sweep_abort():
@@ -563,7 +581,6 @@ default_api_nr=0
 device_default_input=None
 device_default_output=None
 
-@catch
 def refresh_devices():
     l_info('refresh_devices')
     global apis,default_api_nr,devices,device_default_input,device_default_output
@@ -599,7 +616,8 @@ def refresh_devices():
 
     if default_api_nr!=-1:
         l_info(f'Defaults:{apis[default_api_nr]["name"]},{device_default_input["name"]},{device_default_output["name"]}')
-        set_value('api',apis[default_api_nr]['name'])
+        set_value('api_in',apis[default_api_nr]['name'])
+        set_value('api_out',apis[default_api_nr]['name'])
     else:
         l_error(f'No default API !')
 
@@ -617,7 +635,7 @@ out_latency_default='low'
 
 in_blocksize_values=(512,256,128,64,0)
 in_blocksize_default=64 if windows else 256
-in_latency_default='low'
+in_latency_default='low' if windows else 'high'
 
 out_channel_buffer_mod_index=0
 
@@ -747,7 +765,8 @@ def in_stream_init():
         stream_in.close()
 
     device=int(device_in_current['index'])
-    samplerate=float(get_value('in_samplerate'))
+    #samplerate=float(get_value('in_samplerate'))
+    samplerate=float(device_in_current['default_samplerate'])
     latency=latency_for_stream(get_value('in_latency'))
     blocksize=int(get_value('in_blocksize'))
     channels=1
@@ -808,15 +827,13 @@ def license_wrapper():
 
     show_info('\n'+ license_txt)
 
-fft_on=True
-
 def reset_track_press(sender=None, app_data=None):
     l_info(f'resetrack:{sender},{app_data}')
 
     global recorded_track,redraw_tracks_lines
     if recorded_track is not None:
         sweep_abort()
-        track_line_data_y[recorded_track]=[dbinit]*cfg['buckets_tracks']
+        track_line_data_y[recorded_track]=[dbinit]*cfg['track_buckets']
         redraw_tracks_lines=True
     else:
         print('recording not enabled for track',track)
@@ -903,39 +920,31 @@ with file_dialog(directory_selector=False,show=False,callback=load_csv_file_sele
     add_file_extension(".csv", color=(255, 255, 0))
     add_file_extension(".*")
 
-current_api=None
+api_out_id=None
 
-@catch
-def api_changed(sender=None, app_data=None):
-    global current_api,apis,devices,in_dev_cb
+def api_in_callback(sender=None, app_data=None):
+    global api_in_id,apis,devices
 
-    apiname=get_value('api')
-    l_info(f'api_changed:{sender},{app_data},{apiname}')
+    api_name=get_value('api_in')
+    l_info(f'api_in_changed:{sender},{app_data},{api_name}')
 
-    current_api=[api for api in apis if api['name']==apiname][0]
-
-    out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index'] in current_api['devices'] ]
-    in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in current_api['devices'] ]
-
-    out_dev_name=get_value("out_dev")
+    api_in_id=[api for api in apis if api['name']==api_name][0]
+    in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in api_in_id['devices'] ]
     in_dev_name=get_value("in_dev")
 
-    configure_item("out_dev",items=out_values)
     configure_item("in_dev",items=in_values)
 
     device_default_input_name=device_default_input['name']
-    device_default_output_name=device_default_output['name']
+    l_info(f'defaults:{device_default_input_name}')
 
-    l_info(f'defaults:{device_default_input_name},{device_default_output_name}')
-
-    if out_values:
-        if out_dev_name not in out_values:
-            if device_default_output_name in out_values:
-                set_value("out_dev",device_default_output_name)
+    if in_values:
+        if in_dev_name not in in_values:
+            if device_default_input_name in in_values:
+                set_value("in_dev",device_default_input_name)
             else:
-                set_value("out_dev",out_values[0])
+                set_value("in_dev",in_values[0])
 
-    out_dev_changed(None,None,True)
+    #in_dev_changed(None,None)
 
     if in_values:
         if in_dev_name not in in_values:
@@ -945,6 +954,38 @@ def api_changed(sender=None, app_data=None):
                 set_value("in_dev",in_values[0])
 
     in_dev_changed(None,None)
+
+def api_out_callback(sender=None, app_data=None):
+    global api_out_id,apis,devices
+
+    api_name=get_value('api_out')
+    l_info(f'api_out_changed:{sender},{app_data},{api_name}')
+
+    api_out_id=[api for api in apis if api['name']==api_name][0]
+    out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index'] in api_out_id['devices'] ]
+
+    out_dev_name=get_value("out_dev")
+
+    configure_item("out_dev",items=out_values)
+
+    device_default_output_name=device_default_output['name']
+    l_info(f'defaults:{device_default_output_name}')
+
+    if out_values:
+        if out_dev_name not in out_values:
+            if device_default_output_name in out_values:
+                set_value("out_dev",device_default_output_name)
+            else:
+                set_value("out_dev",out_values[0])
+
+    if out_values:
+        if out_dev_name not in out_values:
+            if device_default_output_name in out_values:
+                set_value("out_dev",device_default_output_name)
+            else:
+                set_value("out_dev",out_values[0])
+
+    out_dev_changed(None,None)
 
 def refresh_tracks():
     for track in range(tracks):
@@ -964,45 +1005,64 @@ def refresh_tracks():
     global redraw_tracks_lines
     redraw_tracks_lines=True
 
-FFT_SIZE=0
-def fft_change(sender=None, app_data=None):
-    l_info(f'fft_change:{sender},{app_data}')
+FFT=cfg['fft']
+def fft_callback(sender=None, app_data=None):
+    global FFT,fft_ready
+    fft_ready=False
+    FFT=cfg['fft']=get_value('fft')
+    l_info(f'fft_callback:{sender},{app_data},{FFT}')
+    fft_size_callback()
+
+    configure_item('fft_size',enabled=FFT)
+    configure_item('fft_window',enabled=FFT)
+
+    configure_item('fft_fba',enabled=FFT)
+    configure_item('fft_fba_size',enabled=FFT)
+    configure_item('fft_tda',enabled=FFT)
+    configure_item('fft_tda_factor',enabled=FFT)
+
+    configure_item('peaks',enabled=FFT)
+    configure_item('peaks_dist',enabled=FFT)
+    configure_item('peaks_threshold',enabled=FFT)
+
+FFT_SIZE=cfg['fft_size']
+def fft_size_callback(sender=None, app_data=None):
     global cfg,fft_points,FFT_SIZE,fft_ready
     fft_ready=False
 
+    l_info(f'fft_size_callback:{sender},{app_data}')
+
     FFT_SIZE=cfg['fft_size']=int(get_value('fft_size'))
     fft_points=int(cfg['fft_size']/2+1)
-    set_status(f'fft_change:{FFT_SIZE}')
+    set_status(f'fft_size_callback:{FFT_SIZE}')
 
     fft_window_changed()
 
 def fft_window_changed(sender=None, app_data=None):
-    global fft_on,fft_window,window_correction,cfg,fft_ready
+    global FFT,fft_window,window_correction,cfg,fft_ready
     fft_ready=False
 
-    cfg['fft_window_name']=get_value('fft_window')
+    cfg['fft_window']=get_value('fft_window')
 
-    if cfg['fft_window_name']=='off':
-        fft_on=False
+    if cfg['fft_window']=='ones':
+        fft_window=ones(cfg['fft_size'])
+    elif cfg['fft_window']=='hanning':
+        fft_window=hanning(cfg['fft_size'])
+    elif cfg['fft_window']=='hamming':
+        fft_window=hamming(cfg['fft_size'])
+    elif cfg['fft_window']=='blackman':
+        fft_window=blackman(cfg['fft_size'])
+    elif cfg['fft_window']=='bartlett':
+        fft_window=bartlett(cfg['fft_size'])
     else:
-        fft_on=True
-        if cfg['fft_window_name']=='ones':
-            fft_window=ones(cfg['fft_size'])
-        elif cfg['fft_window_name']=='hanning':
-            fft_window=hanning(cfg['fft_size'])
-        elif cfg['fft_window_name']=='hamming':
-            fft_window=hamming(cfg['fft_size'])
-        elif cfg['fft_window_name']=='blackman':
-            fft_window=blackman(cfg['fft_size'])
-        elif cfg['fft_window_name']=='bartlett':
-            fft_window=bartlett(cfg['fft_size'])
-        else:
-            l_error(f'unknown window:{cfg["fft_window_name"]}')
+        l_error(f'unknown window:{cfg["fft_window"]}')
 
     window_correction = np_sum(fft_window)
-    configure_item("fft_line", show=fft_on)
+    configure_item("fft_line", show=FFT)
+    configure_item("fft_line2", show=FFT)
+    configure_item("fft_line_avg", show=FFT)
 
-    l_info(f'fft_window_changed:{sender},{app_data},{cfg["fft_window_name"]},{len(fft_window)}')
+    l_info(f'fft_window_changed:{sender},{app_data},{cfg["fft_window"]},{len(fft_window)}')
 
     common_precalc()
 
@@ -1012,6 +1072,32 @@ def fft_window_changed(sender=None, app_data=None):
                 save_window()
         except:
             pass
+
+FFT_FBA=cfg['fft_fba']
+def fft_fba_callback(sender=None, app_data=None):
+    global FFT_FBA,fft_ready,cfg
+    fft_ready=False
+    FFT_FBA=cfg['fft_fba']=get_value('fft_fba')
+    l_info(f'fft_fba_callback:{sender},{app_data},{FFT_FBA}')
+    fft_fba_size_callback()
+
+FFT_FBA_SIZE=cfg['fft_fba_size']
+def fft_fba_size_callback(sender=None, app_data=None):
+    global cfg,FFT_FBA_SIZE,fft_ready
+    fft_ready=False
+    FFT_FBA_SIZE=cfg['fft_fba_size']=int(get_value('fft_fba_size'))
+    l_info(f'fft_fba_size_callback:{sender},{app_data},{FFT_FBA_SIZE}')
+    buckets_quant_change()
+
+FFT_TDA=cfg['fft_tda']
+def fft_tda_callback(sender=None, app_data=None):
+    global FFT_TDA,fft_ready,cfg
+    fft_ready=False
+    FFT_TDA=cfg['fft_tda']=get_value('fft_tda')
+    l_info(f'fft_tda_callback:{sender},{app_data},{FFT_TDA}')
+    fft_tda_factor_callback()
+
+    configure_item('fft_tda_factor',enabled=FFT_TDA)
 
 bucket_fft_freqs=[0]
 bucket_fft_edges=[0]
@@ -1028,29 +1114,23 @@ logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
 def buckets_quant_change(sender=None, app_data=None, call_common=True):
     l_info(f'buckets_quant_change:{sender},{app_data},{call_common}')
-    global sweep_steps,scale_factor_logf_to_bucket_fft,logf_sweep_step,log_bucket_fft_width,log_bucket_fft_width_by2,redraw_tracks_lines,cfg,fft_ready,BUCKETS_TRACKS,BUCKETS_FFT
+    global sweep_steps,scale_factor_logf_to_bucket_fft,logf_sweep_step,log_bucket_fft_width,log_bucket_fft_width_by2,redraw_tracks_lines,cfg,fft_ready,TRACK_BUCKETS
     fft_ready=False
 
-    try:
-        BUCKETS_FFT = cfg['buckets_fft']=int(get_value('buckets_fft'))
-    except:
-        BUCKETS_FFT=cfg['buckets_fft']=0
+    scale_factor_logf_to_bucket_fft=cfg['fft_fba_size']/logf_max_audio_m_logf_min_audio
 
-    scale_factor_logf_to_bucket_fft=cfg['buckets_fft']/logf_max_audio_m_logf_min_audio
-
-    if BUCKETS_FFT:
-        log_bucket_fft_width=logf_max_audio_m_logf_min_audio/BUCKETS_FFT
-        log_bucket_fft_width_by2=log_bucket_fft_width*0.5
+    log_bucket_fft_width=logf_max_audio_m_logf_min_audio/FFT_FBA_SIZE
+    log_bucket_fft_width_by2=log_bucket_fft_width*0.5
 
     global sweep_steps,scale_factor_logf_to_bucket_tracks,logf_sweep_step,log_bucket_tracks_width,log_bucket_tracks_width_by2
 
-    BUCKETS_TRACKS=cfg['buckets_tracks']=int(get_value('buckets_tracks'))
+    TRACK_BUCKETS=cfg['track_buckets']=int(get_value('track_buckets'))
 
-    sweep_steps=cfg['buckets_tracks']*spectrum_sub_bucket_samples
+    sweep_steps=cfg['track_buckets']*spectrum_sub_bucket_samples
     logf_sweep_step=logf_max_audio_m_logf_min_audio/sweep_steps
 
-    scale_factor_logf_to_bucket_tracks=cfg['buckets_tracks']/logf_max_audio_m_logf_min_audio
-    log_bucket_tracks_width=logf_max_audio_m_logf_min_audio/cfg['buckets_tracks']
+    scale_factor_logf_to_bucket_tracks=cfg['track_buckets']/logf_max_audio_m_logf_min_audio
+    log_bucket_tracks_width=logf_max_audio_m_logf_min_audio/cfg['track_buckets']
     log_bucket_tracks_width_by2=log_bucket_tracks_width*0.5
 
     if call_common:
@@ -1058,14 +1138,14 @@ def buckets_quant_change(sender=None, app_data=None, call_common=True):
 
     redraw_tracks_lines=True
 
-TDA_FFT=0
-TDA_FFT_1m=1.0
-def tda_fft_callback(sender=None, app_data=None):
-    l_info(f'tda_fft_callback:{sender},{app_data}')
-    global TDA_FFT,fft_ready,TDA_FFT_1m
+FFT_TDA_FACTOR=float(cfg['fft_tda_factor'])
+FFT_TDA_FACTOR_1m=1.0-FFT_TDA_FACTOR
+def fft_tda_factor_callback(sender=None, app_data=None):
+    l_info(f'fft_tda_factor_callback:{sender},{app_data}')
+    global FFT_TDA_FACTOR,fft_ready,FFT_TDA_FACTOR_1m
     fft_ready=False
-    TDA_FFT=float(app_data)
-    TDA_FFT_1m=1.0-TDA_FFT
+    FFT_TDA_FACTOR=cfg['fft_tda_factor']=float(get_value('fft_tda_factor'))
+    FFT_TDA_FACTOR_1m=1.0-FFT_TDA_FACTOR
     common_precalc()
 
 tda_tracks=0.0
@@ -1081,7 +1161,7 @@ FFT_ACTUAL_BUCKETS=0
 def common_precalc():
     l_info('common_precalc')
 
-    global two_pi_by_in_samplerate,in_samplerate_by_fft_size,cfg,fft_duration
+    global in_samplerate_by_fft_size,cfg,fft_duration
     global sweep_steps,track_line_data_y,time_to_collect_sample,log_bucket_width,log_bucket_fft_width,log_bucket_tracks_width,log_bucket_fft_width_by2,log_bucket_tracks_width_by2
 
     in_samplerate_by_fft_size = in_samplerate / FFT_SIZE
@@ -1096,23 +1176,22 @@ def common_precalc():
     for i_fft in range(fft_points):
         fft_line_data_x[i_fft]=i_fft * in_samplerate_by_fft_size
 
-    bucket_fft_freqs=[0]*BUCKETS_FFT
-    bucket_fft_edges=[0]*(BUCKETS_FFT+1)
+    bucket_fft_freqs=[0]*FFT_FBA_SIZE
+    bucket_fft_edges=[0]*(FFT_FBA_SIZE+1)
 
-    for b in range(BUCKETS_FFT):
+    for b in range(FFT_FBA_SIZE):
         bucket_fft_freqs[b]= 10**(logf_min_audio + log_bucket_fft_width_by2 + log_bucket_fft_width * b)
         bucket_fft_edges[b+1]= 10**(logf_min_audio + log_bucket_fft_width * (b+1))
 
-    bucket_tracks_freqs=[0]*cfg['buckets_tracks']
+    bucket_tracks_freqs=[0]*cfg['track_buckets']
 
-    for b in range(cfg['buckets_tracks']):
+    for b in range(cfg['track_buckets']):
         bucket_tracks_freqs[b]= 10**(logf_min_audio + log_bucket_tracks_width_by2 + log_bucket_tracks_width * b)
 
     fft_bin_indices = digitize(fft_line_data_x, bucket_fft_edges)
     l_info(f'fft_bin_indices={len(fft_bin_indices)}')
     fft_bin_counts = bincount(fft_bin_indices)
     l_info(f'fft_bin_counts={len(fft_bin_counts)}')
-
 
     if DEBUG:
         try:
@@ -1126,20 +1205,19 @@ def common_precalc():
         except:
             pass
 
-    dummy_fft_values = bincount(fft_bin_indices, weights=dummy_data)[1:] / fft_bin_counts[1:]
     global fft_bin_indices_selected,fft_x_vec,fft_ready,FFT_ACTUAL_BUCKETS
-    fft_bin_indices_selected=array([i for i,i_n in enumerate(isnan(dummy_fft_values)) if not i_n])
+    fft_bin_indices_selected=np_array([i for i,i_n in enumerate(isnan(bincount(fft_bin_indices, weights=dummy_data)[1:] / fft_bin_counts[1:])) if not i_n])
     FFT_ACTUAL_BUCKETS=len(fft_bin_indices_selected)
-    fft_x_vec=tuple([bucket_fft_freqs[i] for i in fft_bin_indices_selected[:-1]])
+    fft_x_vec=np_array([bucket_fft_freqs[i] for i in fft_bin_indices_selected[:-1]])
 
     for track in range(tracks):
-        track_line_data_y[track]=[dbmin]*cfg['buckets_tracks']
+        track_line_data_y[track]=[dbmin]*cfg['track_buckets']
 
     global fft_line_new_x,fft_values_final_y_prev
 
     fft_values_final_y_prev=[0]*len(bucket_fft_freqs)
 
-    if BUCKETS_FFT:
+    if FFT_FBA:
         fft_line_new_x=bucket_fft_freqs
     else:
         fft_line_new_x=fft_line_data_x
@@ -1149,8 +1227,8 @@ def common_precalc():
 
 device_out_current=None
 
-def out_dev_changed(sender=None, app_data=None,user_data=False):
-    l_info(f'out_dev_changed:{sender},{app_data},{user_data}')
+def out_dev_changed(sender=None, app_data=None):
+    l_info(f'out_dev_changed:{sender},{app_data}')
 
     global device_out_current
 
@@ -1169,7 +1247,11 @@ def out_dev_changed(sender=None, app_data=None,user_data=False):
         out_channel_value=1
         set_value("out_channel",out_channel_value)
 
-    set_value("out_samplerate",device_out_current['default_samplerate'])
+    global out_samplerate,two_pi_by_out_samplerate
+    out_samplerate=int(device_out_current['default_samplerate'])
+    set_value("out_samplerate",out_samplerate)
+
+    two_pi_by_out_samplerate = two_pi/out_samplerate
 
     out_channel_changed(None,out_channel_value)
     out_latency_changed(None,out_latency_default)
@@ -1200,11 +1282,9 @@ def in_dev_changed(sender=None, app_data=None):
         in_channel_value=1
         set_value("in_channel",in_channel_value)
 
-    global in_samplerate,two_pi_by_in_samplerate
+    global in_samplerate
     in_samplerate=int(device_in_current['default_samplerate'])
     set_value("in_samplerate",str(in_samplerate))
-
-    two_pi_by_in_samplerate = two_pi/in_samplerate
 
     in_channel_changed(None,in_channel_value)
     in_latency_changed(None,in_latency_default)
@@ -1300,15 +1380,13 @@ def on_mouse_move_tracks_leave(sender, app_data):
 
     bind_item_theme(f"track{track}",thin_line_theme)
 
-dpg.create_context()
-
 is_dragging = False
 is_resizing = False
 
 def on_mouse_down(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
     if not is_dragging:
-        offset_x, offset_y = dpg.get_mouse_pos()
+        offset_x, offset_y = dpg.get_mouse_pos(local=False)
 
         vh = dpg.get_viewport_height()
         vw = dpg.get_viewport_width()
@@ -1344,7 +1422,7 @@ def on_mouse_move(sender, app_data):
                     change_f(f_current)
     else:
         #mouse_x, mouse_y = app_data
-        mouse_x, mouse_y = dpg.get_mouse_pos()
+        mouse_x, mouse_y = dpg.get_mouse_pos(local=False)
         if is_dragging:
             curr_vp_x = curr_vp_x + mouse_x - offset_x
             curr_vp_y = curr_vp_y + mouse_y - offset_y
@@ -1366,7 +1444,7 @@ LIGHT_TEXT = (0, 0, 0, 255)
 LIGHT_BUTTON = LIGHT_BG #(210, 210, 210, 255)
 LIGHT_BUTTON_HOVER = (180, 180, 255, 255)
 LIGHT_BUTTON_ACTIVE = (150, 150, 255, 255)
-LIGHT_ACCENT = (50, 50, 200, 255)  # check, slider grab, etc.
+LIGHT_ACCENT = (50, 50, 70, 255)  # check, slider grab, etc.
 
 DARK_BG = (60, 60, 60, 255)
 DARK_BG_LIGHTER = (40, 40, 40, 128)
@@ -1379,7 +1457,7 @@ DARK_TEXT = (255, 255, 255, 255)
 DARK_BUTTON = DARK_BG #(90, 90, 100, 255)
 DARK_BUTTON_HOVER = (120, 120, 180, 255)
 DARK_BUTTON_ACTIVE = (150, 150, 200, 255)
-DARK_ACCENT = (100, 150, 255, 255)  # check, slider grab, etc.
+DARK_ACCENT = (150, 150, 200, 255)  # check, slider grab, etc.
 
 LIGHT_TOOLTIP_BG = (210, 210, 0, 255)
 DARK_TOOLTIP_BG = (160, 160, 0, 255)
@@ -1387,12 +1465,13 @@ DARK_TOOLTIP_BG = (160, 160, 0, 255)
 with dpg.theme() as theme_light:
     with dpg.theme_component(dpg.mvAll):
         dpg.add_theme_color(dpg.mvThemeCol_WindowBg, LIGHT_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, LIGHT_CHILD_BG)
+        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, LIGHT_BG)
         dpg.add_theme_color(dpg.mvThemeCol_PopupBg, LIGHT_CHILD_BG)
         dpg.add_theme_color(dpg.mvThemeCol_Border, LIGHT_BORDER)
         dpg.add_theme_color(dpg.mvThemeCol_FrameBg, LIGHT_FRAME)
         dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, LIGHT_FRAME_HOVER)
         dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, LIGHT_FRAME_ACTIVE)
+        dpg.add_theme_color(dpg.mvThemeCol_Separator, LIGHT_BORDER)
 
         dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
         dpg.add_theme_color(dpg.mvThemeCol_Button, LIGHT_BUTTON)
@@ -1401,7 +1480,7 @@ with dpg.theme() as theme_light:
 
         dpg.add_theme_color(dpg.mvThemeCol_CheckMark, LIGHT_ACCENT)
         dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, LIGHT_ACCENT)
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (30, 30, 180, 255))
+        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, LIGHT_BG)
         dpg.add_theme_color(dpg.mvThemeCol_Header, LIGHT_FRAME)
         dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, LIGHT_FRAME_HOVER)
         dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, LIGHT_FRAME_ACTIVE)
@@ -1418,6 +1497,31 @@ with dpg.theme() as theme_light:
         #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
+    #with dpg.theme_component(dpg.mvTable):
+    #    dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0)
+    with dpg.theme_component(dpg.mvChildWindow):
+        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3)
+
+    with dpg.theme_component(dpg.mvPlot):
+        dpg.add_theme_color(dpg.mvPlotCol_PlotBg, LIGHT_BG)
+        #dpg.add_theme_color(dpg.mvPlotCol_Fill, LIGHT_BG)
+
+    with dpg.theme_component(dpg.mvShadeSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Fill,
+            (100, 150, 255, 80),
+            category=dpg.mvThemeCat_Plots
+        )
+
+    with dpg.theme_component(dpg.mvTable):
+        #dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, (50,50,60,255))
+        #dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt, (40,40,45,255))
+        #dpg.add_theme_color(dpg.mvThemeCol_Separator, (255, 0, 0, 255))
+        #dpg.add_theme_color(dpg.mvThemeCol_SeparatorHovered, (0, 255, 0, 255))
+        #dpg.add_theme_color(dpg.mvThemeCol_SeparatorActive, (0, 0, 255, 255))
+        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0)
+
+
     with dpg.theme_component(dpg.mvTooltip):
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
         dpg.add_theme_color(dpg.mvThemeCol_PopupBg,LIGHT_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
@@ -1431,7 +1535,7 @@ with dpg.theme() as theme_dark:
         #dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
         dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, DARK_CHILD_BG)
+        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, DARK_BG)
         dpg.add_theme_color(dpg.mvThemeCol_PopupBg, DARK_CHILD_BG)
         dpg.add_theme_color(dpg.mvThemeCol_Border, DARK_BORDER)
         dpg.add_theme_color(dpg.mvThemeCol_FrameBg, DARK_FRAME)
@@ -1445,7 +1549,7 @@ with dpg.theme() as theme_dark:
 
         dpg.add_theme_color(dpg.mvThemeCol_CheckMark, DARK_ACCENT)
         dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, DARK_ACCENT)
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (80, 120, 220, 255))
+        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, DARK_BG)
         dpg.add_theme_color(dpg.mvThemeCol_Header, DARK_FRAME)
         dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, DARK_FRAME_HOVER)
         dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, DARK_FRAME_ACTIVE)
@@ -1462,11 +1566,22 @@ with dpg.theme() as theme_dark:
         #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
+    with dpg.theme_component(dpg.mvChildWindow):
+        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3)
+
     with dpg.theme_component(dpg.mvPlot):
         #dpg.add_theme_color(dpg.mvPlotCol_PlotAreaBg, DARK_BG_LIGHTER)
         dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
+        #dpg.add_theme_color(dpg.mvPlotCol_Fill, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
+
+    with dpg.theme_component(dpg.mvShadeSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Fill,
+            (100, 150, 255, 80),
+            category=dpg.mvThemeCat_Plots
+        )
 
     with dpg.theme_component(dpg.mvTooltip):
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
@@ -1529,7 +1644,7 @@ with theme() as dark_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
             dpg.mvPlotCol_Line,
-            (100, 100, 100, 255),
+            (128, 128, 128, 255),
             category=dpg.mvThemeCat_Plots
         )
         dpg.add_theme_style(
@@ -1538,16 +1653,50 @@ with theme() as dark_line_theme:
             category=dpg.mvThemeCat_Plots
         )
 
+with theme() as dark_line_theme1:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Line,
+            (128, 128, 128, 100),
+            category=dpg.mvThemeCat_Plots
+        )
+        dpg.add_theme_style(
+            dpg.mvPlotStyleVar_LineWeight,
+            3.0,
+            category=dpg.mvThemeCat_Plots
+        )
+
+with theme() as std_dev_cloud_theme:
+    with dpg.theme_component(dpg.mvShadeSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Fill,
+            (128, 128, 128, 25),
+            category=dpg.mvThemeCat_Plots
+        )
+
 with theme() as light_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(
             dpg.mvPlotCol_Line,
-            (255, 255, 255, 128),
+            (128, 128, 128, 255),
             category=dpg.mvThemeCat_Plots
         )
         dpg.add_theme_style(
             dpg.mvPlotStyleVar_LineWeight,
             1.0,
+            category=dpg.mvThemeCat_Plots
+        )
+
+with theme() as light_line_theme1:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(
+            dpg.mvPlotCol_Line,
+            (100, 100, 100, 100),
+            category=dpg.mvThemeCat_Plots
+        )
+        dpg.add_theme_style(
+            dpg.mvPlotStyleVar_LineWeight,
+            3.0,
             category=dpg.mvThemeCat_Plots
         )
 
@@ -1617,6 +1766,11 @@ def key_press_callback(sender, app_data):
         about_wrapper()
     elif app_data==dpg.mvKey_F2:
         license_wrapper()
+    elif app_data==dpg.mvKey_F:
+        fft=get_value('fft')
+        fft=(True,False)[fft]
+        set_value('fft',fft)
+        fft_callback()
     elif app_data==dpg.mvKey_F3:
         items=get_item_configuration('fft_window')['items']
         configure_item('fft_window',default_value=items[(items.index(get_value('fft_window'))+(1,-1)[Shift]) % len(items)])
@@ -1624,18 +1778,18 @@ def key_press_callback(sender, app_data):
     elif app_data==dpg.mvKey_F4:
         items=get_item_configuration('fft_size')['items']
         configure_item('fft_size',default_value=items[(items.index(get_value('fft_size'))+(1,-1)[Shift]) % len(items)])
-        fft_change()
+        fft_size_callback()
     elif app_data==dpg.mvKey_F5:
-        items=get_item_configuration('buckets_fft')['items']
-        configure_item('buckets_fft',default_value=items[(items.index(get_value('buckets_fft'))+(1,-1)[Shift]) % len(items)])
-        buckets_quant_change()
+        items=get_item_configuration('fft_fba_size')['items']
+        configure_item('fft_fba_size',default_value=items[(items.index(get_value('fft_fba_size'))+(1,-1)[Shift]) % len(items)])
+        fft_fba_size_callback()
     elif app_data==dpg.mvKey_F6:
-        items=get_item_configuration('tda_fft')['items']
-        configure_item('tda_fft',default_value=items[(items.index(get_value('tda_fft'))+(1,-1)[Shift]) % len(items)])
-        tda_fft_callback(None,get_value('tda_fft'))
+        items=get_item_configuration('fft_tda_factor')['items']
+        configure_item('fft_tda_factor',default_value=items[(items.index(get_value('fft_tda_factor'))+(1,-1)[Shift]) % len(items)])
+        fft_tda_factor_callback(None,get_value('fft_tda_factor'))
     elif app_data==dpg.mvKey_F7:
-        items=get_item_configuration('buckets_tracks')['items']
-        configure_item('buckets_tracks',default_value=items[(items.index(get_value('buckets_tracks'))+(1,-1)[Shift]) % len(items)])
+        items=get_item_configuration('track_buckets')['items']
+        configure_item('track_buckets',default_value=items[(items.index(get_value('track_buckets'))+(1,-1)[Shift]) % len(items)])
         buckets_quant_change()
     elif app_data==dpg.mvKey_F8:
         items=get_item_configuration('tda_tracks')['items']
@@ -1678,8 +1832,7 @@ def slide_change(sender):
     val=get_value(sender)
     dpg.set_axis_limits("y_axis", dbmin_display*val/100, dbmax_display)
 
-vsync_default=False
-settings_height=154
+settings_height=190
 
 decorated=False
 try:
@@ -1689,7 +1842,7 @@ except:
     pass
 
 title_hight=(0 if decorated else 26)
-status_height=50
+status_height=80
 plot_min_height=200
 plot_axis_height=40
 viewport_height_min=plot_min_height+status_height+title_hight
@@ -1700,6 +1853,9 @@ def theme_light_callback():
     dpg.bind_theme(theme_light)
     line_theme=dark_line_theme
     bind_item_theme("fft_line",line_theme)
+    bind_item_theme("fft_line2",dark_line_theme1)
+    bind_item_theme("fft_line_avg",std_dev_cloud_theme)
+
     for track in range(tracks):
         bind_item_theme(f"track{track}",line_theme)
     configure_item('plotbg',texture_tag=ico['bg'])
@@ -1713,6 +1869,9 @@ def theme_dark_callback():
     dpg.bind_theme(theme_dark)
     line_theme=light_line_theme
     bind_item_theme("fft_line",line_theme)
+    bind_item_theme("fft_line2",light_line_theme1)
+    bind_item_theme("fft_line_avg",std_dev_cloud_theme)
+
     for track in range(tracks):
         bind_item_theme(f"track{track}",line_theme)
 
@@ -1721,37 +1880,41 @@ def theme_dark_callback():
     cfg['theme']='dark'
     refresh_tracks()
 
-DETECT_PEAKS=False
+PEAKS=cfg['peaks']
 def peaks_callback():
-    global DETECT_PEAKS
-    DETECT_PEAKS=get_value('peaks')
+    global PEAKS
+    cfg['peaks']=PEAKS=get_value('peaks')
 
-DETECT_PEAKS_DIST=0.1
+    configure_item('peaks_dist',enabled=PEAKS)
+    configure_item('peaks_threshold',enabled=PEAKS)
+
+    configure_item('fft_line_avg',show=PEAKS)
+
+PEAKS_DIST=cfg['peaks_dist']
 def peaks_dist_change():
-    global DETECT_PEAKS_DIST
-    DETECT_PEAKS_DIST=get_value('peaks_dist')
+    global PEAKS_DIST
+    cfg['peaks_dist']=PEAKS_DIST=get_value('peaks_dist')
 
-DETECT_PEAKS_THRESHOLD=10
+PEAKS_THRESHOLD=cfg['peaks_threshold']
 def peaks_threshold_change():
-    global DETECT_PEAKS_THRESHOLD
-    DETECT_PEAKS_THRESHOLD=get_value('peaks_threshold')
+    global PEAKS_THRESHOLD
+    cfg['peaks_threshold']=PEAKS_THRESHOLD=get_value('peaks_threshold')
 
-DEBUG=False
+DEBUG=cfg['debug']
 def debug_callback():
     set_value('debug_text','')
     global DEBUG,next_fps
-    DEBUG=get_value('debug')
+    cfg['debug']=DEBUG=get_value('debug')
     next_fps=0
 
 def help_off():
     set_value('help',False)
     help_callback()
 
-HELP=True
 def help_callback():
     l_info('help_callback')
     global HELP,next_fps
-    HELP=get_value('help')
+    cfg['help']=HELP=get_value('help')
 
     if HELP:
         set_value('help_text','''H - show this help
@@ -1780,7 +1943,7 @@ P - peaks detection
 
     next_fps=0
 
-create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=vsync_default,decorated=decorated)
+create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=cfg['vsync'],decorated=decorated)
 
 settings_shown=True
 
@@ -1791,10 +1954,10 @@ def settings_wrapper():
     settings_shown=(True,False)[settings_shown]
 
     if settings_shown:
-        show_item('settings_table')
+        show_item('settings_group')
         h=max(viewport_height_min,get_viewport_height()+settings_height)
     else:
-        hide_item('settings_table')
+        hide_item('settings_group')
         h=max(viewport_height_min,get_viewport_height()-settings_height)
 
     set_viewport_height(h)
@@ -1802,12 +1965,19 @@ def settings_wrapper():
 
     try:
         values=[ api['name'] for api in apis if api['devices'] ]
-        configure_item('api',items=values)
+        configure_item('api_out',items=values)
+        configure_item('api_in',items=values)
 
-        apiname=get_value('api')
-        if apiname not in values:
+        api_out_name=get_value('api_out')
+        if api_out_name not in values:
             if values:
-                set_value('api',values[0]['name'])
+                set_value('api_out',values[0]['name'])
+
+        api_in_name=get_value('api_in')
+
+        if api_in_name not in values:
+            if values:
+                set_value('api_in',values[0]['name'])
 
     except Exception as e:
         l_error(f'settings_wrapper:{e}')
@@ -1873,19 +2043,19 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
             dpg.add_table_column( width_fixed=True, init_width_or_weight=3)
 
             with table_row():
-                dpg.add_spacer(height=3)
+                add_spacer(height=3)
 
             with table_row():
-                dpg.add_spacer(width=3)
+                add_spacer(width=3)
                 add_image_button(ico["sas_small"],callback=None)
                 dpg.add_text(title)
-                dpg.add_spacer()
+                add_spacer()
                 add_image_button(ico["exit_dark"],tag='exit_button',callback=exit_press)
                 widget_tooltip('Exit')
-                dpg.add_spacer(width=3)
+                add_spacer(width=3)
 
             with table_row():
-                dpg.add_spacer(height=3)
+                add_spacer(height=3)
 
     with window(tag='info_window',no_close=True,menubar=False,no_title_bar=True,autosize=False,no_scrollbar=True):
         add_text(tag='info_text')
@@ -1900,7 +2070,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
         with table_row():
             with group(tag='plot_combo',horizontal=True):
-                dpg.add_spacer(width=6)
+                add_spacer(width=6)
 
                 dpg.add_slider_float(tag='slider',callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,format="",width=10,track_offset=0.5)
                 widget_tooltip('Adjust dynamic range')
@@ -1927,7 +2097,9 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_line_series((0,0),(dbmin,0),tag="cursor_f")
                         bind_item_theme("cursor_f",red_line_theme)
 
-                        add_line_series([20], [-120], tag="fft_line",label='FFT', user_data='FFT')
+                        dpg.add_shade_series([20], [-120], tag="fft_line_avg")
+                        add_line_series([20], [-120], tag="fft_line2")
+                        add_line_series([20], [-120], tag="fft_line")
 
                         for lab,val in xticks:
                             if lab:
@@ -1938,7 +2110,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             add_line_series([20], [-120], tag=f"track{track}",label=f"track{track+1}",user_data=track,show=False)
 
                 with group(tag='buttons'):
-                    dpg.add_spacer(height=6)
+                    add_spacer(height=6)
                     with item_handler_registry(tag="tracks_handlers"):
                         add_item_hover_handler(event_type=mvEventType_Enter,callback=on_mouse_move_tracks_enter)
                         add_item_hover_handler(event_type=mvEventType_Leave,callback=on_mouse_move_tracks_leave)
@@ -1947,7 +2119,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=track_action_callback,user_data=track_temp); widget_tooltip(f'Show/Hide track:{track_temp+1}\nwith Ctrl - toggle recording')
                         bind_item_handler_registry(f'showcheck{track_temp}', "tracks_handlers")
 
-                    dpg.add_spacer(height=-1)
+                    add_spacer(height=-1)
                     add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press)
                     widget_tooltip(' Reset selected track samples.')
 
@@ -1963,22 +2135,22 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 add_table_column(width_fixed=True, init_width_or_weight=255, width=255)
 
                 with table_row():
-                    dpg.add_spacer(height=6)
-                    dpg.add_spacer(height=6)
+                    add_spacer(height=6)
+                    add_spacer(height=6)
 
                     add_text(tag='status',default_value='')
 
                     with group(horizontal=True):
                         add_image_button(ico["play"],tag='sweep',callback=sweep_press)
                         widget_tooltip('Run frequency sweep')
-                        dpg.add_spacer(width=16)
+                        add_spacer(width=16)
                         add_image_button(ico["save_pic"],tag='save_image',callback=save_image)
                         widget_tooltip("Save Image file")
                         add_image_button(ico["save_csv"],tag='save_csv_button',callback=save_csv)
                         widget_tooltip("Save CSV file")
                         add_image_button(ico["load_csv"],tag='load_csv_button',callback=load_csv)
                         widget_tooltip("Load CSV file")
-                        dpg.add_spacer(width=16)
+                        add_spacer(width=16)
                         add_image_button(ico["home"],tag='homepage',callback=go_to_homepage)
                         widget_tooltip(f'Visit project homepage ({HOMEPAGE})')
                         add_image_button(ico["license"],tag='licensex',callback=license_wrapper)
@@ -1987,115 +2159,159 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         widget_tooltip("Show 'About' Dialog")
                         add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper)
                         widget_tooltip("Show settings")
+
         with table_row():
-            with table(tag='settings_table',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
+            with group(horizontal=True,tag='settings_group'):
+                add_spacer(width=5)
 
-                add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
-                add_table_column(width_fixed=True, init_width_or_weight=66, width=66)
-                add_table_column(width_fixed=True, init_width_or_weight=140, width=140)
-                add_table_column(width_fixed=True, init_width_or_weight=100, width=100)
-                add_table_column(width_stretch=True, init_width_or_weight=300)
-                add_table_column(width_stretch=True, init_width_or_weight=300)
-                add_table_column(width_fixed=True, init_width_or_weight=20, width=20)
-                add_table_column(width_fixed=True, init_width_or_weight=200, width=200)
-                add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
-
-                with table_row():
-                    add_text(default_value='')
-                    with group():
-                        add_text(default_value='')
-                        add_text(default_value='window'); FFT_tooltip1='FFT window\nF3 / Shift+F3' ; widget_tooltip(FFT_tooltip1)
-                        add_text(default_value='size'); FFT_tooltip2='FFT size\nF4 / Shift+F4'; widget_tooltip(FFT_tooltip2)
-                        add_text(default_value='FBA'); FFT_tooltip3='Frequency bin aggregation\nF5 / Shift+F5'; widget_tooltip(FFT_tooltip3)
-                        add_text(default_value='TDA'); FFT_tooltip4='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tooltip4)
-
-                        add_text(default_value='')
-                        add_text(default_value='buckets'); FFT_tooltip5='Recorded Tracks Frequency "buckets"\nF7 / Shift+F7'; widget_tooltip(FFT_tooltip5)
-                        add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging\nF8 / Shift+F8'; widget_tooltip(FFT_tooltip6)
-
+                c0width=100
+                c1width=250
+                with child_window(border=True,autosize_y=False,autosize_x=False,width=c0width+c1width+c1width,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
-                        add_text(default_value='FFT')
-                        add_combo(tag='fft_window',items=['off','ones','hanning','hamming','blackman','bartlett'],default_value='blackman',callback=fft_window_changed); widget_tooltip(FFT_tooltip1)
-                        add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value=cfg['fft_size'],callback=fft_change); widget_tooltip(FFT_tooltip2)
-                        add_combo(tag='buckets_fft',items=['0','64','128','256','512','1024','2048','4096'],default_value=cfg['buckets_fft'],callback=buckets_quant_change,user_data=True); widget_tooltip(FFT_tooltip3)
-                        add_combo(tag='tda_fft',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value='0.0',callback=tda_fft_callback); widget_tooltip(FFT_tooltip4)
+                        add_text(default_value='AUDIO INTERFACE')
+                        dpg.add_separator()
 
+                        with table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
+                                    borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
+                                    row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
+                                    no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
+
+
+                            add_table_column(width_fixed=True, init_width_or_weight=c0width, width=c0width)
+                            add_table_column(width_fixed=True, init_width_or_weight=c1width, width=c1width)
+                            add_table_column(width_fixed=True, init_width_or_weight=c1width, width=c1width)
+
+                            with table_row():
+                                add_text(default_value=' ')
+
+                                with table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
+                                    add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                                    add_table_column(width_fixed=True, init_width_or_weight=66)
+
+                                    with table_row():
+                                        dpg.add_image(ico["out_off"],tag='out_status',width=16)
+                                        widget_tooltip('Output Stream status')
+                                        add_text(default_value='Output')
+
+                                with table(tag='in_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
+                                    add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                                    add_table_column(width_fixed=True, init_width_or_weight=66)
+                                    with table_row():
+                                        dpg.add_image(ico["in_off"],tag='in_status')
+                                        widget_tooltip('Input Stream status')
+                                        add_text(default_value='Input')
+
+                            with table_row():
+                                with group(width=-1):
+                                    add_text(default_value='API')
+                                    add_text(default_value=' ')
+                                    add_text(default_value='Device:')
+                                    add_text(default_value='channels:')
+                                    add_text(default_value='Samplerate:')
+                                    add_text(default_value='latency:')
+                                    add_text(default_value='blckocksize:')
+
+                                with group(width=-1):
+
+                                    add_combo(tag='api_out',default_value='',callback=api_out_callback,width=c1width)
+                                    add_text(default_value=' ')
+
+                                    add_combo(tag='out_dev',default_value='',callback=out_dev_changed)
+                                    add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
+                                    add_text(tag='out_samplerate')
+
+                                    add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
+                                    add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
+
+                                with group(width=-1):
+
+                                    add_combo(tag='api_in',default_value='',callback=api_in_callback,width=c1width)
+                                    add_text(default_value=' ')
+
+                                    add_combo(tag='in_dev',default_value='',callback=in_dev_changed)
+                                    add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
+                                    add_text(tag='in_samplerate')
+
+                                    add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
+                                    add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
+
+                with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=settings_height-5):
+                    with group(width=-1):
+                        add_checkbox(tag='fft',label='FFT',callback=fft_callback,default_value=cfg['fft']); widget_tooltip('Calculate and show\nreal-time FFT graph')
+                        dpg.add_separator()
+
+                        with table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
+                                borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
+                                row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
+                                no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
+
+                            c2width=130
+                            add_table_column(width_fixed=True, init_width_or_weight=70, width=70)
+                            add_table_column(width_fixed=True, init_width_or_weight=c2width, width=c2width)
+
+                            with table_row():
+                                add_text(default_value='size'); FFT_size_tooltip='FFT size\nF4 / Shift+F4'; widget_tooltip(FFT_size_tooltip)
+                                add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value=cfg['fft_size'],callback=fft_size_callback,width=c2width); widget_tooltip(FFT_size_tooltip)
+                            with table_row():
+                                add_text(default_value='window'); FFT_window_tooltip='FFT window\nF3 / Shift+F3' ; widget_tooltip(FFT_window_tooltip)
+                                add_combo(tag='fft_window',items=['ones','hanning','hamming','blackman','bartlett'],default_value=cfg['fft_window'],callback=fft_window_changed,width=c2width); widget_tooltip(FFT_window_tooltip)
+
+                            FFT_buckets_tooltip='Frequency bin aggregation\n(equal frequency width "buckets" on log scale)\nF5 / Shift+F5'
+                            with table_row():
+                                add_checkbox(tag='fft_fba',label='FBA',callback=fft_fba_callback,default_value=cfg['fft_fba']); widget_tooltip(FFT_buckets_tooltip)
+                            with table_row():
+                                add_text(default_value='quantity'); widget_tooltip(FFT_buckets_tooltip)
+                                add_combo(tag='fft_fba_size',items=['64','128','256','512','1024','2048','4096'],default_value=cfg['fft_fba_size'],callback=fft_fba_size_callback,user_data=True,width=c2width); widget_tooltip(FFT_buckets_tooltip)
+                            with table_row():
+                                add_checkbox(tag='fft_tda',label='TDA',callback=fft_tda_callback,default_value=cfg['fft_tda']); FFT_tda_tooltip='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tda_tooltip)
+
+                            with table_row():
+                                add_text(default_value='factor'); FFT_tda_tooltip='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tda_tooltip)
+                                add_combo(tag='fft_tda_factor',items=['0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=cfg['fft_tda_factor'],callback=fft_tda_factor_callback,width=c2width); widget_tooltip(FFT_tda_tooltip)
+
+                            with table_row():
+                                add_checkbox(tag='peaks',label='Peaks',callback=peaks_callback,default_value=cfg['peaks'])
+
+                        dpg.add_slider_float(tag='peaks_dist',callback=peaks_dist_change,max_value=0.5,min_value=0.01,default_value=cfg['peaks_dist'],format="%.3f",width=200,track_offset=0.5)
+
+                        dpg.add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=4.0,min_value=1.0,default_value=cfg['peaks_threshold'],format="%.3f",width=200,track_offset=0.5)
+
+                with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=settings_height-5):
+                    with group(width=-1):
                         add_text(default_value='TRACKS')
-                        add_combo(tag='buckets_tracks',items=['64','128','256'],default_value=cfg['buckets_tracks'],callback=buckets_quant_change,user_data=True); widget_tooltip(FFT_tooltip5)
-                        add_combo(tag='tda_tracks',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=0.7,callback=tda_tracks_callback); widget_tooltip(FFT_tooltip6)
+                        dpg.add_separator()
 
-                    with group():
-                        add_text(default_value='API')
-                        add_text(default_value=' ')
-                        add_text(default_value=' ')
-                        add_text(default_value='Device:')
-                        add_text(default_value='channels:')
-                        add_text(default_value='Samplerate:')
-                        add_text(default_value='latency:')
-                        add_text(default_value='blckocksize:')
-                    with group(width=-1):
-                        add_combo(tag='api',default_value='',callback=api_changed)
-                        add_text(default_value=' ')
+                        with table(header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp,
+                                borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
+                                row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
+                                no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
 
-                        with table(tag='out_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
-                            add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
-                            add_table_column(width_fixed=True, init_width_or_weight=66)
+                            c2width=130
+                            add_table_column(width_fixed=True, init_width_or_weight=70, width=70)
+                            add_table_column(width_fixed=True, init_width_or_weight=c2width, width=c2width)
+
                             with table_row():
-                                dpg.add_image(ico["out_off"],tag='out_status',width=16)
-                                widget_tooltip('Output Stream status')
-                                add_text(default_value='Output')
-
-                        #with group():
-                            #with child_window(border=False,autosize_y=False,autosize_x=True,height=-1):
-                            #with group():
-
-                        add_combo(tag='out_dev',default_value='',callback=out_dev_changed,user_data=True)
-                        add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
-                        add_text(tag='out_samplerate')
-
-                        add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
-                        add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
-
-                    with group(width=-1):
-                        add_text(default_value=' ')
-                        add_text(default_value=' ')
-                        with table(tag='in_tab1',header_row=False, resizable=False, policy=dpg.mvTable_SizingStretchProp):
-                            add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
-                            add_table_column(width_fixed=True, init_width_or_weight=66)
+                                add_text(default_value='buckets'); FFT_tooltip5='Recorded Tracks Frequency "buckets"\nF7 / Shift+F7'; widget_tooltip(FFT_tooltip5)
+                                add_combo(tag='track_buckets',items=['64','128','256'],default_value=cfg['track_buckets'],callback=buckets_quant_change,user_data=True,width=c2width); widget_tooltip(FFT_tooltip5)
                             with table_row():
-                                dpg.add_image(ico["in_off"],tag='in_status')
-                                widget_tooltip('Input Stream status')
-                                add_text(default_value='Input')
+                                add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging\nF8 / Shift+F8'; widget_tooltip(FFT_tooltip6)
+                                add_combo(tag='tda_tracks',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=0.7,callback=tda_tracks_callback,width=c2width); widget_tooltip(FFT_tooltip6)
 
-
-                        add_combo(tag='in_dev',default_value='',callback=in_dev_changed)
-                        add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
-                        add_text(tag='in_samplerate')
-
-                        add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
-                        add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
-
-                    dpg.add_spacer(width=20)
-
+                with child_window(border=True,autosize_y=False,autosize_x=False,width=140,no_scrollbar=True,height=settings_height-5):
                     with group():
-                        add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=vsync_default)
-                        add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=False)
-                        add_checkbox(tag='help',label='Help',callback=help_callback,default_value=HELP)
+                        add_text(default_value='DISPLAY SETTINGS')
+                        dpg.add_separator()
+                        add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync'])
+                        add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug'])
+                        add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help'])
 
                         with group(horizontal=True):
-                            add_image_button(ico["light"],callback=theme_light_callback,width=16)
-                            widget_tooltip("light theme ")
+                            add_text(default_value='Theme:')
 
-                            add_image_button(ico["dark"],callback=theme_dark_callback,width=16)
-                            widget_tooltip("dark theme ")
+                            add_image_button(ico["light"],callback=theme_light_callback,width=16); widget_tooltip("Light theme\nkey:L")
 
-                        add_checkbox(tag='peaks',label='Detect Peaks',callback=peaks_callback,default_value=DETECT_PEAKS)
-
-                        dpg.add_slider_float(tag='peaks_dist',callback=peaks_dist_change,max_value=0.5,min_value=0.01,default_value=DETECT_PEAKS_DIST,format="%.3f",width=200,track_offset=0.5)
-                        dpg.add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=30,min_value=1,default_value=DETECT_PEAKS_THRESHOLD,format="%.3f",width=200,track_offset=0.5)
-
-                    with group():
-                        dpg.add_spacer(width=6)
+                            add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\nkey:D")
+                add_spacer(width=5)
 
     add_text(tag='debug_text',default_value='')
     add_text(tag='help_text',default_value='')
@@ -2152,13 +2368,14 @@ settings_wrapper()
 show_viewport()
 set_viewport_height(460)
 
-fft_on=True
 fft_ready=False
 
 buckets_quant_change(None,None,False)
-fft_change()
 
-api_changed()
+fft_callback()
+
+api_in_callback()
+api_out_callback()
 
 data=zeros(cfg['fft_size'])
 next_sweep_time=0
@@ -2169,25 +2386,34 @@ next_fps = 0
 status_shown=True
 status_hide_time=0
 
+next_gc=0
+
 hide_info()
 frames = 0
+frames_change = 0
+
 input_callbacks_all = 0
 rec_samples = 0
 
 output_callbacks_all = 0
 output_samples = 0
 
-configure_app()
+configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True)
 help_callback()
 
 peaks_annos=set()
 
-#gc_disable()
+gc_disable()
+gc_collect()
+gc_freeze()
+
 CENTRAL_INFO_SHOWN=False
 
 while is_dearpygui_running():
+    real_update=False
+    now = perf_counter()
+
     if sweeping:
-        now=perf_counter()
         if now>next_sweep_time:
             sweeping_i+=1
             if sweeping_i<sweep_steps:
@@ -2208,7 +2434,8 @@ while is_dearpygui_running():
         output_samples+=samples_chunks_requested_new
         samples_chunks_requested_new=0
 
-    if samples_chunks_fifo_new:
+    if samples_chunks_fifo_new and not is_dragging and not is_resizing:
+        real_update=True
         data=np_append(data,np_concatenate(samples_chunks_fifo))[-FFT_SIZE:]
 
         input_callbacks_all+=input_callbacks_count
@@ -2226,57 +2453,125 @@ while is_dearpygui_running():
             dpg.delete_item(tag)
         peaks_annos.clear()
 
-        if fft_on and fft_ready:
+        if FFT and fft_ready:
             try:
                 fft_values=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / FFT_SIZE + 1e-12)
-                fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values)[1:] / fft_bin_counts[1:]
 
-                if BUCKETS_FFT:
-                    fft_y_vec=[fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]]
-                    #set_value("fft_line", [fft_x_vec,fft_y_vec])
-
+                if FFT_FBA:
+                    fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values)[1:] / fft_bin_counts[1:]
+                    fft_values_final_y=[fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]]
                     fft_line_final_x = fft_x_vec
-                    fft_values_final_y = fft_y_vec
                 else:
-                    #set_value("fft_line", [fft_line_new_x, fft_values ])
-                    fft_line_final_x = fft_line_new_x
                     fft_values_final_y = fft_values
+                    fft_line_final_x = fft_line_new_x
 
-                try:
-                    fft_values_final_y=TDA_FFT_1m*array(fft_values_final_y) + TDA_FFT*array(fft_values_final_y_prev)
-                except:
+                if FFT_TDA:
+                    try:
+                        fft_values_final_y=FFT_TDA_FACTOR_1m*np_array(fft_values_final_y) + FFT_TDA_FACTOR*np_array(fft_values_final_y_prev)
+                    except:
+                        pass
+                else:
+                    #fft_values_final_y=fft_values_final_y
                     pass
-
 
 
                 peak_index=0
 
-                if DETECT_PEAKS:
-                    dist=round(FFT_ACTUAL_BUCKETS*DETECT_PEAKS_DIST)
-                    #window = 3
-                    kernel = np.ones(dist) / dist
-                    #print(dist,kernel)
-
-                    #arr = np.asarray(fft_values_final_y).ravel()
+                if PEAKS:
                     arr = fft_values_final_y
+                    dist=3
+                    #round(FFT_ACTUAL_BUCKETS*PEAKS_DIST)
+                    dist2=round(len(fft_values_final_y)*PEAKS_DIST)
+                    #print('dist;',dist,'dist2:',dist2,'arr:',len(arr))
 
-                    avg = np.convolve(arr, kernel, mode='same')
+                    #window = 3
+                    #kernel = np.ones(dist) / dist
+                    kernel = ones(dist)
+                    kernel /= kernel.sum()
+
+                    kernel2 = ones(dist2)
+                    kernel2 /= kernel2.sum()
+
+                    #print(dist,kernel)
+                    #arr = np.asarray(fft_values_final_y).ravel()
+                    padded=np.pad(arr,dist,'reflect' )
+                    padded2=np.pad(arr,dist2,'reflect' )
+
+                    avg = np.convolve(padded, kernel, mode='same')[dist:-dist]
+                    avg2 = np.convolve(padded2, kernel2, mode='same')[dist2:-dist2]
+                    #print('padded:',len(padded),'padded2;',len(padded2))
+                    #print('avg:',len(avg),'avg2;',len(avg2))
+
+                    diff_vec = arr-avg2
+                    diff_square_vec = diff_vec**2
+
+                    #kernel3 = hanning(dist2)
+                    diff_square_vec_padded=np.pad(diff_square_vec,dist2,'reflect')
+                    diff_square_vec_sum = np.convolve(diff_square_vec_padded, kernel2, mode='same')[dist2:-dist2]
+                    diff_square_vec_sum_sqrt = np.sqrt(diff_square_vec_sum)
+                    diff_square_vec_sum_sqrt_x_thrs=diff_square_vec_sum_sqrt*PEAKS_THRESHOLD
+
+                    # works!
+                    #diff = (arr-avg2)/np.abs(avg2)
+
+
+                    #diff = diff_vec/diff_square_vec_sum_sqrt
+                    diff = diff_vec
+                    #print(diff)
+                    #/np.abs(avg2)
+                    #print(ratio)
+
+                    #idx = np.argsort(ratio)           # indeksy porządkujące wg a
+                    #fft_line_final_x_sorted = a[idx]
+                    #fft_values_final_y = b[idx]
+
+                    #print('avg:',avg,type(avg))
+                    mask = (avg[1:-1] > avg[:-2]) & (avg[1:-1] > avg[2:]) & (diff[1:-1]>PEAKS_THRESHOLD)
+                    #mask = (arr[1:-1] > arr[:-2]) & (arr[1:-1] > arr[2:])
+                    #print('mask:',mask,type(mask))
+                    if True:
+                        sel_indices=np.where(mask)[0]+1
+                        #print('sel_indices:',sel_indices)
+
+                        sel_diff_values=diff[sel_indices]
+                        sel_x=np_array(fft_line_final_x)[sel_indices]
+                        sel_y=np_array(fft_values_final_y)[sel_indices]
+
+                        sel_diff_values_sorted_indices=np.argsort(sel_diff_values)[::-1]
+
+                        sel_diff_values_sorted=sel_diff_values[sel_diff_values_sorted_indices]
+                        sel_y_values_sorted=sel_y[sel_diff_values_sorted_indices]
+                        sel_x_values_sorted=sel_x[sel_diff_values_sorted_indices]
+
+                        for f,v in zip(sel_x_values_sorted,sel_y_values_sorted):
+                            tag=f'peak{peak_index}'
+                            fint=int(f)
+                            peaks_annos.add((tag,f,v))
+                            dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 130), offset=(16,-10))
+                            #print(peak_index,fint,v)
+                            peak_index+=1
+                            if peak_index>4:
+                                break
+                    #print(mask)
+
                     #print(fft_values_final_y-avg,'\n')
                     #print(type(fft_values_final_y),type(avg),'\n')
 
                     #mask = np.r_[True, avg[1:] > avg[:-1]] & np.r_[avg[:-1] > avg[1:], True]
-                    mask = (avg[1:-1] > avg[:-2]) & (avg[1:-1] > avg[2:])
 
+                    set_value("fft_line_avg", [fft_line_final_x, avg2-diff_square_vec_sum_sqrt_x_thrs, avg2+diff_square_vec_sum_sqrt_x_thrs ])
                     #fft_values_final_y=avg.copy()
-                    threshold=DETECT_PEAKS_THRESHOLD
-                    for i,(f,v,peak,avg) in enumerate(zip(fft_line_final_x,fft_values_final_y,mask,avg)):
-                        if peak:
-                            if v>avg+threshold:
-                                tag=f'peak{peak_index}'
-                                fint=int(f)
-                                peaks_annos.add((tag,f,v))
-                                dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 255), offset=(20,-10))
-                                peak_index+=1
+
+                    if False:
+                        threshold=PEAKS_THRESHOLD
+                        for i,(f,v,a1,a2,msk,rat) in enumerate(zip(fft_line_final_x,fft_values_final_y,avg,avg2,mask,ratio)):
+                            if msk:
+                                if rat>0 and v/a2>threshold:
+                                    tag=f'peak{peak_index}'
+                                    fint=int(f)
+                                    peaks_annos.add((tag,f,v))
+                                    dpg.add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint, v), color=(100, 100, 100, 255), offset=(20,-10))
+                                    peak_index+=1
 
                     #for i,(f,v) in enumerate(zip(fft_line_final_x,fft_values_final_y)):
                     #    w_max=-300
@@ -2296,13 +2591,14 @@ while is_dearpygui_running():
                     #        peak_index+=1
 
                 set_value("fft_line", [fft_line_final_x, fft_values_final_y ])
+                set_value("fft_line2", [fft_line_final_x, fft_values_final_y ])
                 fft_values_final_y_prev=fft_values_final_y
 
             except Exception as exception_fft:
                 l_error('FFT Exception:',exception_fft)
                 print('FFT Exception:',exception_fft)
 
-        if playing_state==2 and recorded_track is not None and current_bucket<BUCKETS_TRACKS:
+        if playing_state==2 and recorded_track is not None and current_bucket<TRACK_BUCKETS:
             track_line_data_y[recorded_track][current_bucket]=track_line_data_y[recorded_track][current_bucket]*tda_tracks + current_sample_db*tda_tracks_1m
             redraw_tracks_lines=True
             #except Exception as exception_line:
@@ -2321,7 +2617,7 @@ while is_dearpygui_running():
             #set_value('help_text','')
             help_off()
         elif status_timeout!=0:
-            if perf_counter()>status_timeout:
+            if now>status_timeout:
                 #set_value('help_text','')
                 status_timeout=0
         elif CENTRAL_INFO_SHOWN :
@@ -2339,11 +2635,13 @@ while is_dearpygui_running():
         dpg.set_viewport_pos(set_viewport_pos_scheduled)
         cfg['viewport_pos']=set_viewport_pos_scheduled
         set_viewport_pos_scheduled=False
+        real_update=True
     elif set_viewport_size_scheduled:
         dpg.set_viewport_width(set_viewport_size_scheduled[0])
         dpg.set_viewport_height(set_viewport_size_scheduled[1])
         cfg['viewport_size']=set_viewport_size_scheduled
         set_viewport_size_scheduled=None
+        real_update=True
 
     if schedule_screenshot:
         hide_item('cursor_db_txt')
@@ -2376,9 +2674,16 @@ while is_dearpygui_running():
                 schedule_screenshot=False
 
     ##################################
+    if not real_update:
+        if now>next_gc:
+            gc_collect(0)
+            next_gc=now+1
+
     if DEBUG:
+        if real_update:
+            frames_change+=1
         frames += 1
-        now = perf_counter()
+
         if now >= next_fps :
             out_sum=audio_output_callback_outside+audio_output_callback_inside
             out_ratio = 0 if out_sum==0 else audio_output_callback_inside/out_sum
@@ -2386,20 +2691,21 @@ while is_dearpygui_running():
             in_sum=audio_input_callback_outside+audio_input_callback_inside
             in_ratio = 0 if in_sum==0 else audio_input_callback_inside/in_sum
 
-            set_value('debug_text',f'''
-FPS:{frames} VSync:{VSYNC_STATE_NAME}\n
-IN callbcks: {input_callbacks_all}/s
-IN samples : {rec_samples}/s\n
-OUT callbcks: {output_callbacks_all}/s
-OUT samples : {output_samples}/s\n
+            set_value('debug_text',f'''FPS:{frames}/{frames_change} VSync:{VSYNC_STATE_NAME}\n
+OUT samplerate : {output_samples}/s ({output_callbacks_all}/s)
+IN samplerate: {rec_samples}/s ({input_callbacks_all})/s\n
 OUT-sat {round(out_ratio,6)}
- IN-sat {round(in_ratio,6)}\n
+IN-sat {round(in_ratio,6)}\n
 FFT Window: {round(fft_duration,3)}s
 FFT  / FBA  / act:
-{len(fft_values)} / {BUCKETS_FFT} / {FFT_ACTUAL_BUCKETS}
-TDA: {TDA_FFT}
+{fft_points} / {FFT_FBA_SIZE} / {FFT_ACTUAL_BUCKETS}
+FBA: {FFT_FBA}
+FBA_SIZE: {FFT_FBA_SIZE}
+TDA: {FFT_TDA}
+TDA_FACTOR: {FFT_TDA_FACTOR}
 ''')
             frames = 0
+            frames_change = 0
             input_callbacks_all = 0
             rec_samples = 0
 
@@ -2417,8 +2723,6 @@ TDA: {TDA_FFT}
 
     if exiting:
         break
-
-    #gc_collect()
 
 print('exiting')
 sweeping=False
