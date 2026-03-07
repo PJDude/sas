@@ -32,7 +32,7 @@ from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_vi
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation
 
 from time import strftime,time,localtime,perf_counter
-from gc import disable as gc_disable, collect as gc_collect, freeze as gc_freeze
+#from gc import disable as gc_disable, collect as gc_collect, freeze as gc_freeze
 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where
 from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
@@ -2494,17 +2494,17 @@ help_callback()
 
 peaks_annos=set()
 
-gc_disable()
-gc_collect()
-gc_freeze()
+#gc_disable()
+#gc_collect()
+#gc_freeze()
 
 CENTRAL_INFO_SHOWN=False
 
 while is_dearpygui_running():
     real_update=False
-    now = perf_counter()
 
     if sweeping:
+        now = perf_counter()
         if now>next_sweep_time:
             sweeping_i+=1
             if sweeping_i<sweep_steps:
@@ -2525,7 +2525,7 @@ while is_dearpygui_running():
         output_samples+=samples_chunks_requested_new
         samples_chunks_requested_new=0
 
-    if samples_chunks_fifo_new and not is_dragging and not is_resizing:
+    if samples_chunks_fifo_new:
         real_update=True
         data=np_append(data,np_concatenate(samples_chunks_fifo))[-FFT_SIZE:]
 
@@ -2635,7 +2635,7 @@ while is_dearpygui_running():
             #set_value('help_text','')
             help_off()
         elif status_timeout!=0:
-            if now>status_timeout:
+            if perf_counter()>status_timeout:
                 #set_value('help_text','')
                 status_timeout=0
         elif CENTRAL_INFO_SHOWN :
@@ -2693,16 +2693,17 @@ while is_dearpygui_running():
                 schedule_screenshot=False
 
     ##################################
-    if not real_update:
-        if now>next_gc:
-            gc_collect(0)
-            next_gc=now+1
+    #if not real_update:
+    #    if now>next_gc:
+    #        gc_collect(0)
+    #        next_gc=now+1
 
     if DEBUG:
         if real_update:
             frames_change+=1
         frames += 1
 
+        now = perf_counter()
         if now >= next_fps :
             out_sum=audio_output_callback_outside+audio_output_callback_inside
             out_ratio = 0 if out_sum==0 else audio_output_callback_inside/out_sum
