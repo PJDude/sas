@@ -35,7 +35,7 @@ from dearpygui.dearpygui import mvKey_LControl,get_mouse_pos,get_viewport_width,
 from time import strftime,time,localtime,perf_counter
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll
 from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 import numpy as np
 
@@ -227,18 +227,18 @@ def scroll_mod(mod,factor=0.001):
             status_set_frequency()
             f_current=f_new
 
-def save_fft_points():
-    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'fft-{cfg["fft_size"]}-{fft_points}.csv')
+def save_FFT_POINTS():
+    file = path_join(INTERNAL_DIR_CSV_DEBUG, f'fft-{cfg["fft_size"]}-{FFT_POINTS}.csv')
     print(file)
 
     try:
         with open(file,'w',encoding='utf-8') as fh:
-            fh.write(f"#fft_size:{cfg['fft_size']},fft_points:{fft_points}\n")
+            fh.write(f"#fft_size:{cfg['fft_size']},FFT_POINTS:{FFT_POINTS}\n")
             fh.write("#index,frequency[Hz]\n")
             for i,f in enumerate(fft_values_x_all):
                 fh.write(f'{i},{f}\n')
     except Exception as e:
-        print(f'save_fft_points_error:{e}')
+        print(f'save_FFT_POINTS_error:{e}')
         #l_error()
 
 def save_window():
@@ -394,18 +394,11 @@ def change_f(fpar):
 played_bucket=0
 played_bucket_callbacks=0
 
-audio_output_callback_outside=0
-audio_output_callback_inside=0
-audio_output_callback_prev=perf_counter()
-
 def audio_output_callback(outdata, frames, time, status):
     global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,DEBUG
 
     if DEBUG:
-        global audio_output_callback_outside,audio_output_callback_inside,audio_output_callback_prev,output_callbacks_count,samples_chunks_requested_new
-        audio_output_callback_start=perf_counter()
-        audio_output_callback_outside += audio_output_callback_start-audio_output_callback_prev
-
+        global output_callbacks_count,samples_chunks_requested_new
         output_callbacks_count+=1
         samples_chunks_requested_new+=len(outdata)
 
@@ -428,11 +421,6 @@ def audio_output_callback(outdata, frames, time, status):
             played_bucket_callbacks+=1
     else:
         outdata.fill(0)
-
-    if DEBUG:
-        audio_output_callback_end=perf_counter()
-        audio_output_callback_inside += audio_output_callback_end-audio_output_callback_start
-        audio_output_callback_prev=audio_output_callback_end
 
 VSYNC_STATE_NAME='OFF'
 def vsync_callback(sender=None, app_data=None):
@@ -503,37 +491,16 @@ exiting=False
 
 current_sample_db=-120
 
-input_callbacks_count=0
-samples_chunks_fifo_new=0
-samples_chunks_fifo=deque(maxlen=32)
+samples_chunks_fifo=deque()
 samples_chunks_fifo_put=samples_chunks_fifo.append
+samples_chunks_fifo_get=samples_chunks_fifo.popleft
 
 output_callbacks_count=0
 samples_chunks_requested_new=0
 ###########################################################
 
-audio_input_callback_outside=0
-audio_input_callback_inside=0
-audio_input_callback_prev=perf_counter()
-
 def audio_input_callback(indata, frames, time_info, status):
-    global samples_chunks_fifo_new,input_callbacks_count,DEBUG
-
-    if DEBUG:
-        global audio_input_callback_outside,audio_input_callback_inside,audio_input_callback_prev
-        audio_input_callback_start=perf_counter()
-        audio_input_callback_outside += audio_input_callback_start-audio_input_callback_prev
-
-    new_samples=len(indata[:, 0])
     samples_chunks_fifo_put(indata[:, 0].copy())
-
-    samples_chunks_fifo_new+=new_samples
-    input_callbacks_count+=1
-
-    if DEBUG:
-        audio_input_callback_end=perf_counter()
-        audio_input_callback_inside += audio_input_callback_end-audio_input_callback_start
-        audio_input_callback_prev=audio_input_callback_end
 
 @catch
 def go_to_homepage():
@@ -995,39 +962,41 @@ def fft_callback(sender=None, app_data=None):
     configure_item('peaks_threshold',enabled=FFT)
 
 FFT_SIZE=cfg['fft_size']
+FFT_SIZE_MAX=65536
 def fft_size_callback(sender=None, app_data=None):
-    global cfg,fft_points,FFT_SIZE,fft_ready
+    global cfg,FFT_POINTS,FFT_SIZE,fft_ready
     fft_ready=False
 
     l_info(f'fft_size_callback:{sender},{app_data}')
 
     FFT_SIZE=cfg['fft_size']=int(get_value('fft_size'))
-    fft_points=int(cfg['fft_size']/2+1)
+    FFT_POINTS=FFT_SIZE//2+1
     set_status(f'fft_size_callback:{FFT_SIZE}')
 
     fft_window_changed()
 
 def fft_window_changed(sender=None, app_data=None):
-    global FFT,fft_window,window_correction,cfg,fft_ready
+    global FFT,fft_window,fft_window_sum,cfg,fft_ready,FFT_SIZE
     fft_ready=False
 
-    cfg['fft_window']=get_value('fft_window')
+    fft_window_name=cfg['fft_window']=get_value('fft_window')
 
-    if cfg['fft_window']=='ones':
-        fft_window=ones(cfg['fft_size'])
-    elif cfg['fft_window']=='hanning':
-        fft_window=hanning(cfg['fft_size'])
-    elif cfg['fft_window']=='hamming':
-        fft_window=hamming(cfg['fft_size'])
-    elif cfg['fft_window']=='blackman':
-        fft_window=blackman(cfg['fft_size'])
-    elif cfg['fft_window']=='bartlett':
-        fft_window=bartlett(cfg['fft_size'])
+    if fft_window_name=='ones':
+        fft_window=ones(FFT_SIZE)
+    elif fft_window_name=='hanning':
+        fft_window=hanning(FFT_SIZE)
+    elif fft_window_name=='hamming':
+        fft_window=hamming(FFT_SIZE)
+    elif fft_window_name=='blackman':
+        fft_window=blackman(FFT_SIZE)
+    elif fft_window_name=='bartlett':
+        fft_window=bartlett(FFT_SIZE)
     else:
         l_error(f'unknown window:{cfg["fft_window"]}')
 
-    window_correction = np_sum(fft_window)
-    configure_item("fft_line_avg", show=FFT)
+    fft_window_sum = np_sum(fft_window)
+    l_info(f'{fft_window_sum=}')
+
     configure_item("fft_line2", show=FFT)
     configure_item("fft_line", show=FFT)
 
@@ -1157,11 +1126,11 @@ def common_precalc():
     in_samplerate_by_fft_size = in_samplerate / FFT_SIZE
     fft_duration= 1.0/in_samplerate_by_fft_size
 
-    dummy_data=[200]*fft_points
-    fft_values_x_all=[0]*fft_points
-    fft_line_data_y=[-110]*fft_points
+    dummy_data=[200]*FFT_POINTS
+    fft_values_x_all=[0]*FFT_POINTS
+    fft_line_data_y=[-110]*FFT_POINTS
 
-    for i_fft in range(fft_points):
+    for i_fft in range(FFT_POINTS):
         fft_values_x_all[i_fft]=i_fft * in_samplerate_by_fft_size
 
     fft_values_x_all=np_array(fft_values_x_all)
@@ -1185,7 +1154,7 @@ def common_precalc():
                 #save_buckets_tracks()
                 #save_buckets_edges()
                 save_buckets_fft()
-                save_fft_points()
+                save_FFT_POINTS()
                 save_fft_bin_indices()
                 save_fft_bin_counts()
         except:
@@ -2428,8 +2397,6 @@ api_in_callback()
 api_out_callback()
 fft_callback()
 
-data=zeros(cfg['fft_size'])
-
 status_timeout=0
 
 next_fps = 0
@@ -2442,9 +2409,6 @@ hide_info()
 frames = 0
 frames_change = 0
 
-input_callbacks_all = 0
-rec_samples = 0
-
 output_callbacks_all = 0
 output_samples = 0
 
@@ -2452,6 +2416,7 @@ configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_alias
 help_callback()
 
 peaks_annos=set()
+peaks_annos_clear = peaks_annos.clear
 
 #gc_disable()
 gc_collect()
@@ -2460,11 +2425,15 @@ gc_freeze()
 def main_loop():
     CENTRAL_INFO_SHOWN=False
 
-    global is_dragging,is_resizing
-    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,rec_samples,samples_chunks_fifo_new,set_viewport_pos_scheduled,set_viewport_size_scheduled,data,schedule_screenshot,input_callbacks_all,input_callbacks_count,status_timeout
-    global redraw_track_line,frames_change,frames,next_fps,audio_output_callback_outside,audio_output_callback_inside,audio_input_callback_outside,audio_input_callback_inside,track_line_data_y_recorded,sweeping_i,logf_sweep_step
+    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_size_scheduled,schedule_screenshot,status_timeout,fft_window_sum
+    global redraw_track_line,frames_change,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
 
     next_sweep_time=0
+    input_callbacks_all=0
+    rec_samples=0
+
+    data=zeros(FFT_SIZE_MAX)
+    new_data=False
 
     while is_dearpygui_running():
         real_update=False
@@ -2489,29 +2458,38 @@ def main_loop():
             output_samples+=samples_chunks_requested_new
             samples_chunks_requested_new=0
 
-        if samples_chunks_fifo_new and not (is_dragging or is_resizing):
+        while True:
+            try:
+                data_new_chunk=samples_chunks_fifo_get()
+                data_new_chunk_len=len(data_new_chunk)
+                data = np_roll(data,-data_new_chunk_len)
+                data[-data_new_chunk_len:]=data_new_chunk
+                input_callbacks_all+=1
+                rec_samples+=data_new_chunk_len
+                new_data=True
+            except:
+                break
+
+        if new_data and not (is_dragging or is_resizing):
+            new_data=False
+
             real_update=True
-            data=np_append(data,np_concatenate(samples_chunks_fifo))[-FFT_SIZE:]
-
-            input_callbacks_all+=input_callbacks_count
-            input_callbacks_count=0
-
-            rec_samples+=samples_chunks_fifo_new
-            samples_chunks_fifo_new=0
 
             #from numpy.random import randn
             #data = randn(cfg['fft_size'])
 
-            current_sample_db = 10 * log10( np_mean(np_square(data)) + 1e-12)
+            data_slice=data[-FFT_SIZE:]
+
+            current_sample_db = 10 * log10( np_mean(np_square(data_slice)) + 1e-12)
 
             if not PEAKS:
                 for fint in peaks_annos:
                     delete_item(f'peak{fint}')
-                peaks_annos.clear()
+                peaks_annos_clear()
 
             if FFT and fft_ready:
                 try:
-                    fft_values_y=20*np_log10( np_abs( (np_fft_rfft( data*fft_window))[0:fft_points] ) / FFT_SIZE + 1e-12)
+                    fft_values_y=20*np_log10( np_abs( np_fft_rfft(data_slice*fft_window)) / FFT_SIZE + 1e-12 )
 
                     if FFT_FBA:
                         fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
@@ -2670,21 +2648,13 @@ def main_loop():
 
             now = perf_counter()
             if now >= next_fps :
-                out_sum=audio_output_callback_outside+audio_output_callback_inside
-                out_ratio = 0 if out_sum==0 else audio_output_callback_inside/out_sum
-
-                in_sum=audio_input_callback_outside+audio_input_callback_inside
-                in_ratio = 0 if in_sum==0 else audio_input_callback_inside/in_sum
-
                 set_value('debug_text',
                     f"FPS:{frames}/{frames_change} VSync:{VSYNC_STATE_NAME}\n\n"
                     f"OUT samplerate : {output_samples}/s ({output_callbacks_all}/s)\n"
                     f"IN samplerate: {rec_samples}/s ({input_callbacks_all})/s\n\n"
-                    f"OUT-sat {round(out_ratio,6)}\n"
-                    f"IN-sat {round(in_ratio,6)}\n\n"
                     f"FFT Window: {round(fft_duration,3)}s\n"
                     f"FFT  / FBA  / act:\n"
-                    f"{fft_points} / {FFT_FBA_SIZE} / {FFT_ACTUAL_BUCKETS}\n"
+                    f"{FFT_POINTS} / {FFT_FBA_SIZE} / {FFT_ACTUAL_BUCKETS}\n"
                     f"FBA: {FFT_FBA}\n"
                     f"FBA_SIZE: {FFT_FBA_SIZE}\n"
                     f"TDA: {FFT_TDA}\n"
@@ -2699,11 +2669,6 @@ def main_loop():
 
                 next_fps = now+1.0
 
-                audio_output_callback_outside=0
-                audio_output_callback_inside=0
-
-                audio_input_callback_outside=0
-                audio_input_callback_inside=0
         ##################################
 
         if exiting:
