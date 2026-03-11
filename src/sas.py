@@ -35,7 +35,7 @@ from dearpygui.dearpygui import mvKey_LControl,get_mouse_pos,get_viewport_width,
 from time import strftime,time,localtime,perf_counter
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum
 from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
 import numpy as np
 
@@ -137,9 +137,12 @@ cfg_setdefault('fft_fba_size',1024)
 cfg_setdefault('fft_tda',False)
 cfg_setdefault('fft_tda_factor',0.1)
 
+cfg_setdefault('fft_smooth',False)
+cfg_setdefault('fft_smooth_factor',1)
+
 cfg_setdefault('peaks',False)
-cfg_setdefault('peaks_dist',0.1)
-cfg_setdefault('peaks_threshold',1.0)
+cfg_setdefault('peaks_dist_factor',1.0)
+cfg_setdefault('peaks_threshold',5.0)
 
 cfg_setdefault('show_track',[False]*tracks)
 cfg_setdefault('recorded',-1)
@@ -470,8 +473,11 @@ def play_start():
 
     if track_line_data_y_recorded:
         recorded=int(cfg['recorded'])
-        bind_item_theme(f"track{recorded}_bg",recorded_track_bg_theme)
-        bind_item_theme(f"track{recorded}",recorded_track_core_theme)
+        bind_item_theme(f"track{recorded}_bg",track_recorded_bg_theme)
+        bind_item_theme(f"track{recorded}",track_recorded_core_theme)
+
+        #bind_item_theme(f"track{recorded}_bg",track_recorded_bg_theme)
+        #bind_item_theme(f"track{recorded}",track_recorded_core_theme)
 
     redraw_track_line=True
 
@@ -919,8 +925,13 @@ def refresh_tracks():
     for track in range(tracks):
         if track==int(cfg['recorded']):
             configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_sel"])
-            bind_item_theme(f"track{track}_bg",recorded_track_bg_theme)
-            bind_item_theme(f"track{track}",recorded_track_core_theme)
+
+            if cfg['theme']=='dark':
+                bind_item_theme(f"track{track}_bg",track_recorded_bg_theme_dark)
+                bind_item_theme(f"track{track}",track_recorded_core_theme_dark)
+            else:
+                bind_item_theme(f"track{track}_bg",track_recorded_bg_theme_light)
+                bind_item_theme(f"track{track}",track_recorded_core_theme_light)
 
             configure_item(f"track{track}_bg",show=True)
             configure_item(f"track{track}",show=True)
@@ -958,7 +969,7 @@ def fft_callback(sender=None, app_data=None):
     configure_item('fft_tda_factor',enabled=FFT)
 
     configure_item('peaks',enabled=FFT)
-    configure_item('peaks_dist',enabled=FFT)
+    configure_item('peaks_dist_factor',enabled=FFT)
     configure_item('peaks_threshold',enabled=FFT)
 
 FFT_SIZE=cfg['fft_size']
@@ -1018,6 +1029,12 @@ def fft_fba_callback(sender=None, app_data=None):
     FFT_FBA=cfg['fft_fba']=get_value('fft_fba')
     l_info(f'fft_fba_callback:{sender},{app_data},{FFT_FBA}')
     fft_fba_size_callback()
+
+    if not FFT_FBA:
+        set_value('fft_smooth',False)
+
+    configure_item('fft_smooth',enabled=FFT_FBA)
+    configure_item('fft_smooth_factor',enabled=FFT_FBA)
 
 FFT_FBA_SIZE=cfg['fft_fba_size']
 def fft_fba_size_callback(sender=None, app_data=None):
@@ -1316,13 +1333,13 @@ def on_mouse_move_tracks_enter(sender, app_data):
     track=int(button_alias[-1])
     #print('track_nr:',track)
 
-    bind_item_theme(f"track{track}",thick_line_theme)
+    #bind_item_theme(f"track{track}",thick_line_theme)
 
     configure_item(f"track{track}_bg",show=True)
     configure_item(f"track{track}",show=True)
 
-    bind_item_theme(f"track{track}_bg",sel_track_bg_theme)
-    bind_item_theme(f"track{track}",sel_track_core_theme)
+    #bind_item_theme(f"track{track}_bg",sel_track_bg_theme)
+    #bind_item_theme(f"track{track}",sel_track_core_theme)
 
 def on_mouse_move_tracks_leave(sender, app_data):
     button_alias=app_data
@@ -1464,8 +1481,7 @@ with theme() as theme_light:
         #dpg.add_theme_color(dpg.mvPlotCol_Fill, LIGHT_BG)
 
     with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Fill,
+        dpg.add_theme_color(dpg.mvPlotCol_Fill,
             (100, 150, 255, 80),
             category=dpg.mvThemeCat_Plots
         )
@@ -1534,8 +1550,7 @@ with theme() as theme_dark:
         #dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
 
     with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Fill,
+        dpg.add_theme_color(dpg.mvPlotCol_Fill,
             (100, 150, 255, 80),
             category=dpg.mvThemeCat_Plots
         )
@@ -1558,191 +1573,113 @@ with theme() as theme_dark:
 
 with theme() as thick_line_theme:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            2.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,2.0,category=dpg.mvThemeCat_Plots)
 
 with theme() as thin_line_theme:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
 with theme() as red_line_theme:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (255, 60, 60, 255),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 60, 60, 255),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 with theme() as sel_track_core_theme:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (255, 200, 100, 255),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
-with theme() as recorded_track_core_theme:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (255, 164, 100, 255),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
-with theme() as track_core_theme:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (128, 128, 128, 128),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 200, 100, 255),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
-with theme() as recorded_track_bg_theme:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (255, 128, 60, 128),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            3.0,
-            category=dpg.mvThemeCat_Plots
-        )
 with theme() as sel_track_bg_theme:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (255, 200, 10, 128),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            3.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 200, 10, 128),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,3.0,category=dpg.mvThemeCat_Plots)
 with theme() as track_bg_theme:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (128, 128, 128, 128),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            3.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(128, 128, 128, 128),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,3.0,category=dpg.mvThemeCat_Plots)
 
-with theme() as dark_line_theme:
+########################
+with theme() as track_theme_light:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (128, 128, 128, 255),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 0, 255),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
-with theme() as dark_line_theme1:
+with theme() as track_theme_bg_light:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (128, 128, 128, 80),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            3.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(190, 250, 250, 100),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as fft_line_theme_light:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(0, 0, 0, 130),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as fft_line2_theme_light:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(245, 245, 245, 100),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
+########################
+
+########################
+with theme() as track_theme_dark:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 130),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as track_theme_bg_dark:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(60, 10, 10, 100),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as fft_line_theme_dark:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 130),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as fft_line2_theme_dark:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(10, 10, 10, 100),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
+########################
+
+with theme() as track_core_theme:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(128, 128, 128, 128),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as track_recorded_core_theme_dark:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 160, 100, 255),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as track_recorded_bg_theme_dark:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(100,0, 0, 60),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as track_recorded_core_theme_light:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 150, 80, 255),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
+with theme() as track_recorded_bg_theme_light:
+    with theme_component(dpg.mvLineSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(200,100, 0, 20),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
+########################
 
 with theme() as std_dev_cloud_theme:
     with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Fill,
-            (128, 128, 128, 25),
-            category=dpg.mvThemeCat_Plots
-        )
-
-with theme() as light_line_theme:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (128, 128, 128, 255),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
-
-with theme() as light_line_theme1:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (100, 100, 100, 100),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            3.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Fill,(128, 128, 128, 25),category=dpg.mvThemeCat_Plots)
 
 with theme() as green_line_theme:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (30, 200, 0, 200),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(30, 200, 0, 200),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
 with theme() as grid_line_theme:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(
-            dpg.mvPlotCol_Line,
-            (128, 128, 128, 128),
-            category=dpg.mvThemeCat_Plots
-        )
-        dpg.add_theme_style(
-            dpg.mvPlotStyleVar_LineWeight,
-            1.0,
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(128, 128, 128, 128),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
 def widget_tooltip(message,widget=None):
     if not widget:
@@ -1867,15 +1804,14 @@ viewport_height_min=plot_min_height+status_height+title_hight
 
 def theme_light_callback():
     l_info('theme_light_callback')
-    global line_theme
     dpg.bind_theme(theme_light)
-    line_theme=dark_line_theme
     bind_item_theme("fft_line_avg",std_dev_cloud_theme)
-    bind_item_theme("fft_line2",dark_line_theme1)
-    bind_item_theme("fft_line",line_theme)
+    bind_item_theme("fft_line2",fft_line2_theme_light)
+    bind_item_theme("fft_line",fft_line_theme_light)
 
     for track in range(tracks):
-        bind_item_theme(f"track{track}",line_theme)
+        bind_item_theme(f"track{track}_bg",track_theme_bg_light)
+        bind_item_theme(f"track{track}",track_theme_light)
 
     configure_item('plotbg',texture_tag=ico['bg'])
     configure_item('exit_button',texture_tag=ico['exit_light'])
@@ -1884,15 +1820,14 @@ def theme_light_callback():
 
 def theme_dark_callback():
     l_info('theme_dark_callback')
-    global line_theme
     dpg.bind_theme(theme_dark)
-    line_theme=light_line_theme
     bind_item_theme("fft_line_avg",std_dev_cloud_theme)
-    bind_item_theme("fft_line2",light_line_theme1)
-    bind_item_theme("fft_line",line_theme)
+    bind_item_theme("fft_line2",fft_line2_theme_dark)
+    bind_item_theme("fft_line",fft_line_theme_dark)
 
     for track in range(tracks):
-        bind_item_theme(f"track{track}",line_theme)
+        bind_item_theme(f"track{track}_bg",track_theme_bg_dark)
+        bind_item_theme(f"track{track}",track_theme_dark)
 
     configure_item('plotbg',texture_tag=ico['bg_dark'])
     configure_item('exit_button',texture_tag=ico['exit_dark'])
@@ -1904,15 +1839,25 @@ def peaks_callback():
     global PEAKS
     cfg['peaks']=PEAKS=get_value('peaks')
 
-    configure_item('peaks_dist',enabled=PEAKS)
+    configure_item('peaks_dist_factor',enabled=PEAKS)
     configure_item('peaks_threshold',enabled=PEAKS)
 
     configure_item('fft_line_avg',show=PEAKS)
 
-PEAKS_DIST=cfg['peaks_dist']
-def peaks_dist_change():
-    global PEAKS_DIST
-    cfg['peaks_dist']=PEAKS_DIST=get_value('peaks_dist')
+FFT_SMOOTH=cfg['fft_smooth']
+def fft_smooth_callback():
+    global FFT_SMOOTH
+    cfg['fft_smooth']=FFT_SMOOTH=get_value('fft_smooth')
+
+FFT_SMOOTH_FACTOR=cfg['fft_smooth_factor']
+def fft_smooth_factor_change():
+    global FFT_SMOOTH_FACTOR
+    cfg['fft_smooth_factor']=FFT_SMOOTH_FACTOR=get_value('fft_smooth_factor')
+
+PEAKS_DIST_FACTOR=cfg['peaks_dist_factor']
+def peaks_dist_factor_change():
+    global PEAKS_DIST_FACTOR
+    cfg['peaks_dist_factor']=PEAKS_DIST_FACTOR=get_value('peaks_dist_factor')
 
 PEAKS_THRESHOLD=cfg['peaks_threshold']
 def peaks_threshold_change():
@@ -2116,9 +2061,12 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_line_series((0,0),(dbmin,0),tag="cursor_f")
                         bind_item_theme("cursor_f",red_line_theme)
 
-                        add_shade_series([20], [-120], tag="fft_line_avg")
+                        add_line_series([20], [-120], tag="fft_line_avg")
                         add_line_series([20], [-120], tag="fft_line2")
                         add_line_series([20], [-120], tag="fft_line")
+
+                        #add_line_series([20], [-120], tag="fft_line_fast")
+                        #add_line_series([20], [-120], tag="fft_line_slow")
 
                         for lab,val in xticks:
                             if lab:
@@ -2276,9 +2224,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             FFT_buckets_tooltip='Frequency bin aggregation\n(equal frequency width "buckets" on log scale)\nF5 / Shift+F5'
                             with table_row():
                                 add_checkbox(tag='fft_fba',label='FBA',callback=fft_fba_callback,default_value=cfg['fft_fba']); widget_tooltip(FFT_buckets_tooltip)
-                            with table_row():
-                                add_text(default_value='quantity'); widget_tooltip(FFT_buckets_tooltip)
                                 add_combo(tag='fft_fba_size',items=['64','128','256','512','1024','2048','4096'],default_value=cfg['fft_fba_size'],callback=fft_fba_size_callback,user_data=True,width=c2width); widget_tooltip(FFT_buckets_tooltip)
+                            with table_row():
+                                add_checkbox(tag='fft_smooth',label='Smth',callback=fft_smooth_callback,default_value=cfg['fft_smooth']); widget_tooltip('Smoothing')
+                                dpg.add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_change,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5)
                             with table_row():
                                 add_checkbox(tag='fft_tda',label='TDA',callback=fft_tda_callback,default_value=cfg['fft_tda']); FFT_tda_tooltip='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tda_tooltip)
 
@@ -2287,11 +2236,15 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 add_combo(tag='fft_tda_factor',items=['0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=cfg['fft_tda_factor'],callback=fft_tda_factor_callback,width=c2width); widget_tooltip(FFT_tda_tooltip)
 
                             with table_row():
-                                add_checkbox(tag='peaks',label='Peaks',callback=peaks_callback,default_value=cfg['peaks']); widget_tooltip('Peaks detection\n(Under development)')
+                                add_checkbox(tag='peaks',label='Peaks',callback=peaks_callback,default_value=cfg['peaks']); widget_tooltip('Peaks detection')
 
-                        dpg.add_slider_float(tag='peaks_dist',callback=peaks_dist_change,max_value=0.5,min_value=0.01,default_value=cfg['peaks_dist'],format="%.3f",width=200,track_offset=0.5)
+                            with table_row():
+                                add_text(default_value='S.L.F.')
+                                dpg.add_slider_float(tag='peaks_dist_factor',callback=peaks_dist_factor_change,max_value=5.0,min_value=1.0,default_value=cfg['peaks_dist_factor'],format="%.1f",width=130,track_offset=0.5); widget_tooltip('Short Length Factor\n... that\'s complicated ...')
 
-                        dpg.add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=4.0,min_value=1.0,default_value=cfg['peaks_threshold'],format="%.3f",width=200,track_offset=0.5)
+                            with table_row():
+                                add_text(default_value='Threshold')
+                                dpg.add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=40.0,min_value=1.0,default_value=cfg['peaks_threshold'],format="%.3f",width=130,track_offset=0.5); widget_tooltip('Peak Detection Threshold.')
 
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
@@ -2326,7 +2279,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             add_text(default_value='Theme:')
 
                             add_image_button(ico["light"],callback=theme_light_callback,width=16); widget_tooltip("Light theme\nkey:L")
-
                             add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\nkey:D")
                 add_spacer(width=5)
 
@@ -2340,6 +2292,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
         add_mouse_wheel_handler(callback=wheel_callback)
         add_key_press_handler(callback=key_press_callback)
 
+        #dpg.add_mouse_drag_handler(button=0, threshold=0.0, callback=drag_viewport)
         dpg.add_mouse_down_handler(button=0, callback=on_mouse_down)
         dpg.add_mouse_move_handler(callback=on_mouse_move)
 
@@ -2415,14 +2368,15 @@ output_samples = 0
 configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True)
 help_callback()
 
-peaks_annos=set()
-peaks_annos_clear = peaks_annos.clear
 
 #gc_disable()
 gc_collect()
 gc_freeze()
 
 def main_loop():
+    peaks_annos=set()
+    peaks_annos_clear = peaks_annos.clear
+
     CENTRAL_INFO_SHOWN=False
 
     global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_size_scheduled,schedule_screenshot,status_timeout,fft_window_sum
@@ -2490,11 +2444,22 @@ def main_loop():
             if FFT and fft_ready:
                 try:
                     fft_values_y=20*np_log10( np_abs( np_fft_rfft(data_slice*fft_window)) / FFT_SIZE + 1e-12 )
+                    #print('i1:',len(fft_values_y))
 
                     if FFT_FBA:
                         fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
                         fft_values_y=np_array([fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]])
                         fft_values_x = fft_values_x_bins
+
+                        initlen=len(fft_values_y)
+                        if FFT_SMOOTH:
+                            for i_smooth in range(FFT_SMOOTH_FACTOR):
+                                csum = np_cumsum(np_pad(fft_values_y,2,'reflect'))
+                                #print('slooop:',i_smooth,len(csum))
+                                fft_values_y = (csum[4:] - csum[:-4])/4
+
+                        initlen2=len(fft_values_y)
+                        #print('i2:',initlen,initlen2)
                     else:
                         fft_values_x = fft_values_x_all
 
@@ -2505,48 +2470,84 @@ def main_loop():
                             pass
 
                     if PEAKS:
-                        peak_index=0
+                        points=len(fft_values_y)
 
-                        dist=round(len(fft_values_y)*PEAKS_DIST)
+                        dist_half=int(PEAKS_DIST_FACTOR*points/64)
+                        dist=dist_half*2
+                        #int(PEAKS_DIST_FACTOR*points/32)
+                        #dist_half=dist//2
 
-                        kernel = ones(dist)
-                        kernel /= kernel.sum()
+                        padded=np_pad(fft_values_y,dist_half,'reflect')
+                        csum = np_cumsum(padded)
+                        window_sum = csum[dist:] - csum[:-dist]
+                        fft_values_y_avg_fast = window_sum / dist
 
-                        padded=np_pad(fft_values_y,dist,'reflect' )
-                        avg = np_convolve(padded, kernel, mode='same')[dist:-dist]
+                        dist_half=points//16
+                        dist=dist_half*2
+                        #points//8
+                        #dist_half=dist//2
 
-                        diff_vec = fft_values_y-avg
-                        diff_square_vec = diff_vec**2
+                        padded=np_pad(fft_values_y_avg_fast,dist_half,'reflect')
+                        csum = np_cumsum(padded)
+                        window_sum = csum[dist:] - csum[:-dist]
+                        fft_values_y_avg_slow = window_sum / dist
 
-                        diff_square_vec_padded=np_pad(diff_square_vec,dist,'reflect')
-                        diff_square_vec_sum = np_convolve(diff_square_vec_padded, kernel, mode='same')[dist:-dist]
-                        diff_square_vec_sum_sqrt = np_sqrt(diff_square_vec_sum)
-                        diff_square_vec_sum_sqrt_x_thrs=diff_square_vec_sum_sqrt*PEAKS_THRESHOLD
+                        #print('ip3:',len(fft_values_x),len(fft_values_y),len(fft_values_y_avg_fast),len(fft_values_y_avg_slow))
 
-                        set_value("fft_line_avg", [fft_values_x, avg-diff_square_vec_sum_sqrt_x_thrs, avg+diff_square_vec_sum_sqrt_x_thrs ])
+                        #set_value("fft_line_fast", [fft_values_x, fft_values_y_avg_fast])
+                        #set_value("fft_line_slow", [fft_values_x, fft_values_y_avg_slow])
 
-                        mask = (avg[1:-1] > avg[:-2]) & (avg[1:-1] > avg[2:]) & (diff_vec[1:-1]>diff_square_vec_sum_sqrt_x_thrs[1:-1])
+                        area_len_threshold=PEAKS_DIST_FACTOR*points/64
 
-                        sel_indices=np_where(mask)[0]+1
+                        peaks_annos_new=set()
+                        peaks_annos_new_add=peaks_annos_new.add
+                        area_len=0
+                        #area_start=0
+                        #area_end=0
 
-                        sel_diff_values=diff_vec[sel_indices]
-                        sel_x=np_array(fft_values_x)[sel_indices]
-                        sel_y=np_array(fft_values_y)[sel_indices]
+                        min_val=0
+                        max_val=-200
+                        max_val_f=-1
 
-                        sel_diff_values_sorted_indices=np_argsort(sel_diff_values)[::-1]
+                        for i,(f,v,mask) in enumerate(zip(fft_values_x,fft_values_y,fft_values_y_avg_fast > fft_values_y_avg_slow)):
+                            if mask:
+                                area_len+=1
+                                if v<min_val:
+                                    min_val=v
+                                if v>max_val:
+                                    max_val=v
+                                    max_val_f=f
 
-                        sel_diff_values_sorted=sel_diff_values[sel_diff_values_sorted_indices]
-                        sel_y_values_sorted=sel_y[sel_diff_values_sorted_indices]
-                        sel_x_values_sorted=sel_x[sel_diff_values_sorted_indices]
+                            else:
+                                if area_len>1:
+                                    if area_len>area_len_threshold:
+                                        #area_end=i
+                                        #area_start=i-area_len
+                                        ratio=max_val-min_val
+                                        if ratio>PEAKS_THRESHOLD:
+                                            peaks_annos_new_add((ratio,int(max_val_f),max_val))
+                                            #print('found;',area_start,'\t',area_end,'\t',area_end-area_start,'\t',int(max_val_f),'\t',max_val,'\t',ratio)
+
+                                    area_len=0
+                                    max_val=-999
+                                    min_val=0
+                                    max_val_f=0
+
+                        if peaks_annos_new:
+                            peaks_annos_new_fints={fint for ratio,fint,v in peaks_annos_new}
+
+                            for ratio,fint,v in peaks_annos_new:
+                                if fint not in peaks_annos:
+                                    add_plot_annotation(tag=f'peak{fint}',label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(100, 100, 100, 130), offset=(16,-10))
+                        else:
+                            peaks_annos_new_fints={}
 
                         for fint in peaks_annos:
-                            delete_item(f'peak{fint}')
-                        peaks_annos.clear()
+                            if fint not in peaks_annos_new_fints:
+                                delete_item(f'peak{fint}')
 
-                        for f,v in zip(sel_x_values_sorted,sel_y_values_sorted):
-                            fint=int(f)
-                            peaks_annos.add(fint)
-                            add_plot_annotation(tag=f'peak{fint}',label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(100, 100, 100, 130), offset=(16,-10))
+                        if peaks_annos_new:
+                            peaks_annos=peaks_annos_new_fints
 
                     set_value("fft_line2", [fft_values_x, fft_values_y])
                     set_value("fft_line", [fft_values_x, fft_values_y])
