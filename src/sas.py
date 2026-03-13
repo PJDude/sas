@@ -90,7 +90,7 @@ Path(INTERNAL_DIR_IMAGES).mkdir(parents=True,exist_ok=True)
 
 Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
 
-CAPTURE_TIME = 10.0
+CAPTURE_TIME = 60.0
 CAPTURE_END = 0
 CAPTURE_FPS = 30
 CAPTURE_INTERVAL = 1.0 / CAPTURE_FPS
@@ -1793,10 +1793,15 @@ def key_press_callback(sender, app_data):
         set_value('peaks',peaks_val)
         peaks_callback()
     elif app_data==dpg.mvKey_Pause:
-        global CAPTURE,CAPTURE_END
-        CAPTURE=True
-        CAPTURE_END=perf_counter()+CAPTURE_TIME
-        set_status('~')
+        global CAPTURE,CAPTURE_END,curr_vp_x,curr_vp_y,vw,vh,viewport_rect
+        if CAPTURE:
+            CAPTURE_END=perf_counter()
+        else:
+            CAPTURE=True
+            CAPTURE_END=perf_counter()+CAPTURE_TIME
+            viewport_rect = (curr_vp_x, curr_vp_y, curr_vp_x + vw, curr_vp_y + vh)
+            set_status('~')
+
     elif app_data==dpg.mvKey_Delete:
         reset_track_press()
     elif app_data==dpg.mvKey_Escape:
@@ -2633,8 +2638,7 @@ def main_loop():
             cfg['viewport_size']=set_viewport_size_scheduled
             set_viewport_size_scheduled=None
             real_update=True
-
-        if schedule_screenshot:
+        elif schedule_screenshot:
             hide_item('cursor_db_txt')
             hide_item('cursor_f_txt')
             hide_item('cursor_f')
@@ -2661,50 +2665,63 @@ def main_loop():
                     show_item('cursor_db_txt')
                     show_item('cursor_f_txt')
                     show_item('cursor_f')
-        elif CAPTURE :
-            if now>CAPTURE_NEXT:
-                if now>CAPTURE_END:
-                    if capture_frames:
-                        set_status('saving gif ...')
-                        render_dearpygui_frame()
-                        timestamp=str(round(time()))
-                        duration=int(1000 / CAPTURE_FPS)
-
-                        frames_1=[]
-                        frames_2=[]
-                        frames_3=[]
-                        frames_4=[]
-
-                        for key,frame_raw in capture_frames.items():
-                            frame=frame_raw.convert("RGB")
-
-                            frames_1.append(frame)
-
-                            if not key%2:
-                                frames_2.append(frame)
-                            if not key%3:
-                                frames_3.append(frame)
-                            if not key%4:
-                                frames_4.append(frame)
-
-                        capture_frames[0].save(f"recording_{timestamp}_1.gif",save_all=True,append_images=frames_1,duration=duration,loop=1)
-                        capture_frames[0].save(f"recording_{timestamp}_2.gif",save_all=True,append_images=frames_2,duration=duration,loop=1)
-                        capture_frames[0].save(f"recording_{timestamp}_3.gif",save_all=True,append_images=frames_3,duration=duration,loop=1)
-                        capture_frames[0].save(f"recording_{timestamp}_4.gif",save_all=True,append_images=frames_4,duration=duration,loop=1)
-
-                        capture_frames_counter=0
-                        capture_frames.clear()
-                        set_status('')
-                        render_dearpygui_frame()
-                    CAPTURE=False
-                else:
-                    CAPTURE_NEXT=now+CAPTURE_INTERVAL
-
-                    viewport_rect = (curr_vp_x, curr_vp_y, curr_vp_x + vw, curr_vp_y + vh)
-
+        elif CAPTURE and now>CAPTURE_NEXT:
+            if now>CAPTURE_END:
+                if capture_frames:
+                    set_status('processing gifs ...')
                     render_dearpygui_frame()
-                    capture_frames[capture_frames_counter]=grab(bbox=viewport_rect)
-                    capture_frames_counter+=1
+                    timestamp=str(round(time()))
+                    duration=int(1000 / CAPTURE_FPS)
+
+                    frames_1=[]
+                    frames_2=[]
+                    frames_3=[]
+                    frames_4=[]
+
+                    for key,frame_raw in capture_frames.items():
+                        frame=frame_raw.convert("RGB")
+
+                        frames_1.append(frame)
+
+                        if not key%2:
+                            frames_2.append(frame)
+                        if not key%3:
+                            frames_3.append(frame)
+                        if not key%4:
+                            frames_4.append(frame)
+
+                    set_status('saving gif 1 ...')
+                    render_dearpygui_frame()
+                    capture_frames[0].save(f"recording_{timestamp}_1.gif",save_all=True,append_images=frames_1,duration=duration,loop=1)
+
+                    set_status('saving gif 2 ...')
+                    render_dearpygui_frame()
+                    capture_frames[0].save(f"recording_{timestamp}_2.gif",save_all=True,append_images=frames_2,duration=duration,loop=1)
+
+                    set_status('saving gif 3 ...')
+                    render_dearpygui_frame()
+                    capture_frames[0].save(f"recording_{timestamp}_3.gif",save_all=True,append_images=frames_3,duration=duration,loop=1)
+
+                    set_status('saving gif 4 ...')
+                    render_dearpygui_frame()
+                    capture_frames[0].save(f"recording_{timestamp}_4.gif",save_all=True,append_images=frames_4,duration=duration,loop=1)
+
+                    capture_frames_counter=0
+                    capture_frames.clear()
+                    del frames_1
+                    del frames_2
+                    del frames_3
+                    del frames_4
+
+                    set_status('')
+                    render_dearpygui_frame()
+                CAPTURE=False
+            else:
+                CAPTURE_NEXT=now+CAPTURE_INTERVAL
+
+                render_dearpygui_frame()
+                capture_frames[capture_frames_counter]=grab(bbox=viewport_rect)
+                capture_frames_counter+=1
         else:
             render_dearpygui_frame()
 
