@@ -42,7 +42,9 @@ import numpy as np
 from collections import deque
 
 from math import pi, log10, ceil, floor
-from PIL import Image
+from PIL import Image,ImageGrab
+
+grab=ImageGrab.grab
 
 from pathlib import Path
 from json import dumps,loads
@@ -88,6 +90,13 @@ Path(INTERNAL_DIR_IMAGES).mkdir(parents=True,exist_ok=True)
 
 Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
 
+CAPTURE_TIME = 10.0
+CAPTURE_END = 0
+CAPTURE_FPS = 30
+CAPTURE_INTERVAL = 1.0 / CAPTURE_FPS
+CAPTURE_NEXT=0
+CAPTURE=False
+
 print(f'{INTERNAL_DIR=}')
 
 def localtime_catched(t):
@@ -114,7 +123,6 @@ except Exception as e:
 
 cfg_setdefault('theme','dark')
 
-#TRACK_BUCKETS=256
 tracks=8
 
 cfg_setdefault('track_buckets',256)
@@ -125,6 +133,9 @@ cfg_setdefault('viewport_size',[1300,400])
 cfg_setdefault('help',True)
 HELP=cfg['help']
 
+cfg_setdefault('pause',False)
+PAUSE=cfg['pause']
+
 cfg_setdefault('debug',True)
 
 cfg_setdefault('vsync',True)
@@ -134,15 +145,15 @@ cfg_setdefault('fft_size',8192)
 cfg_setdefault('fft_window','blackman')
 cfg_setdefault('fft_fba',True)
 cfg_setdefault('fft_fba_size',1024)
-cfg_setdefault('fft_tda',False)
+cfg_setdefault('fft_tda',True)
 cfg_setdefault('fft_tda_factor',0.1)
 
-cfg_setdefault('fft_smooth',False)
-cfg_setdefault('fft_smooth_factor',1)
+cfg_setdefault('fft_smooth',True)
+cfg_setdefault('fft_smooth_factor',2)
 
 cfg_setdefault('peaks',False)
-cfg_setdefault('peaks_dist_factor',1.0)
-cfg_setdefault('peaks_threshold',5.0)
+cfg_setdefault('peaks_dist_factor',3.0)
+cfg_setdefault('peaks_threshold',15.0)
 
 cfg_setdefault('show_track',[False]*tracks)
 cfg_setdefault('recorded',-1)
@@ -473,8 +484,8 @@ def play_start():
 
     if track_line_data_y_recorded:
         recorded=int(cfg['recorded'])
-        bind_item_theme(f"track{recorded}_bg",track_recorded_bg_theme)
-        bind_item_theme(f"track{recorded}",track_recorded_core_theme)
+        #bind_item_theme(f"track{recorded}_bg",track_recorded_bg_theme)
+        #bind_item_theme(f"track{recorded}",track_recorded_core_theme)
 
         #bind_item_theme(f"track{recorded}_bg",track_recorded_bg_theme)
         #bind_item_theme(f"track{recorded}",track_recorded_core_theme)
@@ -777,12 +788,16 @@ def reset_track_press(sender=None, app_data=None):
     l_info(f'resetrack:{sender},{app_data}')
 
     global cfg,redraw_track_line,track_line_data_y_recorded
-    if track_line_data_y_recorded:
+
+    if cfg['recorded']!=-1:
+        track=cfg['recorded']
+
         sweep_abort()
-        track_line_data_y_recorded=[dbinit]*TRACK_BUCKETS
+        track_line_data_y_recorded=track_line_data_y[track]=[dbinit]*TRACK_BUCKETS
+
         redraw_track_line=True
     else:
-        print('recording not enabled for track',track)
+        print('recording not enabled')
 
 track_line_data_y_recorded=[]
 def track_action_callback(sender=None,app_data=None,track=None):
@@ -802,12 +817,15 @@ def track_action_callback(sender=None,app_data=None,track=None):
             cfg['show_track'][track]=True
             cfg['recorded']=-1
             track_line_data_y_recorded=[]
+            dpg.move_item(f"track{track}",parent="y_axis")
         else:
             cfg['show_track'][track]=True
             cfg['recorded']=track
             track_line_data_y_recorded=track_line_data_y[track]
+            dpg.move_item(f"track{track}",parent="y_axis")
     else:
         cfg['show_track'][track]=not cfg['show_track'][track]
+        dpg.move_item(f"track{track}",parent="y_axis")
         if not cfg['show_track'][track]:
             if cfg['recorded']==track:
                 cfg['recorded']=-1
@@ -1286,27 +1304,14 @@ def click_callback(sender, button_nr):
                 status_set_frequency()
 
 def release_callback(sender, button_nr):
-    #print('release_callback',sender, button_nr)
     if button_nr==0:
         if is_item_hovered("plot"):
-            #if not sweeping:
             play_stop()
         else:
-
             #global sweeping,lock_frequency
             global is_dragging,is_resizing
             set_viewport_vsync(cfg['vsync'])
             is_dragging,is_resizing = False,False
-            print('release_callback - end dragging')
-            #gc_enable()
-
-        #lock_frequency=False
-
-        #if not sweeping:
-        #    play_stop()
-        #    status_set_frequency()
-    #elif button_nr==1:
-    #    sweep_abort()
     else:
         l_info(f'another button:{button_nr}')
 
@@ -1362,7 +1367,7 @@ def on_mouse_down(sender, app_data):
         if offset_y<20:
             is_dragging = True
             set_viewport_vsync(False)
-            print('on_mouse_down - start dragging')
+            #print('on_mouse_down - start dragging')
             #gc_disable()
         elif offset_x>vw-30 and offset_y>vh-30:
             is_resizing = True
@@ -1414,7 +1419,7 @@ LIGHT_TEXT = (0, 0, 0, 255)
 LIGHT_BUTTON = LIGHT_BG #(210, 210, 210, 255)
 LIGHT_BUTTON_HOVER = (180, 180, 255, 255)
 LIGHT_BUTTON_ACTIVE = (150, 150, 255, 255)
-LIGHT_ACCENT = (50, 50, 70, 255)  # check, slider grab, etc.
+LIGHT_ACCENT = (150, 150, 200, 255)  # check, slider grab, etc.
 
 DARK_BG = (60, 60, 60, 255)
 DARK_BG_LIGHTER = (40, 40, 40, 128)
@@ -1429,8 +1434,10 @@ DARK_BUTTON_HOVER = (120, 120, 180, 255)
 DARK_BUTTON_ACTIVE = (150, 150, 200, 255)
 DARK_ACCENT = (150, 150, 200, 255)  # check, slider grab, etc.
 
-LIGHT_TOOLTIP_BG = (210, 210, 0, 255)
-DARK_TOOLTIP_BG = (160, 160, 0, 255)
+#LIGHT_TOOLTIP_BG = (210, 210, 0, 255)
+LIGHT_TOOLTIP_BG = (246, 246, 185, 255)
+#DARK_TOOLTIP_BG = (160, 160, 0, 255)
+DARK_TOOLTIP_BG = (236, 236, 175, 200)
 
 with theme() as semi_bg_theme:
     with theme_component(dpg.mvAll):
@@ -1557,9 +1564,9 @@ with theme() as theme_dark:
 
     with theme_component(dpg.mvTooltip):
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_PopupBg,DARK_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_Border,DARK_TOOLTIP_BG, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_Text, DARK_TEXT)
+        dpg.add_theme_color(dpg.mvThemeCol_PopupBg,LIGHT_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
+        dpg.add_theme_color(dpg.mvThemeCol_Border,LIGHT_TOOLTIP_BG, category=dpg.mvThemeCat_Core)
+        dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize,2,category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,4)
 
@@ -1658,7 +1665,7 @@ with theme() as track_recorded_bg_theme_dark:
 
 with theme() as track_recorded_core_theme_light:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 150, 80, 255),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 110, 40, 255),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
 with theme() as track_recorded_bg_theme_light:
@@ -1692,6 +1699,15 @@ def key_press_callback(sender, app_data):
     hide_info()
 
     Shift = is_key_down(dpg.mvKey_LShift)
+
+    if app_data==dpg.mvKey_Spacebar:
+        pause_val=get_value('pause')
+        pause_val=(True,False)[pause_val]
+        set_value('pause',pause_val)
+        pause_callback()
+    else:
+        set_value('pause',False)
+        pause_callback()
 
     if app_data==dpg.mvKey_1:
         track_action_callback(None,None,0)
@@ -1776,6 +1792,13 @@ def key_press_callback(sender, app_data):
         peaks_val=(True,False)[peaks_val]
         set_value('peaks',peaks_val)
         peaks_callback()
+    elif app_data==dpg.mvKey_Pause:
+        global CAPTURE,CAPTURE_END
+        CAPTURE=True
+        CAPTURE_END=perf_counter()+CAPTURE_TIME
+        set_status('~')
+    elif app_data==dpg.mvKey_Delete:
+        reset_track_press()
     elif app_data==dpg.mvKey_Escape:
         global lock_frequency,sweeping
         play_stop()
@@ -1844,6 +1867,13 @@ def peaks_callback():
 
     configure_item('fft_line_avg',show=PEAKS)
 
+    if PEAKS:
+        configure_item("fft_line_fast",show=DEBUG)
+        configure_item("fft_line_slow",show=DEBUG)
+    else:
+        configure_item("fft_line_fast",show=False)
+        configure_item("fft_line_slow",show=False)
+
 FFT_SMOOTH=cfg['fft_smooth']
 def fft_smooth_callback():
     global FFT_SMOOTH
@@ -1870,6 +1900,17 @@ def debug_callback():
     global DEBUG,next_fps
     cfg['debug']=DEBUG=get_value('debug')
     next_fps=0
+
+    if DEBUG:
+        configure_item("fft_line_fast",show=PEAKS)
+        configure_item("fft_line_slow",show=PEAKS)
+    else:
+        configure_item("fft_line_fast",show=False)
+        configure_item("fft_line_slow",show=False)
+
+def pause_callback():
+    global PAUSE
+    cfg['pause']=PAUSE=get_value('pause')
 
 def help_off():
     set_value('help',False)
@@ -1963,9 +2004,11 @@ def set_status(text,alert=False,timeout=2):
 
 info_chars=0
 
+vw,vh=0,0
 def on_viewport_resize(sender=None, app_data=None):
-    vw = get_viewport_client_width()
-    vh = get_viewport_client_height()
+    global vw,vh,curr_vp_x, curr_vp_y
+    vw,vh = get_viewport_client_width(),get_viewport_client_height()
+    curr_vp_x, curr_vp_y = get_viewport_pos()
 
     global info_chars,settings_height,settings_shown
 
@@ -1981,8 +2024,8 @@ def on_viewport_resize(sender=None, app_data=None):
     set_item_width('plot', vw-64)
 
     set_item_pos('info_window',[0,title_hight])
-    set_item_pos('debug_text',[85,24+title_hight])
-    set_item_pos('help_text',[385,24+title_hight])
+    set_item_pos('debug_text',[85,30+title_hight])
+    set_item_pos('help_text',[385,30+title_hight])
 
     set_item_pos('central_info',[(vw-64-100)/2,(plot_height)/2])
 
@@ -2065,8 +2108,8 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_line_series([20], [-120], tag="fft_line2")
                         add_line_series([20], [-120], tag="fft_line")
 
-                        #add_line_series([20], [-120], tag="fft_line_fast")
-                        #add_line_series([20], [-120], tag="fft_line_slow")
+                        add_line_series([20], [-120], tag="fft_line_fast")
+                        add_line_series([20], [-120], tag="fft_line_slow")
 
                         for lab,val in xticks:
                             if lab:
@@ -2088,8 +2131,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         bind_item_handler_registry(f'showcheck{track_temp}', "tracks_handlers")
 
                     add_spacer(height=-1)
-                    add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press)
-                    widget_tooltip(' Reset selected track samples.')
+                    add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press); widget_tooltip('Reset selected track samples\nkey: Delete')
 
         with table_row():
             with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp,
@@ -2271,9 +2313,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                     with group():
                         add_text(default_value='DISPLAY SETTINGS')
                         dpg.add_separator()
-                        add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync'])
-                        add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug'])
-                        add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help'])
+                        add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('key: V')
+                        add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug']); widget_tooltip('key: F11')
+                        add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help']); widget_tooltip('key: H')
+                        add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: space')
 
                         with group(horizontal=True):
                             add_text(default_value='Theme:')
@@ -2368,8 +2411,6 @@ output_samples = 0
 configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True)
 help_callback()
 
-
-#gc_disable()
 gc_collect()
 gc_freeze()
 
@@ -2381,7 +2422,7 @@ def main_loop():
 
     global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_size_scheduled,schedule_screenshot,status_timeout,fft_window_sum
     global redraw_track_line,frames_change,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
-
+    global CAPTURE,CAPTURE_NEXT
     next_sweep_time=0
     input_callbacks_all=0
     rec_samples=0
@@ -2389,11 +2430,15 @@ def main_loop():
     data=zeros(FFT_SIZE_MAX)
     new_data=False
 
+    capture_frames={}
+    capture_frames_counter=0
+
     while is_dearpygui_running():
         real_update=False
 
+        now = perf_counter()
+
         if sweeping:
-            now = perf_counter()
             if now>next_sweep_time:
                 sweeping_i+=1
                 if sweeping_i<sweep_steps:
@@ -2424,7 +2469,7 @@ def main_loop():
             except:
                 break
 
-        if new_data and not (is_dragging or is_resizing):
+        if new_data and not (is_dragging or is_resizing or PAUSE):
             new_data=False
 
             real_update=True
@@ -2444,7 +2489,6 @@ def main_loop():
             if FFT and fft_ready:
                 try:
                     fft_values_y=20*np_log10( np_abs( np_fft_rfft(data_slice*fft_window)) / FFT_SIZE + 1e-12 )
-                    #print('i1:',len(fft_values_y))
 
                     if FFT_FBA:
                         fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
@@ -2452,14 +2496,12 @@ def main_loop():
                         fft_values_x = fft_values_x_bins
 
                         initlen=len(fft_values_y)
+
                         if FFT_SMOOTH:
                             for i_smooth in range(FFT_SMOOTH_FACTOR):
                                 csum = np_cumsum(np_pad(fft_values_y,2,'reflect'))
-                                #print('slooop:',i_smooth,len(csum))
                                 fft_values_y = (csum[4:] - csum[:-4])/4
 
-                        initlen2=len(fft_values_y)
-                        #print('i2:',initlen,initlen2)
                     else:
                         fft_values_x = fft_values_x_all
 
@@ -2472,38 +2514,29 @@ def main_loop():
                     if PEAKS:
                         points=len(fft_values_y)
 
-                        dist_half=int(PEAKS_DIST_FACTOR*points/64)
-                        dist=dist_half*2
-                        #int(PEAKS_DIST_FACTOR*points/32)
-                        #dist_half=dist//2
+                        dist_fast_half=int(PEAKS_DIST_FACTOR*points/64)
+                        dist_fast=dist_fast_half*2
 
-                        padded=np_pad(fft_values_y,dist_half,'reflect')
-                        csum = np_cumsum(padded)
-                        window_sum = csum[dist:] - csum[:-dist]
-                        fft_values_y_avg_fast = window_sum / dist
+                        csum_fast = np_cumsum(np_pad(fft_values_y,dist_fast_half,'reflect'))
+                        window_sum_fast = csum_fast[dist_fast:] - csum_fast[:-dist_fast]
+                        fft_values_y_avg_fast = window_sum_fast / dist_fast
 
-                        dist_half=points//16
-                        dist=dist_half*2
-                        #points//8
-                        #dist_half=dist//2
+                        dist_slow_half=points//16
+                        dist_slow=dist_slow_half*2
 
-                        padded=np_pad(fft_values_y_avg_fast,dist_half,'reflect')
-                        csum = np_cumsum(padded)
-                        window_sum = csum[dist:] - csum[:-dist]
-                        fft_values_y_avg_slow = window_sum / dist
+                        csum_slow = np_cumsum(np_pad(fft_values_y_avg_fast,dist_slow_half,'reflect'))
+                        window_sum_slow = csum_slow[dist_slow:] - csum_slow[:-dist_slow]
+                        fft_values_y_avg_slow = window_sum_slow / dist_slow
 
-                        #print('ip3:',len(fft_values_x),len(fft_values_y),len(fft_values_y_avg_fast),len(fft_values_y_avg_slow))
-
-                        #set_value("fft_line_fast", [fft_values_x, fft_values_y_avg_fast])
-                        #set_value("fft_line_slow", [fft_values_x, fft_values_y_avg_slow])
+                        if DEBUG:
+                            set_value("fft_line_fast", [fft_values_x, fft_values_y_avg_fast])
+                            set_value("fft_line_slow", [fft_values_x, fft_values_y_avg_slow])
 
                         area_len_threshold=PEAKS_DIST_FACTOR*points/64
 
                         peaks_annos_new=set()
                         peaks_annos_new_add=peaks_annos_new.add
                         area_len=0
-                        #area_start=0
-                        #area_end=0
 
                         min_val=0
                         max_val=-200
@@ -2521,12 +2554,9 @@ def main_loop():
                             else:
                                 if area_len>1:
                                     if area_len>area_len_threshold:
-                                        #area_end=i
-                                        #area_start=i-area_len
                                         ratio=max_val-min_val
                                         if ratio>PEAKS_THRESHOLD:
                                             peaks_annos_new_add((ratio,int(max_val_f),max_val))
-                                            #print('found;',area_start,'\t',area_end,'\t',area_end-area_start,'\t',int(max_val_f),'\t',max_val,'\t',ratio)
 
                                     area_len=0
                                     max_val=-999
@@ -2560,8 +2590,6 @@ def main_loop():
                     print('FFT Exception:',exception_fft)
 
             if playing_state==2 and track_line_data_y_recorded and current_bucket<TRACK_BUCKETS:
-                #track_line_data_y_recorded[current_bucket]=track_line_data_y_recorded[current_bucket]*tda_tracks + current_sample_db*tda_tracks_1m
-
                 track_line_data_y_recorded[current_bucket]*=tda_tracks
                 track_line_data_y_recorded[current_bucket]+=current_sample_db*tda_tracks_1m
                 redraw_track_line=True
@@ -2578,7 +2606,7 @@ def main_loop():
                 #set_value('help_text','')
                 help_off()
             elif status_timeout!=0:
-                if perf_counter()>status_timeout:
+                if now>status_timeout:
                     #set_value('help_text','')
                     status_timeout=0
             elif CENTRAL_INFO_SHOWN :
@@ -2633,21 +2661,58 @@ def main_loop():
                     show_item('cursor_db_txt')
                     show_item('cursor_f_txt')
                     show_item('cursor_f')
+        elif CAPTURE :
+            if now>CAPTURE_NEXT:
+                if now>CAPTURE_END:
+                    if capture_frames:
+                        set_status('saving gif ...')
+                        render_dearpygui_frame()
+                        timestamp=str(round(time()))
+                        duration=int(1000 / CAPTURE_FPS)
 
-        render_dearpygui_frame()
+                        frames_1=[]
+                        frames_2=[]
+                        frames_3=[]
+                        frames_4=[]
 
-        ##################################
-        #if not real_update:
-        #    if now>next_gc:
-        #        gc_collect(0)
-        #        next_gc=now+1
+                        for key,frame_raw in capture_frames.items():
+                            frame=frame_raw.convert("RGB")
 
-        if DEBUG and not (is_dragging or is_resizing):
+                            frames_1.append(frame)
+
+                            if not key%2:
+                                frames_2.append(frame)
+                            if not key%3:
+                                frames_3.append(frame)
+                            if not key%4:
+                                frames_4.append(frame)
+
+                        capture_frames[0].save(f"recording_{timestamp}_1.gif",save_all=True,append_images=frames_1,duration=duration,loop=1)
+                        capture_frames[0].save(f"recording_{timestamp}_2.gif",save_all=True,append_images=frames_2,duration=duration,loop=1)
+                        capture_frames[0].save(f"recording_{timestamp}_3.gif",save_all=True,append_images=frames_3,duration=duration,loop=1)
+                        capture_frames[0].save(f"recording_{timestamp}_4.gif",save_all=True,append_images=frames_4,duration=duration,loop=1)
+
+                        capture_frames_counter=0
+                        capture_frames.clear()
+                        set_status('')
+                        render_dearpygui_frame()
+                    CAPTURE=False
+                else:
+                    CAPTURE_NEXT=now+CAPTURE_INTERVAL
+
+                    viewport_rect = (curr_vp_x, curr_vp_y, curr_vp_x + vw, curr_vp_y + vh)
+
+                    render_dearpygui_frame()
+                    capture_frames[capture_frames_counter]=grab(bbox=viewport_rect)
+                    capture_frames_counter+=1
+        else:
+            render_dearpygui_frame()
+
+        if DEBUG and not (is_dragging or is_resizing or PAUSE):
             if real_update:
                 frames_change+=1
             frames += 1
 
-            now = perf_counter()
             if now >= next_fps :
                 set_value('debug_text',
                     f"FPS:{frames}/{frames_change} VSync:{VSYNC_STATE_NAME}\n\n"
