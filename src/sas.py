@@ -27,17 +27,18 @@
 ####################################################################################
 
 import dearpygui.dearpygui as dpg
-from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry,output_frame_buffer
+from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,theme,theme_component
-from dearpygui.dearpygui import mvKey_LControl,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos
+from dearpygui.dearpygui import mvKey_LControl,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min
 
-from time import strftime,time,localtime,perf_counter
+from time import strftime,time,localtime,perf_counter,sleep
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum
-from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version
+from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version,get_portaudio_version
 import numpy as np
+from threading import Thread
 
 from collections import deque
 
@@ -76,25 +77,18 @@ else:
 print(f'{EXECUTABLE_DIR=}')
 print(f'{EXECUTABLE_DIR_REAL=}')
 
-#EXECUTABLE_FILE = normpath(abspath(sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]))
-#EXECUTABLE_DIR = dirname(EXECUTABLE_FILE)
-
 INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"sas-internal"])
 INTERNAL_DIR_CSV_DEBUG = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'csv-debug'])
 INTERNAL_DIR_LOGS = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'logs'])
 INTERNAL_DIR_IMAGES = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'images'])
 
-Path(INTERNAL_DIR_CSV_DEBUG).mkdir(parents=True,exist_ok=True)
 Path(INTERNAL_DIR_LOGS).mkdir(parents=True,exist_ok=True)
-Path(INTERNAL_DIR_IMAGES).mkdir(parents=True,exist_ok=True)
 
 Path(INTERNAL_DIR).mkdir(parents=True,exist_ok=True)
 
 CAPTURE_TIME = 60.0
-CAPTURE_END = 0
 CAPTURE_FPS = 30
 CAPTURE_INTERVAL = 1.0 / CAPTURE_FPS
-CAPTURE_NEXT=0
 CAPTURE=False
 
 print(f'{INTERNAL_DIR=}')
@@ -112,7 +106,6 @@ cfg_file = path_join(INTERNAL_DIR, 'sas.cfg')
 print(f'{log_file=}')
 
 cfg={}
-cfg_setdefault=cfg.setdefault
 
 try:
     with open(cfg_file, "r", encoding="utf-8") as f:
@@ -121,44 +114,47 @@ try:
 except Exception as e:
     print(f'cfg file "{cfg_file}" opening error {e}')
 
-cfg_setdefault('theme','dark')
-
 tracks=8
 
-cfg_setdefault('track_buckets',256)
+cfg.setdefault('theme','dark')
 
-cfg_setdefault('viewport_pos',[100,100])
-cfg_setdefault('viewport_size',[1300,400])
+cfg.setdefault('track_buckets',256)
 
-cfg_setdefault('help',True)
+cfg.setdefault('viewport_pos',[100,100])
+cfg.setdefault('viewport_height',300)
+cfg.setdefault('viewport_width',800)
+
+cfg.setdefault('settings',False)
+
+cfg.setdefault('help',True)
 HELP=cfg['help']
 
-cfg_setdefault('pause',False)
+cfg.setdefault('pause',False)
 PAUSE=cfg['pause']
 
-cfg_setdefault('debug',True)
+cfg.setdefault('debug',True)
 
-cfg_setdefault('vsync',True)
+cfg.setdefault('vsync',False)
 
-cfg_setdefault('fft',True)
-cfg_setdefault('fft_size',8192)
-cfg_setdefault('fft_window','blackman')
-cfg_setdefault('fft_fba',True)
-cfg_setdefault('fft_fba_size',1024)
-cfg_setdefault('fft_tda',True)
-cfg_setdefault('fft_tda_factor',0.1)
+cfg.setdefault('fft',True)
+cfg.setdefault('fft_size',4096)
+cfg.setdefault('fft_window','blackman')
+cfg.setdefault('fft_fba',False)
+cfg.setdefault('fft_fba_size',1024)
+cfg.setdefault('fft_tda',False)
+cfg.setdefault('fft_tda_factor',0.1)
 
-cfg_setdefault('fft_smooth',True)
-cfg_setdefault('fft_smooth_factor',2)
+cfg.setdefault('tracks_tda_factor',0.3)
 
-cfg_setdefault('peaks',False)
-cfg_setdefault('peaks_dist_factor',3.0)
-cfg_setdefault('peaks_threshold',15.0)
+cfg.setdefault('fft_smooth',False)
+cfg.setdefault('fft_smooth_factor',2)
 
-cfg_setdefault('show_track',[False]*tracks)
-cfg_setdefault('recorded',-1)
+cfg.setdefault('peaks',False)
+cfg.setdefault('peaks_dist_factor',3.0)
+cfg.setdefault('peaks_threshold',15.0)
 
-print(f'{cfg=}')
+cfg.setdefault('show_track',[False]*tracks)
+cfg.setdefault('recorded',-1)
 
 track_line_data_y={}
 
@@ -367,14 +363,7 @@ def save_csv():
 
 schedule_screenshot=False
 def save_image():
-    global schedule_screenshot,filename_full_screenshot
-    filename_full_screenshot = path_join(INTERNAL_DIR_IMAGES, 'sas.png')
-
-    if os.path.isfile(filename_full_screenshot):
-        os.remove(filename_full_screenshot)
-
-    output_frame_buffer(filename_full_screenshot)
-
+    global schedule_screenshot
     schedule_screenshot=True
 
 scale_factor_logf_to_bucket_fft=1
@@ -389,7 +378,7 @@ def logf_to_bucket_tracks(logf):
 phase_step=1.0
 
 def change_f(fpar):
-    global current_logf,current_bucket,phase_step,two_pi_by_out_samplerate,schedule_screenshot,TRACK_BUCKETS
+    global current_logf,current_bucket,phase_step,two_pi_by_out_samplerate,TRACK_BUCKETS
 
     if fmin_audio<fpar<fmax_audio:
         current_logf=log10(fpar)
@@ -512,6 +501,10 @@ samples_chunks_fifo=deque()
 samples_chunks_fifo_put=samples_chunks_fifo.append
 samples_chunks_fifo_get=samples_chunks_fifo.popleft
 
+processed_data_fifo=deque()
+processed_data_fifo_put=processed_data_fifo.append
+processed_data_fifo_get=processed_data_fifo.popleft
+
 output_callbacks_count=0
 samples_chunks_requested_new=0
 ###########################################################
@@ -586,11 +579,11 @@ def refresh_devices():
 latency_values=('high','low',0.01,0.02,0.03,0)
 
 out_blocksize_values=(2048,1024,512,256)
-out_blocksize_default=256
-out_latency_default='low'
+out_blocksize_default=2048
+out_latency_default='high'
 
 in_blocksize_values=(512,256,128,64,0)
-in_blocksize_default=64 if windows else 256
+in_blocksize_default=0
 in_latency_default='low' if windows else 'high'
 
 out_channel_buffer_mod_index=0
@@ -756,7 +749,6 @@ def show_info(message):
     on_viewport_resize()
     set_value('info_text',normalize_text(message,info_chars))
     show_item('info_window')
-    #bind_item_theme('info_window', semi_bg_theme)
 
 @catch
 def about_wrapper():
@@ -1143,13 +1135,14 @@ def fft_tda_factor_callback(sender=None, app_data=None):
     FFT_TDA_FACTOR_1m=1.0-FFT_TDA_FACTOR
     common_precalc()
 
-tda_tracks=0.0
-tda_tracks_1m=1.0
-def tda_tracks_callback(sender=None, app_data=None):
-    l_info(f'tda_tracks_callback:{sender},{app_data}')
-    global tda_tracks,tracks_ready,tda_tracks_1m
-    tda_tracks=float(app_data)
-    tda_tracks_1m=1.0-tda_tracks
+TRACKS_TDA_FACTOR=float(cfg['tracks_tda_factor'])
+TRACKS_TDA_FACTOR_1m=1.0-TRACKS_TDA_FACTOR
+
+def tracks_tda_factor_callback(sender=None, app_data=None):
+    l_info(f'tracks_tda_factor_callback:{sender},{app_data}')
+    global TRACKS_TDA_FACTOR,tracks_ready,TRACKS_TDA_FACTOR_1m
+    TRACKS_TDA_FACTOR=cfg['tracks_tda_factor']=float(get_value('tracks_tda_factor'))
+    TRACKS_TDA_FACTOR_1m=1.0-TRACKS_TDA_FACTOR
     common_precalc()
 
 FFT_ACTUAL_BUCKETS=0
@@ -1177,7 +1170,6 @@ def common_precalc():
         bucket_fft_freqs[b]= 10**(logf_min_audio + log_bucket_fft_width_by2 + log_bucket_fft_width * b)
         bucket_fft_edges[b+1]= 10**(logf_min_audio + log_bucket_fft_width * (b+1))
 
-
     fft_bin_indices = digitize(fft_values_x_all, bucket_fft_edges)
     l_info(f'fft_bin_indices={len(fft_bin_indices)}')
     fft_bin_counts = bincount(fft_bin_indices)
@@ -1186,8 +1178,9 @@ def common_precalc():
     if DEBUG:
         try:
             if environ['SAS_DEBUG_CSV']:
-                #save_buckets_tracks()
-                #save_buckets_edges()
+                Path(INTERNAL_DIR_CSV_DEBUG).mkdir(parents=True,exist_ok=True)
+                save_buckets_tracks()
+                save_buckets_edges()
                 save_buckets_fft()
                 save_FFT_POINTS()
                 save_fft_bin_indices()
@@ -1310,7 +1303,7 @@ def release_callback(sender, button_nr):
         else:
             #global sweeping,lock_frequency
             global is_dragging,is_resizing
-            set_viewport_vsync(cfg['vsync'])
+            #set_viewport_vsync(cfg['vsync'])
             is_dragging,is_resizing = False,False
     else:
         l_info(f'another button:{button_nr}')
@@ -1359,27 +1352,42 @@ def on_mouse_down(sender, app_data):
     if not is_dragging:
         offset_x, offset_y = get_mouse_pos(local=False)
 
-        vh = get_viewport_height()
-        vw = get_viewport_width()
-
+        vh,vw = get_viewport_height(),get_viewport_width()
         curr_vp_x, curr_vp_y = get_viewport_pos()
 
         if offset_y<20:
             is_dragging = True
-            set_viewport_vsync(False)
+            #set_viewport_vsync(False)
             #print('on_mouse_down - start dragging')
             #gc_disable()
         elif offset_x>vw-30 and offset_y>vh-30:
             is_resizing = True
 
 set_viewport_pos_scheduled=cfg['viewport_pos']
-set_viewport_size_scheduled=cfg['viewport_size']
+set_viewport_height_scheduled=cfg['viewport_height']
+set_viewport_width_scheduled=cfg['viewport_width']
+#settings_wrapper_scheduled
 
 prev_plot_x=0
 def on_mouse_move(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
 
-    if is_item_hovered("plot"):
+    #mouse_x, mouse_y = app_data
+    if is_dragging:
+        mouse_x, mouse_y = get_mouse_pos(local=False)
+        curr_vp_x = curr_vp_x + mouse_x - offset_x
+        curr_vp_y = curr_vp_y + mouse_y - offset_y
+
+        global set_viewport_pos_scheduled
+        set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
+
+    elif is_resizing:
+        mouse_x, mouse_y = get_mouse_pos()
+        global set_viewport_width_scheduled,set_viewport_height_scheduled
+        set_viewport_height_scheduled=mouse_y
+        set_viewport_width_scheduled=mouse_x
+
+    elif is_item_hovered("plot"):
         #print('move - plot')
         plot_x, plot_y = get_plot_mouse_pos()
 
@@ -1393,19 +1401,6 @@ def on_mouse_move(sender, app_data):
                     f_current=plot_x
                     status_set_frequency()
                     change_f(f_current)
-    else:
-        #mouse_x, mouse_y = app_data
-        mouse_x, mouse_y = get_mouse_pos(local=False)
-        if is_dragging:
-            curr_vp_x = curr_vp_x + mouse_x - offset_x
-            curr_vp_y = curr_vp_y + mouse_y - offset_y
-
-            global set_viewport_pos_scheduled
-            set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
-
-        elif is_resizing:
-            global set_viewport_size_scheduled
-            set_viewport_size_scheduled=[mouse_x,mouse_y]
 
 BG_SEMI = (128, 128, 128, 220)
 
@@ -1442,6 +1437,14 @@ DARK_TOOLTIP_BG = (236, 236, 175, 200)
 with theme() as semi_bg_theme:
     with theme_component(dpg.mvAll):
         dpg.add_theme_color(dpg.mvThemeCol_WindowBg, BG_SEMI)
+
+with theme() as white_text:
+    with theme_component(dpg.mvAll):
+        dpg.add_theme_color(dpg.mvThemeCol_Text, DARK_TEXT)
+
+with theme() as black_text:
+    with theme_component(dpg.mvAll):
+        dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
 
 with theme() as theme_light:
     with theme_component(dpg.mvAll):
@@ -1763,11 +1766,11 @@ def key_press_callback(sender, app_data):
         configure_item('track_buckets',default_value=items[(items.index(get_value('track_buckets'))+(1,-1)[Shift]) % len(items)])
         tracks_buckets_quant_change()
     elif app_data==dpg.mvKey_F8:
-        items=get_item_configuration('tda_tracks')['items']
-        configure_item('tda_tracks',default_value=items[(items.index(get_value('tda_tracks'))+(1,-1)[Shift]) % len(items)])
-        tda_tracks_callback(None,get_value('tda_tracks'))
+        items=get_item_configuration('tracks_tda_factor')['items']
+        configure_item('tracks_tda_factor',default_value=items[(items.index(get_value('tracks_tda_factor'))+(1,-1)[Shift]) % len(items)])
+        tracks_tda_factor_callback(None,get_value('tracks_tda_factor'))
     elif app_data==dpg.mvKey_F12:
-        settings_wrapper()
+        settings_wrapper_toggle()
     elif app_data==dpg.mvKey_F11:
         set_value('debug',(True,False)[get_value('debug')])
         debug_callback()
@@ -1793,14 +1796,14 @@ def key_press_callback(sender, app_data):
         set_value('peaks',peaks_val)
         peaks_callback()
     elif app_data==dpg.mvKey_Pause:
-        global CAPTURE,CAPTURE_END,curr_vp_x,curr_vp_y,vw,vh,viewport_rect
+        global CAPTURE,curr_vp_x,curr_vp_y,vw,vh,viewport_rect
         if CAPTURE:
-            CAPTURE_END=perf_counter()
+            CAPTURE=0
         else:
-            CAPTURE=True
-            CAPTURE_END=perf_counter()+CAPTURE_TIME
+            CAPTURE=CAPTURE_TIME*CAPTURE_FPS
             viewport_rect = (curr_vp_x, curr_vp_y, curr_vp_x + vw, curr_vp_y + vh)
             set_status('~')
+            Thread(target=capture_loop,daemon=True).start()
 
     elif app_data==dpg.mvKey_Delete:
         reset_track_press()
@@ -1833,7 +1836,7 @@ viewport_height_min=plot_min_height+status_height+title_hight
 def theme_light_callback():
     l_info('theme_light_callback')
     dpg.bind_theme(theme_light)
-    bind_item_theme("fft_line_avg",std_dev_cloud_theme)
+    #bind_item_theme("fft_line_avg",std_dev_cloud_theme)
     bind_item_theme("fft_line2",fft_line2_theme_light)
     bind_item_theme("fft_line",fft_line_theme_light)
 
@@ -1846,10 +1849,21 @@ def theme_light_callback():
     cfg['theme']='light'
     refresh_tracks()
 
+    bind_item_theme('mark_text_1',white_text)
+    bind_item_theme('mark_text_2',white_text)
+    bind_item_theme('mark_text_3',white_text)
+    bind_item_theme('mark_text_4',white_text)
+    bind_item_theme('mark_text_5',white_text)
+    bind_item_theme('mark_text_6',white_text)
+    bind_item_theme('mark_text_7',white_text)
+    bind_item_theme('mark_text_8',white_text)
+    bind_item_theme('mark_text',black_text)
+
+
 def theme_dark_callback():
     l_info('theme_dark_callback')
     dpg.bind_theme(theme_dark)
-    bind_item_theme("fft_line_avg",std_dev_cloud_theme)
+    #bind_item_theme("fft_line_avg",std_dev_cloud_theme)
     bind_item_theme("fft_line2",fft_line2_theme_dark)
     bind_item_theme("fft_line",fft_line_theme_dark)
 
@@ -1862,6 +1876,16 @@ def theme_dark_callback():
     cfg['theme']='dark'
     refresh_tracks()
 
+    bind_item_theme('mark_text_1',black_text)
+    bind_item_theme('mark_text_2',black_text)
+    bind_item_theme('mark_text_3',black_text)
+    bind_item_theme('mark_text_4',black_text)
+    bind_item_theme('mark_text_5',black_text)
+    bind_item_theme('mark_text_6',black_text)
+    bind_item_theme('mark_text_7',black_text)
+    bind_item_theme('mark_text_8',black_text)
+    bind_item_theme('mark_text',white_text)
+
 PEAKS=cfg['peaks']
 def peaks_callback():
     global PEAKS
@@ -1870,7 +1894,7 @@ def peaks_callback():
     configure_item('peaks_dist_factor',enabled=PEAKS)
     configure_item('peaks_threshold',enabled=PEAKS)
 
-    configure_item('fft_line_avg',show=PEAKS)
+    #configure_item('fft_line_avg',show=PEAKS)
 
     if PEAKS:
         configure_item("fft_line_fast",show=DEBUG)
@@ -1951,25 +1975,27 @@ def help_callback():
 
     next_fps=0
 
-create_viewport(title=title,width=1200,min_height=viewport_height_min,vsync=cfg['vsync'],decorated=decorated)
+create_viewport(title=title,min_width=800,min_height=viewport_height_min,vsync=cfg['vsync'],decorated=decorated)
 
-settings_shown=True
+#settings_shown=True
+#settings_wrapper_scheduled=None
+
+def settings_wrapper_toggle():
+    global cfg
+    cfg['settings']=(True,False)[cfg['settings']]
+    settings_wrapper()
 
 def settings_wrapper():
-    global cfg,settings_shown
-    l_info(f'settings_wrapper:{settings_shown}')
+    global cfg,settings_wrapper_scheduled
+    l_info(f'settings_wrapper:' + str(cfg['settings']))
 
-    settings_shown=(True,False)[settings_shown]
-
-    if settings_shown:
-        show_item('settings_group')
+    if cfg['settings']:
         h=max(viewport_height_min,get_viewport_height()+settings_height)
     else:
-        hide_item('settings_group')
         h=max(viewport_height_min,get_viewport_height()-settings_height)
 
     try:
-        if settings_shown:
+        if cfg['settings']:
             values=[ api['name'] for api in apis if api['devices'] ]
             configure_item('api_out',items=values)
             configure_item('api_in',items=values)
@@ -1988,8 +2014,7 @@ def settings_wrapper():
     except Exception as e:
         l_error(f'settings_wrapper:{e}')
 
-    set_viewport_height(h)
-    on_viewport_resize()
+    settings_wrapper_scheduled=h
 
 status_text=''
 def set_status(text,alert=False,timeout=2):
@@ -2013,14 +2038,14 @@ vw,vh=0,0
 def on_viewport_resize(sender=None, app_data=None):
     global vw,vh,curr_vp_x, curr_vp_y
     vw,vh = get_viewport_client_width(),get_viewport_client_height()
-    curr_vp_x, curr_vp_y = get_viewport_pos()
+    #curr_vp_x, curr_vp_y = get_viewport_pos()
 
-    global info_chars,settings_height,settings_shown
+    global info_chars,settings_height,cfg
 
     info_chars=int(vw/7)
 
     #30 -magic factor ...
-    plot_height  = max(plot_min_height, vh - (settings_height if settings_shown else 0) - status_height - title_hight + 30)
+    plot_height  = max(plot_min_height, vh - (settings_height if cfg['settings'] else 0) - status_height - title_hight + 30)
 
     set_item_height('slider', plot_height-plot_axis_height)
     set_item_pos('slider',[5,title_hight+23])
@@ -2033,6 +2058,16 @@ def on_viewport_resize(sender=None, app_data=None):
     set_item_pos('help_text',[385,30+title_hight])
 
     set_item_pos('central_info',[(vw-64-100)/2,(plot_height)/2])
+
+    set_item_pos('mark_text_1',[80-1,title_hight+plot_height-30])
+    set_item_pos('mark_text_2',[80-1,title_hight+plot_height-30-1])
+    set_item_pos('mark_text_3',[80,title_hight+plot_height-30-1])
+    set_item_pos('mark_text_4',[80+1,title_hight+plot_height-30-1])
+    set_item_pos('mark_text_5',[80+1,title_hight+plot_height-30])
+    set_item_pos('mark_text_6',[80+1,title_hight+plot_height-30+1])
+    set_item_pos('mark_text_7',[80,title_hight+plot_height-30+1])
+    set_item_pos('mark_text_8',[80-1,title_hight+plot_height-30+1])
+    set_item_pos('mark_text',[80,title_hight+plot_height-30])
 
     set_item_width('info_window', vw)
     set_item_height('info_window', vh)
@@ -2109,7 +2144,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_line_series((0,0),(dbmin,0),tag="cursor_f")
                         bind_item_theme("cursor_f",red_line_theme)
 
-                        add_line_series([20], [-120], tag="fft_line_avg")
+                        #add_line_series([20], [-120], tag="fft_line_avg")
                         add_line_series([20], [-120], tag="fft_line2")
                         add_line_series([20], [-120], tag="fft_line")
 
@@ -2170,7 +2205,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         widget_tooltip('Show License')
                         add_image_button(ico["about"],tag='aboutx',callback=about_wrapper)
                         widget_tooltip("Show 'About' Dialog")
-                        add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper)
+                        add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper_toggle)
                         widget_tooltip("Show settings")
 
         with table_row():
@@ -2277,10 +2312,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 dpg.add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_change,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5)
                             with table_row():
                                 add_checkbox(tag='fft_tda',label='TDA',callback=fft_tda_callback,default_value=cfg['fft_tda']); FFT_tda_tooltip='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tda_tooltip)
-
-                            with table_row():
-                                add_text(default_value='factor'); FFT_tda_tooltip='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tda_tooltip)
-                                add_combo(tag='fft_tda_factor',items=['0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=cfg['fft_tda_factor'],callback=fft_tda_factor_callback,width=c2width); widget_tooltip(FFT_tda_tooltip)
+                                dpg.add_slider_float(tag='fft_tda_factor',callback=fft_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['fft_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tda_tooltip)
 
                             with table_row():
                                 add_checkbox(tag='peaks',label='Peaks',callback=peaks_callback,default_value=cfg['peaks']); widget_tooltip('Peaks detection')
@@ -2312,7 +2344,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 add_combo(tag='track_buckets',items=['64','128','256'],default_value=cfg['track_buckets'],callback=tracks_buckets_quant_change,width=c2width); widget_tooltip(FFT_tooltip5)
                             with table_row():
                                 add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging\nF8 / Shift+F8'; widget_tooltip(FFT_tooltip6)
-                                add_combo(tag='tda_tracks',items=['0.0','0.1','0.2','0.3','0.4','0.5','0.6','0.7','0.8','0.9'],default_value=0.7,callback=tda_tracks_callback,width=c2width); widget_tooltip(FFT_tooltip6)
+                                dpg.add_slider_float(tag='tracks_tda_factor',callback=tracks_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['tracks_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tooltip6)
 
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=140,no_scrollbar=True,height=settings_height-5):
                     with group():
@@ -2333,6 +2365,16 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
     add_text(tag='debug_text',default_value='')
     add_text(tag='help_text',default_value='')
     add_text(tag='central_info',default_value='')
+
+    add_text(tag='mark_text_1',default_value=title,show=False)
+    add_text(tag='mark_text_2',default_value=title,show=False)
+    add_text(tag='mark_text_3',default_value=title,show=False)
+    add_text(tag='mark_text_4',default_value=title,show=False)
+    add_text(tag='mark_text_5',default_value=title,show=False)
+    add_text(tag='mark_text_6',default_value=title,show=False)
+    add_text(tag='mark_text_7',default_value=title,show=False)
+    add_text(tag='mark_text_8',default_value=title,show=False)
+    add_text(tag='mark_text',default_value=title,show=False);
 
     with dpg.handler_registry():
         add_mouse_click_handler(callback=click_callback)
@@ -2367,7 +2409,7 @@ except Exception as exception_1:
     print(exception_1)
     distro_info = 'Error. No distro.info.txt file.'
 
-distro_info+= "\nnumpy       " + str(numpy_version) + "\nsounddevice " + str(sounddevice_version) + "\n\nDearPyGui   " + str(dpg.get_dearpygui_version()) + "\n\n"
+distro_info+= "\nnumpy       " + str(numpy_version) + "\nsounddevice " + str(sounddevice_version) + "\nportaudio " + str(get_portaudio_version()) + "\n\nDearPyGui   " + str(dpg.get_dearpygui_version()) + "\n\n"
 
 print(distro_info)
 l_info(distro_info)
@@ -2384,10 +2426,10 @@ fft_duration=0
 
 refresh_devices()
 
-settings_wrapper()
-
 show_viewport()
+
 set_viewport_height(460)
+settings_wrapper()
 
 fft_ready=False
 
@@ -2404,11 +2446,8 @@ next_fps = 0
 status_shown=True
 status_hide_time=0
 
-next_gc=0
-
 hide_info()
 frames = 0
-frames_change = 0
 
 output_callbacks_all = 0
 output_samples = 0
@@ -2419,15 +2458,74 @@ help_callback()
 gc_collect()
 gc_freeze()
 
-def main_loop():
+def capture_loop():
+    global CAPTURE,CAPTURE_INTERVAL,viewport_rect
+
+    capture_frames={}
+
+    while CAPTURE:
+        capture_frames[CAPTURE]=grab(bbox=viewport_rect)
+        CAPTURE-=1
+        sleep(CAPTURE_INTERVAL)
+
+    if capture_frames:
+        timestamp=str(round(time()))
+        duration=int(1000 / CAPTURE_FPS)
+
+        frames_1=[]
+        frames_2=[]
+        frames_3=[]
+        frames_4=[]
+
+        max_frame=max(capture_frames.keys())
+
+        for key in sorted(capture_frames.keys(),reverse=True):
+            frame=capture_frames[key].convert("RGB")
+
+            frames_1.append(frame)
+
+            if not key%2:
+                frames_2.append(frame)
+            if not key%3:
+                frames_3.append(frame)
+            if not key%4:
+                frames_4.append(frame)
+
+        set_status('saving gif 1 ...')
+
+        Path(INTERNAL_DIR_IMAGES).mkdir(parents=True,exist_ok=True)
+
+        capture_frames[max_frame].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_1.gif"),save_all=True,append_images=frames_1,duration=duration,loop=1)
+
+        set_status('saving gif 2 ...')
+        capture_frames[max_frame].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_2.gif"),save_all=True,append_images=frames_2,duration=duration,loop=1)
+
+        set_status('saving gif 3 ...')
+        capture_frames[max_frame].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_3.gif"),save_all=True,append_images=frames_3,duration=duration,loop=1)
+
+        set_status('saving gif 4 ...')
+        capture_frames[max_frame].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_4.gif"),save_all=True,append_images=frames_4,duration=duration,loop=1)
+
+        capture_frames.clear()
+
+        del frames_1
+        del frames_2
+        del frames_3
+        del frames_4
+
+        set_status('')
+
+frames_change=0
+def processing():
     peaks_annos=set()
     peaks_annos_clear = peaks_annos.clear
 
     CENTRAL_INFO_SHOWN=False
 
-    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_size_scheduled,schedule_screenshot,status_timeout,fft_window_sum
-    global redraw_track_line,frames_change,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
-    global CAPTURE,CAPTURE_NEXT
+    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,status_timeout,fft_window_sum
+    global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
+    global exiting,PEAKS,frames_change,rec_samples,input_callbacks_all
+
     next_sweep_time=0
     input_callbacks_all=0
     rec_samples=0
@@ -2435,27 +2533,8 @@ def main_loop():
     data=zeros(FFT_SIZE_MAX)
     new_data=False
 
-    capture_frames={}
-    capture_frames_counter=0
-
-    while is_dearpygui_running():
-        real_update=False
-
-        now = perf_counter()
-
-        if sweeping:
-            if now>next_sweep_time:
-                sweeping_i+=1
-                if sweeping_i<sweep_steps:
-                    f=10**(logf_min_audio+sweeping_i*logf_sweep_step)
-                    change_f(f)
-                    set_value('status','Sweeping (' + str(round(f))+ ' Hz), Click on the graph to abort ...')
-
-                    next_sweep_time=now+sweeping_delay
-                else:
-                    sweeping=False
-                    play_stop()
-        if DEBUG and not (is_dragging or is_resizing):
+    while not exiting:
+        if DEBUG :
             output_callbacks_all+=output_callbacks_count
             output_callbacks_count=0
 
@@ -2471,20 +2550,22 @@ def main_loop():
                 input_callbacks_all+=1
                 rec_samples+=data_new_chunk_len
                 new_data=True
-            except:
+            except IndexError:
+                break
+            except Exception as data_new_chunk_error:
+                l_error(f'{data_new_chunk_error=}')
                 break
 
-        if new_data and not (is_dragging or is_resizing or PAUSE):
+        if new_data and not PAUSE:
             new_data=False
-
-            real_update=True
+            frames_change+=1
 
             #from numpy.random import randn
             #data = randn(cfg['fft_size'])
 
-            data_slice=data[-FFT_SIZE:]
+            #data_slice=data[-FFT_SIZE:]
 
-            current_sample_db = 10 * log10( np_mean(np_square(data_slice)) + 1e-12)
+            current_sample_db = 10 * log10( np_mean(np_square(data[-FFT_SIZE:])) + 1e-12)
 
             if not PEAKS:
                 for fint in peaks_annos:
@@ -2493,19 +2574,17 @@ def main_loop():
 
             if FFT and fft_ready:
                 try:
-                    fft_values_y=20*np_log10( np_abs( np_fft_rfft(data_slice*fft_window)) / FFT_SIZE + 1e-12 )
+                    fft_values_y=20*np_log10( np_abs( np_fft_rfft(data[-FFT_SIZE:]*fft_window)) / FFT_SIZE + 1e-12 )
 
                     if FFT_FBA:
                         fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
                         fft_values_y=np_array([fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]])
                         fft_values_x = fft_values_x_bins
 
-                        initlen=len(fft_values_y)
-
                         if FFT_SMOOTH:
                             for i_smooth in range(FFT_SMOOTH_FACTOR):
                                 csum = np_cumsum(np_pad(fft_values_y,2,'reflect'))
-                                fft_values_y = (csum[4:] - csum[:-4])/4
+                                fft_values_y = (csum[3:] - csum[:-3])/3
 
                     else:
                         fft_values_x = fft_values_x_all
@@ -2595,8 +2674,8 @@ def main_loop():
                     print('FFT Exception:',exception_fft)
 
             if playing_state==2 and track_line_data_y_recorded and current_bucket<TRACK_BUCKETS:
-                track_line_data_y_recorded[current_bucket]*=tda_tracks
-                track_line_data_y_recorded[current_bucket]+=current_sample_db*tda_tracks_1m
+                track_line_data_y_recorded[current_bucket]*=TRACKS_TDA_FACTOR
+                track_line_data_y_recorded[current_bucket]+=current_sample_db*TRACKS_TDA_FACTOR_1m
                 redraw_track_line=True
 
             set_value('cursor_db_txt', (25000, current_sample_db))
@@ -2611,6 +2690,7 @@ def main_loop():
                 #set_value('help_text','')
                 help_off()
             elif status_timeout!=0:
+                now = perf_counter()
                 if now>status_timeout:
                     #set_value('help_text','')
                     status_timeout=0
@@ -2626,110 +2706,112 @@ def main_loop():
                         set_value(f"track{track}", [bucket_tracks_freqs, track_line_data_y[track]])
 
                 redraw_track_line=False
+        else:
+            sleep(0.0001)
 
+
+Thread(target=processing,daemon=True).start()
+
+def main_loop():
+    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,status_timeout,fft_window_sum
+    global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
+    global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg
+    next_sweep_time=0
+
+    data=zeros(FFT_SIZE_MAX)
+    new_data=False
+
+    while is_dearpygui_running():
         if set_viewport_pos_scheduled:
             set_viewport_pos(set_viewport_pos_scheduled)
-            cfg['viewport_pos']=set_viewport_pos_scheduled
             set_viewport_pos_scheduled=False
-            real_update=True
-        elif set_viewport_size_scheduled:
-            set_viewport_width(set_viewport_size_scheduled[0])
-            set_viewport_height(set_viewport_size_scheduled[1])
-            cfg['viewport_size']=set_viewport_size_scheduled
-            set_viewport_size_scheduled=None
-            real_update=True
-        elif schedule_screenshot:
+            render_dearpygui_frame()
+            sleep(0.001)
+            continue
+
+        if set_viewport_width_scheduled:
+            set_viewport_width(set_viewport_width_scheduled)
+            on_viewport_resize()
+            set_viewport_width_scheduled=False
+            render_dearpygui_frame()
+            sleep(0.001)
+            continue
+
+        if set_viewport_height_scheduled:
+            set_viewport_height(set_viewport_height_scheduled)
+            set_viewport_height_scheduled=False
+            on_viewport_resize()
+            render_dearpygui_frame()
+            sleep(0.001)
+            continue
+
+        if schedule_screenshot:
             hide_item('cursor_db_txt')
             hide_item('cursor_f_txt')
             hide_item('cursor_f')
 
+            configure_item('mark_text_1',show=True)
+            configure_item('mark_text_2',show=True)
+            configure_item('mark_text_3',show=True)
+            configure_item('mark_text_4',show=True)
+            configure_item('mark_text_5',show=True)
+            configure_item('mark_text_6',show=True)
+            configure_item('mark_text_7',show=True)
+            configure_item('mark_text_8',show=True)
+            configure_item('mark_text',show=True)
+
             render_dearpygui_frame()
+            sleep(0.01)
+            render_dearpygui_frame()
+            sleep(0.01)
 
-            if os.path.isfile(filename_full_screenshot):
-                x, y = dpg.get_item_rect_min("plot")
-                w, h = dpg.get_item_rect_size("plot")
+            x, y = get_item_rect_min("plot")
+            w, h = get_item_rect_size("plot")
 
-                timestamp=strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) )
-                filename_cut=path_join(INTERNAL_DIR_IMAGES, f'sas-{timestamp}.png')
+            viewport_rect = (curr_vp_x, curr_vp_y, curr_vp_x + vw, curr_vp_y + vh)
 
-                set_status(f'saving {filename_cut} ...')
+            ss=grab(bbox=viewport_rect)
 
-                try:
-                    Image.open(filename_full_screenshot).crop((x, y, x+w, y+h)).save(filename_cut)
-                except Exception as exception_img:
-                    l_error(f'exception_img:{exception_img}')
-                    print(f'exception_img:{exception_img}')
-                else:
-                    schedule_screenshot=False
+            timestamp=strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) )
 
-                    show_item('cursor_db_txt')
-                    show_item('cursor_f_txt')
-                    show_item('cursor_f')
-        elif CAPTURE and now>CAPTURE_NEXT:
-            if now>CAPTURE_END:
-                if capture_frames:
-                    set_status('processing gifs ...')
-                    render_dearpygui_frame()
-                    timestamp=str(round(time()))
-                    duration=int(1000 / CAPTURE_FPS)
+            Path(INTERNAL_DIR_IMAGES).mkdir(parents=True,exist_ok=True)
 
-                    frames_1=[]
-                    frames_2=[]
-                    frames_3=[]
-                    frames_4=[]
+            ss.save(path_join(INTERNAL_DIR_IMAGES,f"img{timestamp}.png"))
+            ss.crop((x, y, x+w, y+h)).save(path_join(INTERNAL_DIR_IMAGES,f"img{timestamp}-crop.png"))
 
-                    for key,frame_raw in capture_frames.items():
-                        frame=frame_raw.convert("RGB")
+            schedule_screenshot=False
 
-                        frames_1.append(frame)
+            show_item('cursor_db_txt')
+            show_item('cursor_f_txt')
+            show_item('cursor_f')
 
-                        if not key%2:
-                            frames_2.append(frame)
-                        if not key%3:
-                            frames_3.append(frame)
-                        if not key%4:
-                            frames_4.append(frame)
+            configure_item('mark_text_1',show=False)
+            configure_item('mark_text_2',show=False)
+            configure_item('mark_text_3',show=False)
+            configure_item('mark_text_4',show=False)
+            configure_item('mark_text_5',show=False)
+            configure_item('mark_text_6',show=False)
+            configure_item('mark_text_7',show=False)
+            configure_item('mark_text_8',show=False)
+            configure_item('mark_text',show=False)
 
-                    set_status('saving gif 1 ...')
-                    render_dearpygui_frame()
-                    capture_frames[0].save(f"recording_{timestamp}_1.gif",save_all=True,append_images=frames_1,duration=duration,loop=1)
-
-                    set_status('saving gif 2 ...')
-                    render_dearpygui_frame()
-                    capture_frames[0].save(f"recording_{timestamp}_2.gif",save_all=True,append_images=frames_2,duration=duration,loop=1)
-
-                    set_status('saving gif 3 ...')
-                    render_dearpygui_frame()
-                    capture_frames[0].save(f"recording_{timestamp}_3.gif",save_all=True,append_images=frames_3,duration=duration,loop=1)
-
-                    set_status('saving gif 4 ...')
-                    render_dearpygui_frame()
-                    capture_frames[0].save(f"recording_{timestamp}_4.gif",save_all=True,append_images=frames_4,duration=duration,loop=1)
-
-                    capture_frames_counter=0
-                    capture_frames.clear()
-                    del frames_1
-                    del frames_2
-                    del frames_3
-                    del frames_4
-
-                    set_status('')
-                    render_dearpygui_frame()
-                CAPTURE=False
+        if settings_wrapper_scheduled:
+            if cfg['settings']:
+                set_viewport_height(settings_wrapper_scheduled)
+                on_viewport_resize()
+                show_item('settings_group')
             else:
-                CAPTURE_NEXT=now+CAPTURE_INTERVAL
+                hide_item('settings_group')
+                set_viewport_height(settings_wrapper_scheduled)
+                on_viewport_resize()
 
-                render_dearpygui_frame()
-                capture_frames[capture_frames_counter]=grab(bbox=viewport_rect)
-                capture_frames_counter+=1
-        else:
-            render_dearpygui_frame()
+            settings_wrapper_scheduled=None
+
+        render_dearpygui_frame()
+        frames += 1
 
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
-            if real_update:
-                frames_change+=1
-            frames += 1
-
+            now = perf_counter()
             if now >= next_fps :
                 set_value('debug_text',
                     f"FPS:{frames}/{frames_change} VSync:{VSYNC_STATE_NAME}\n\n"
@@ -2741,7 +2823,7 @@ def main_loop():
                     f"FBA: {FFT_FBA}\n"
                     f"FBA_SIZE: {FFT_FBA_SIZE}\n"
                     f"TDA: {FFT_TDA}\n"
-                    f"TDA_FACTOR: {FFT_TDA_FACTOR}")
+                    f"TDA_FACTOR: {FFT_TDA_FACTOR:.2f}")
                 frames = 0
                 frames_change = 0
                 input_callbacks_all = 0
@@ -2753,11 +2835,29 @@ def main_loop():
                 next_fps = now+1.0
 
         ##################################
+        if sweeping:
+            now = perf_counter()
+            if now>next_sweep_time:
+                sweeping_i+=1
+                if sweeping_i<sweep_steps:
+                    f=10**(logf_min_audio+sweeping_i*logf_sweep_step)
+                    change_f(f)
+                    set_value('status','Sweeping (' + str(round(f))+ ' Hz), Click on the graph to abort ...')
+
+                    next_sweep_time=now+sweeping_delay
+                else:
+                    sweeping=False
+                    play_stop()
+        ##################################
 
         if exiting:
             break
 
 main_loop()
+
+cfg['viewport_pos']=get_viewport_pos()
+cfg['viewport_height']=get_viewport_height()
+cfg['viewport_width']=get_viewport_width()
 
 print('exiting')
 sweeping=False
