@@ -187,6 +187,8 @@ playing_state=0
 
 if windows:
     from os import startfile
+    import ctypes
+    user32 = ctypes.windll.user32
 
 def catch(func):
     def wrapper(*args,**kwargs):
@@ -1378,6 +1380,9 @@ def on_mouse_move(sender, app_data):
 
     #mouse_x, mouse_y = app_data
     if is_dragging:
+        if windows:
+            user32.ShowCursor(False)
+
         mouse_x, mouse_y = get_mouse_pos(local=False)
         curr_vp_x = curr_vp_x + mouse_x - offset_x
         curr_vp_y = curr_vp_y + mouse_y - offset_y
@@ -1386,6 +1391,9 @@ def on_mouse_move(sender, app_data):
         set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
 
     elif is_resizing:
+        if windows:
+            user32.ShowCursor(True)
+
         global set_viewport_width_scheduled,set_viewport_height_scheduled
         width,height = get_mouse_pos()
         if width>=viewport_width_min:
@@ -1395,6 +1403,9 @@ def on_mouse_move(sender, app_data):
             set_viewport_height_scheduled=height
 
     elif is_item_hovered("plot"):
+        if windows:
+            user32.ShowCursor(True)
+
         plot_x, plot_y = get_plot_mouse_pos()
 
         if plot_x is not None:
