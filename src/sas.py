@@ -198,6 +198,7 @@ if windows:
     IDC_HAND     = 32649
 
     def load_cursor(idc_id):
+        l_info('cursor_loaded')
         return LoadCursorW(None, idc_id)
 
     arrow_cursor = load_cursor(IDC_ARROW)
@@ -1390,11 +1391,12 @@ prev_plot_x=0
 def on_mouse_move(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
 
+    if windows:
+        l_info(f'cursor_set:{arrow_cursor}')
+        SetCursor(arrow_cursor)
+
     #mouse_x, mouse_y = app_data
     if is_dragging:
-        if windows:
-            ShowCursor(True)
-
         mouse_x, mouse_y = get_mouse_pos(local=False)
         curr_vp_x = curr_vp_x + mouse_x - offset_x
         curr_vp_y = curr_vp_y + mouse_y - offset_y
@@ -1403,9 +1405,6 @@ def on_mouse_move(sender, app_data):
         set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
 
     elif is_resizing:
-        if windows:
-            ShowCursor(True)
-
         global set_viewport_width_scheduled,set_viewport_height_scheduled
         width,height = get_mouse_pos()
         if width>=viewport_width_min:
@@ -1415,12 +1414,6 @@ def on_mouse_move(sender, app_data):
             set_viewport_height_scheduled=height
 
     elif is_item_hovered("plot"):
-        if windows:
-            SetCursor(arrow_cursor)
-
-            if playing_state:
-                ShowCursor(False)
-
         plot_x, plot_y = get_plot_mouse_pos()
 
         if plot_x is not None:
@@ -1433,9 +1426,6 @@ def on_mouse_move(sender, app_data):
                     f_current=plot_x
                     status_set_frequency()
                     change_f(f_current)
-    else:
-        if windows:
-            ShowCursor(True)
 
 BG_SEMI = (128, 128, 128, 220)
 
@@ -2863,7 +2853,9 @@ def main_loop():
 
             settings_wrapper_scheduled=None
 
+        SetCursor(arrow_cursor)
         render_dearpygui_frame()
+        SetCursor(arrow_cursor)
         frames += 1
 
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
