@@ -1391,9 +1391,6 @@ prev_plot_x=0
 def on_mouse_move(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
 
-    #if windows:
-    #    SetCursor(arrow_cursor)
-
     #mouse_x, mouse_y = app_data
     if is_dragging:
         mouse_x, mouse_y = get_mouse_pos(local=False)
@@ -2854,7 +2851,10 @@ def main_loop():
 
         #SetCursor(arrow_cursor)
         render_dearpygui_frame()
-        SetCursor(arrow_cursor)
+        #SetCursor(arrow_cursor)
+        if playing_state:
+            ShowCursor(False)
+
         frames += 1
 
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
