@@ -2854,8 +2854,8 @@ def main_loop():
             settings_wrapper_scheduled=None
 
         render_dearpygui_frame()
-        if windows:
-            SetCursor(arrow_cursor)
+        #if windows:
+        #    SetCursor(arrow_cursor)
 
         frames += 1
 
