@@ -189,6 +189,18 @@ if windows:
     from os import startfile
     import ctypes
     ShowCursor = ctypes.windll.user32.ShowCursor
+    LoadCursorW = ctypes.windll.user32.LoadCursorW
+    SetCursor = ctypes.windll.user32.SetCursor
+
+    IDC_ARROW    = 32512
+    IDC_SIZEALL  = 32646
+    IDC_CROSS    = 32515
+    IDC_HAND     = 32649
+
+    def load_cursor(idc_id):
+        return LoadCursorW(None, idc_id)
+
+    arrow_cursor = load_cursor(IDC_ARROW)
 
 def catch(func):
     def wrapper(*args,**kwargs):
@@ -1404,6 +1416,8 @@ def on_mouse_move(sender, app_data):
 
     elif is_item_hovered("plot"):
         if windows:
+            SetCursor(arrow_cursor)
+
             if playing_state:
                 ShowCursor(False)
 
