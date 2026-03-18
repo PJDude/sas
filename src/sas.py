@@ -77,10 +77,10 @@ else:
 print(f'{EXECUTABLE_DIR=}')
 print(f'{EXECUTABLE_DIR_REAL=}')
 
-INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"sas-internal"])
-INTERNAL_DIR_CSV_DEBUG = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'csv-debug'])
-INTERNAL_DIR_LOGS = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'logs'])
-INTERNAL_DIR_IMAGES = sep.join([EXECUTABLE_DIR_REAL,"sas-internal",'images'])
+INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"data"])
+INTERNAL_DIR_CSV_DEBUG = sep.join([INTERNAL_DIR,'debug'])
+INTERNAL_DIR_LOGS = sep.join([INTERNAL_DIR,'log'])
+INTERNAL_DIR_IMAGES = sep.join([INTERNAL_DIR,'img'])
 
 Path(INTERNAL_DIR_LOGS).mkdir(parents=True,exist_ok=True)
 
@@ -122,8 +122,6 @@ cfg.setdefault('theme','dark')
 cfg.setdefault('track_buckets',256)
 
 cfg.setdefault('viewport_pos',[100,100])
-cfg.setdefault('viewport_height',300)
-cfg.setdefault('viewport_width',800)
 
 cfg.setdefault('settings',False)
 
@@ -216,6 +214,8 @@ def status_set_frequency():
 
     if res_list:
         set_value('status',' '.join(res_list) + ' [#buffer:dBFS]')
+    else:
+        set_value('status',' ')
 
 def scroll_mod(mod,factor=0.001):
     if lock_frequency:
@@ -818,6 +818,7 @@ def track_action_callback(sender=None,app_data=None,track=None):
             dpg.move_item(f"track{track}",parent="y_axis")
     else:
         cfg['show_track'][track]=not cfg['show_track'][track]
+
         dpg.move_item(f"track{track}",parent="y_axis")
         if not cfg['show_track'][track]:
             if cfg['recorded']==track:
@@ -1386,7 +1387,12 @@ def on_mouse_move(sender, app_data):
 
     elif is_resizing:
         global set_viewport_width_scheduled,set_viewport_height_scheduled
-        set_viewport_width_scheduled, set_viewport_height_scheduled = get_mouse_pos()
+        width,height = get_mouse_pos()
+        if width>=viewport_width_min:
+            set_viewport_width_scheduled=width
+
+        if height>=viewport_height_min[cfg['settings']]:
+            set_viewport_height_scheduled=height
 
     elif is_item_hovered("plot"):
         plot_x, plot_y = get_plot_mouse_pos()
@@ -1835,6 +1841,11 @@ plot_axis_height=40
 viewport_height_min=(plot_min_height+status_height+title_hight,
                      plot_min_height+status_height+title_hight+settings_height)
 
+viewport_width_min=1080
+
+cfg.setdefault('viewport_height',viewport_height_min[0])
+cfg.setdefault('viewport_width',viewport_width_min)
+
 def theme_light_callback():
     l_info('theme_light_callback')
     dpg.bind_theme(theme_light)
@@ -2074,7 +2085,7 @@ def exit_press(sender=None, app_data=None):
     global exiting
     exiting=True
 
-create_viewport(title=title,min_width=1080,vsync=cfg['vsync'],decorated=decorated)
+create_viewport(title=title,vsync=cfg['vsync'],decorated=decorated)
 
 ###################################################
 with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_move=True) as main:
@@ -2395,11 +2406,8 @@ else:
     hide_item('settings_group')
     set_viewport_min_height(viewport_height_min[0])
 
-#settings_wrapper()
-
 if cfg['viewport_height']:
     set_viewport_height(cfg['viewport_height'])
-
 
 if cfg['viewport_width']:
     set_viewport_width(cfg['viewport_width'])
@@ -2408,7 +2416,6 @@ if cfg['viewport_pos']:
     set_viewport_pos(cfg['viewport_pos'])
 
 on_viewport_resize()
-
 
 dpg.set_viewport_small_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas_small.png")))
 dpg.set_viewport_large_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas.png")))
@@ -2451,10 +2458,6 @@ fft_duration=0
 refresh_devices()
 
 show_viewport()
-'settings'
-
-#set_viewport_height(460)
-#settings_wrapper()
 
 fft_ready=False
 
@@ -2515,17 +2518,15 @@ def capture_loop():
 
         max_frame=max(capture_frames.keys())
 
+        Path(INTERNAL_DIR_IMAGES).mkdir(parents=True,exist_ok=True)
+
         sorted_keys_but_first=list(sorted(capture_frames.keys(),reverse=True))[1:]
 
-        set_status('saving gif 1 w...')
-        capture_frames[max_frame][0].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_1_whole.gif"),save_all=True,append_images=[capture_frames[key][0] for key in sorted_keys_but_first],duration=duration,loop=1)
-        set_status('saving gif 1 p...')
-        capture_frames[max_frame][1].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_1_plot.gif"),save_all=True,append_images=[capture_frames[key][1] for key in sorted_keys_but_first],duration=duration,loop=1)
-
-        set_status('saving gif 2 w...')
-        capture_frames[max_frame][0].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_2_whole.gif"),save_all=True,append_images=[capture_frames[key][0] for key in sorted_keys_but_first if not key%2],duration=duration,loop=1)
-        set_status('saving gif 2 p...')
-        capture_frames[max_frame][1].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_2_plot.gif"),save_all=True,append_images=[capture_frames[key][1] for key in sorted_keys_but_first if not key%2],duration=duration,loop=1)
+        for i in (1,2,3,4,5):
+            set_status(f'saving gif {i} v...')
+            capture_frames[max_frame][0].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_{i}_v.gif"),save_all=True,append_images=[capture_frames[key][0] for key in sorted_keys_but_first if not key%i],duration=duration,loop=1)
+            set_status(f'saving gif {i} p...')
+            capture_frames[max_frame][1].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_{i}_p.gif"),save_all=True,append_images=[capture_frames[key][1] for key in sorted_keys_but_first if not key%i],duration=duration,loop=1)
 
         CAPTURE_saving=False
         set_status('')
