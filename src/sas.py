@@ -1300,8 +1300,6 @@ def click_callback(sender, button_nr):
             else:
                 play_start()
                 status_set_frequency()
-                if windows:
-                    ShowCursor(False)
 
         elif button_nr==1:
             sweep_abort()
@@ -1323,8 +1321,6 @@ def release_callback(sender, button_nr):
 
         if is_item_hovered("plot"):
             play_stop()
-            if windows:
-                ShowCursor(True)
         #else:
             #global sweeping,lock_frequency
     else:
@@ -2854,8 +2850,8 @@ def main_loop():
             settings_wrapper_scheduled=None
 
         render_dearpygui_frame()
-        #if windows:
-        #    SetCursor(arrow_cursor)
+        if windows:
+            SetCursor(arrow_cursor)
 
         frames += 1
 
