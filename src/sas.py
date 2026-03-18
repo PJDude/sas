@@ -2041,6 +2041,11 @@ def set_status(text,alert=False,timeout=2):
         #    bind_item_theme("status_text", text_ok)
 
 info_chars=0
+def plot_drag_callback(sender=None, app_data=None):
+    print('plot_drag_callback')
+
+def plot_drop_callback(sender=None, app_data=None):
+    print('plot_drop_callback')
 
 vw,vh=0,0
 def on_viewport_resize(sender=None, app_data=None):
@@ -2127,13 +2132,16 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
         add_table_column(width_stretch=True, init_width_or_weight=-1)
 
         with table_row():
+            #with group(tag='plot_combo',horizontal=True,cursor_on_hover=dpg.mvMouseCursor_Arrow):
+
             with group(tag='plot_combo',horizontal=True):
+
                 add_spacer(width=6)
 
                 dpg.add_slider_float(tag='slider',callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,format="",width=10,track_offset=0.5)
                 widget_tooltip('Adjust dynamic range')
 
-                with plot(tag='plot',no_mouse_pos=True,no_menus=True,no_frame=True):
+                with plot(tag='plot',no_mouse_pos=True,no_menus=True,no_frame=True,drag_callback=plot_drag_callback,drop_callback=plot_drop_callback):
                     yticks = (('dBFS',00),('-10',-10),("-20",-20),('-30',-30),('-40',-40),('-50',-50),('-60',-60),('-70',-70),('-80',-80),('-90',-90), ("-100",-100), ("-110",-110), ("-120",-120))
                     xticks = (('',10),("20Hz",20),('',30),('',40),('',50),('',60),('',70),('',80),('',90), ("100Hz",100),
                         ('',200),('',300),('',400),('',500),('',600),('',700),('',800),('',900),("1kHz",1000),
@@ -2480,7 +2488,11 @@ frames = 0
 output_callbacks_all = 0
 output_samples = 0
 
-configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False)
+try:
+    configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False,mouse_draw_cursor=True)
+except:
+    configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False)
+
 help_callback()
 
 gc_collect()
