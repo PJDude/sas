@@ -1391,9 +1391,8 @@ prev_plot_x=0
 def on_mouse_move(sender, app_data):
     global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
 
-    if windows:
-        l_info(f'cursor_set:{arrow_cursor}')
-        SetCursor(arrow_cursor)
+    #if windows:
+    #    SetCursor(arrow_cursor)
 
     #mouse_x, mouse_y = app_data
     if is_dragging:
@@ -2853,7 +2852,7 @@ def main_loop():
 
             settings_wrapper_scheduled=None
 
-        SetCursor(arrow_cursor)
+        #SetCursor(arrow_cursor)
         render_dearpygui_frame()
         SetCursor(arrow_cursor)
         frames += 1
