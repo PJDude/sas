@@ -98,9 +98,7 @@ Portable executable packages for **Linux** and **Windows** can be downloaded fro
 ### False positives issue
 [Reference to potential problems with Windows Defender and other antivirus programs](https://github.com/PJDude/dude/discussions/9).
 
-<h3 align="center">  ### Check out my [homepage](https://github.com/PJDude) for other projects.  </h3>
-
-### Check out my [homepage](https://github.com/PJDude) for other projects.
+$~$
 
 <div align="center">
 
@@ -108,5 +106,3 @@ Portable executable packages for **Linux** and **Windows** can be downloaded fro
 
 </div>
 
-
-<h3 align="center">### Check out my [homepage](https://github.com/PJDude) for other projects!</h3>
