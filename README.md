@@ -1,7 +1,7 @@
 ## <img src="./src/icons/sas.png" width=30> Simple Audio Sweeper
 **A handy tool for DIY audio projects**
 
-#### Features
+### Features
 - Automatic and manual sweeping of the audio frequency spectrum to determine the system's frequency response
 - Easy generation of any specific sound frequency to test audio equipment or identify unwanted resonances
 - Live FFT graph with selectable FFT size, window functions, and post-processing stages
@@ -22,7 +22,7 @@
 ![image info](./info/sas.gif)
 ![image info](./info/sas.png)
 
-#### Usage
+### Usage
 
 > The microphone and speakers must be connected and configured. Audio from the speakers must be captured by the microphone.
 
@@ -78,7 +78,7 @@ automatic sweep, which is designed to operate at a controlled, steady pace.
 
 Ensure silence during analysis — only the sound emitted by the speakers should be recorded. The resulting characteristics will reflect the combined response of the microphone, speakers, and all other components in the audio path. For example, when analyzing an amplifier with speakers, the microphone's frequency response should be more accurate than that of the speakers being measured.
 
-### Download:
+### Download
 Portable executable packages for **Linux** and **Windows** can be downloaded from the [Releases](https://github.com/PJDude/sas/releases).
 
 
@@ -98,4 +98,15 @@ Portable executable packages for **Linux** and **Windows** can be downloaded fro
 ### False positives issue
 [Reference to potential problems with Windows Defender and other antivirus programs](https://github.com/PJDude/dude/discussions/9).
 
+<h3 align="center">  ### Check out my [homepage](https://github.com/PJDude) for other projects.  </h3>
+
 ### Check out my [homepage](https://github.com/PJDude) for other projects.
+
+<div align="center">
+
+### Check out my [homepage](https://github.com/PJDude) for other projects!
+
+</div>
+
+
+<h3 align="center">### Check out my [homepage](https://github.com/PJDude) for other projects!</h3>
