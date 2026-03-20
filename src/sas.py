@@ -36,7 +36,7 @@ from time import strftime,time,localtime,perf_counter,sleep
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8
-from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version,get_portaudio_version
+from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings
 import numpy as np
 from threading import Thread
 
@@ -446,7 +446,7 @@ def vsync_callback(sender=None, app_data=None):
     l_info(f'vsync_callback:{sender},{app_data}')
     set_viewport_vsync(app_data)
     global VSYNC_STATE_NAME,next_fps
-    VSYNC_STATE_NAME=('OFF','ON')[app_data]
+    VSYNC_STATE_NAME=('OFF',' ON')[app_data]
     cfg['vsync']=app_data
     next_fps=0
 
@@ -648,6 +648,30 @@ def out_channel_changed(sender=None, app_data=None,user_data=False):
     if user_data:
         out_stream_init()
 
+def out_samplerate_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'out_samplerate_changed:{sender},{app_data},{user_data}')
+
+    play_stop()
+    out_stream_stop()
+
+    global two_pi_by_out_samplerate
+    two_pi_by_out_samplerate = two_pi/float(get_value("out_samplerate"))
+
+    if user_data:
+        common_precalc()
+
+        out_stream_init()
+
+def in_samplerate_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'in_samplerate_changed:{sender},{app_data},{user_data}')
+
+    play_stop()
+    stream_in.stop()
+
+    if user_data:
+        common_precalc()
+        in_stream_init()
+
 def out_stream_stop():
     if stream_out:
         l_info('OutputStream stop.')
@@ -684,7 +708,7 @@ def out_stream_init():
     out_channel_buffer_mod_index=channels-1
 
     device=int(device_out_current['index'])
-    samplerate=float(device_out_current['default_samplerate'])
+    samplerate=float(get_value('out_samplerate'))
     latency=latency_for_stream(get_value('out_latency'))
     blocksize=int(get_value('out_blocksize'))
 
@@ -731,7 +755,7 @@ def in_stream_init():
 
     device=int(device_in_current['index'])
 
-    samplerate=float(device_in_current['default_samplerate'])
+    samplerate=float(get_value('in_samplerate'))
     latency=latency_for_stream(get_value('in_latency'))
     blocksize=int(get_value('in_blocksize'))
     channels=1
@@ -850,8 +874,6 @@ except Exception as e_ver:
 
 print(f'{VER_TIMESTAMP=}')
 
-#TODO
-#in_samplerate = 44100
 two_pi = pi+pi
 
 phase = 0.0
@@ -899,7 +921,12 @@ def api_in_callback(sender=None, app_data=None):
     l_info(f'api_in_changed:{sender},{app_data},{api_name}')
 
     api_in_id=[api for api in apis if api['name']==api_name][0]
-    in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in api_in_id['devices'] ]
+
+    if get_value('allow_all_devices'):
+        in_values=[ dev['name'] for dev in devices]
+    else:
+        in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in api_in_id['devices'] ]
+
     in_dev_name=get_value("in_dev")
 
     configure_item("in_dev",items=in_values)
@@ -1000,7 +1027,7 @@ def fft_callback(sender=None, app_data=None):
     configure_item('peaks_threshold',enabled=FFT)
 
 FFT_SIZE=cfg['fft_size']
-FFT_SIZE_MAX=65536
+FFT_SIZE_MAX=524288
 def fft_size_callback(sender=None, app_data=None):
     global cfg,FFT_POINTS,FFT_SIZE,fft_ready
     fft_ready=False
@@ -1166,9 +1193,12 @@ FFT_ACTUAL_BUCKETS=0
 def common_precalc():
     l_info('common_precalc')
 
-    global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_fps
+    global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_fps,current_sample_db_time_samples
 
-    in_samplerate_by_fft_size = in_samplerate / FFT_SIZE
+    current_sample_db_time=0.1
+    current_sample_db_time_samples=int(float(get_value('in_samplerate'))*current_sample_db_time)
+
+    in_samplerate_by_fft_size = float(get_value('in_samplerate')) / FFT_SIZE
     fft_duration= 1.0/in_samplerate_by_fft_size
 
     dummy_data=[200]*FFT_POINTS
@@ -1205,15 +1235,41 @@ def common_precalc():
         except:
             pass
 
-    global fft_bin_indices_selected,fft_values_x_bins,fft_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev
+    global fft_bin_indices_selected,fft_values_x_bins,fft_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
     fft_bin_indices_selected=np_array([i for i,i_n in enumerate(isnan(bincount(fft_bin_indices, weights=dummy_data)[1:] / fft_bin_counts[1:])) if not i_n])
     FFT_ACTUAL_BUCKETS=len(fft_bin_indices_selected)
     fft_values_x_bins=np_array([bucket_fft_freqs[i] for i in fft_bin_indices_selected[:-1]])
 
     fft_values_y_prev=[0]*len(bucket_fft_freqs)
 
+    data=zeros(FFT_SIZE)
+
     fft_ready=True
     next_fps = 0
+
+
+rates_to_test = (44100,48000,88200,96000,176400,192000,384000)
+def check_sample_rates_input(device_id):
+    supported = []
+    for rate in rates_to_test:
+        try:
+            check_input_settings(device=device_id, samplerate=rate)
+            supported.append(rate)
+            l_info(f'try_in:{rate}:ok')
+        except Exception as try_e:
+            l_error(f'try_in:{rate}:{try_e}')
+    return tuple(supported)
+
+def check_sample_rates_output(device_id):
+    supported = []
+    for rate in rates_to_test:
+        try:
+            check_output_settings(device=device_id, samplerate=rate)
+            supported.append(rate)
+            l_info(f'try_out:{rate}:ok')
+        except Exception as try_e:
+            l_error(f'try_out:{rate}:{try_e}')
+    return tuple(supported)
 
 device_out_current=None
 
@@ -1237,12 +1293,12 @@ def out_dev_changed(sender=None, app_data=None):
         out_channel_value=1
         set_value("out_channel",out_channel_value)
 
-    global out_samplerate,two_pi_by_out_samplerate
-    out_samplerate=int(device_out_current['default_samplerate'])
-    set_value("out_samplerate",out_samplerate)
+    sel_rates=check_sample_rates_output(device_out_current['index'])
+    configure_item("out_samplerate",items=sel_rates)
 
-    two_pi_by_out_samplerate = two_pi/out_samplerate
+    set_value("out_samplerate",str(int(device_out_current['default_samplerate'])))
 
+    out_samplerate_changed()
     out_channel_changed(None,out_channel_value)
     out_latency_changed(None,out_latency_default)
     out_blocksize_changed(None,out_blocksize_default)
@@ -1272,9 +1328,10 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
         in_channel_value=1
         set_value("in_channel",in_channel_value)
 
-    global in_samplerate
-    in_samplerate=int(device_in_current['default_samplerate'])
-    set_value("in_samplerate",str(in_samplerate))
+    sel_rates=check_sample_rates_input(device_in_current['index'])
+    configure_item("in_samplerate",items=sel_rates)
+
+    set_value("in_samplerate",str(int(device_in_current['default_samplerate'])))
 
     in_channel_changed(None,in_channel_value)
     in_latency_changed(None,in_latency_default)
@@ -2224,29 +2281,22 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                     add_text(tag='status',default_value='')
 
                     with group(horizontal=True):
-                        add_image_button(ico["play"],tag='sweep',callback=sweep_press)
-                        widget_tooltip('Run frequency sweep')
+                        add_image_button(ico["play"],tag='sweep',callback=sweep_press); widget_tooltip('Run frequency sweep')
                         add_spacer(width=16)
-                        add_image_button(ico["save_pic"],tag='save_image',callback=save_image)
-                        widget_tooltip("Save Image file")
-                        add_image_button(ico["save_csv"],tag='save_csv_button',callback=save_csv)
-                        widget_tooltip("Save CSV file")
+                        add_image_button(ico["save_pic"],tag='save_image',callback=save_image); widget_tooltip("Save Image file")
+                        add_image_button(ico["save_csv"],tag='save_csv_button',callback=save_csv); widget_tooltip("Save CSV file")
                         add_spacer(width=16)
-                        add_image_button(ico["home"],tag='homepage',callback=go_to_homepage)
-                        widget_tooltip(f'Visit project homepage ({HOMEPAGE})')
-                        add_image_button(ico["license"],tag='licensex',callback=license_wrapper)
-                        widget_tooltip('Show License')
-                        add_image_button(ico["about"],tag='aboutx',callback=about_wrapper)
-                        widget_tooltip("Show 'About' Dialog")
-                        add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper_toggle)
-                        widget_tooltip("Show settings")
+                        add_image_button(ico["home"],tag='homepage',callback=go_to_homepage); widget_tooltip(f'Visit project homepage ({HOMEPAGE})')
+                        add_image_button(ico["license"],tag='licensex',callback=license_wrapper); widget_tooltip('Show License')
+                        add_image_button(ico["about"],tag='aboutx',callback=about_wrapper); widget_tooltip("Show 'About' Dialog")
+                        add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper_toggle); widget_tooltip("Show settings")
 
         with table_row():
             with group(horizontal=True,tag='settings_group'):
                 add_spacer(width=5)
 
                 c0width=100
-                c1width=250
+                c1width=220
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=c0width+c1width+c1width,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
                         add_text(default_value='AUDIO INTERFACE')
@@ -2269,16 +2319,14 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_table_column(width_fixed=True, init_width_or_weight=66)
 
                                     with table_row():
-                                        dpg.add_image(ico["out_off"],tag='out_status',width=16)
-                                        widget_tooltip('Output Stream status')
+                                        dpg.add_image(ico["out_off"],tag='out_status',width=16); widget_tooltip('Output Stream status')
                                         add_text(default_value='Output')
 
                                 with table(tag='in_tab1',header_row=False, resizable=False, policy=mvTable_SizingStretchProp):
                                     add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
                                     add_table_column(width_fixed=True, init_width_or_weight=66)
                                     with table_row():
-                                        dpg.add_image(ico["in_off"],tag='in_status')
-                                        widget_tooltip('Input Stream status')
+                                        dpg.add_image(ico["in_off"],tag='in_status',width=16); widget_tooltip('Input Stream status')
                                         add_text(default_value='Input')
 
                             with table_row():
@@ -2292,25 +2340,23 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_text(default_value='blckocksize:')
 
                                 with group(width=-1):
-
                                     add_combo(tag='api_out',default_value='',callback=api_out_callback,width=c1width)
                                     add_text(default_value=' ')
 
                                     add_combo(tag='out_dev',default_value='',callback=out_dev_changed)
                                     add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
-                                    add_text(tag='out_samplerate')
+                                    add_combo(tag='out_samplerate',default_value='',callback=out_samplerate_changed,user_data=True)
 
                                     add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
                                     add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
 
                                 with group(width=-1):
-
                                     add_combo(tag='api_in',default_value='',callback=api_in_callback,width=c1width)
-                                    add_text(default_value=' ')
+                                    add_checkbox(tag='allow_all_devices',label='All',callback=api_in_callback,default_value=False); widget_tooltip('Show all devices\n(outputs included)')
 
                                     add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True)
                                     add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
-                                    add_text(tag='in_samplerate')
+                                    add_combo(tag='in_samplerate',default_value='',callback=in_samplerate_changed,user_data=True)
 
                                     add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
                                     add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
@@ -2331,7 +2377,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                             with table_row():
                                 add_text(default_value='size'); FFT_size_tooltip='FFT size\nF4 / Shift+F4'; widget_tooltip(FFT_size_tooltip)
-                                add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536'],default_value=cfg['fft_size'],callback=fft_size_callback,width=c2width); widget_tooltip(FFT_size_tooltip)
+                                add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536','131072','262144','524288'],default_value=cfg['fft_size'],callback=fft_size_callback,width=c2width); widget_tooltip(FFT_size_tooltip)
                             with table_row():
                                 add_text(default_value='window'); FFT_window_tooltip='FFT window\nF3 / Shift+F3' ; widget_tooltip(FFT_window_tooltip)
                                 add_combo(tag='fft_window',items=['ones','hanning','hamming','blackman','bartlett'],default_value=cfg['fft_window'],callback=fft_window_changed,width=c2width); widget_tooltip(FFT_window_tooltip)
@@ -2567,13 +2613,12 @@ def processing():
 
     global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,status_timeout,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
-    global exiting,PEAKS,frames_change,rec_samples,input_callbacks_all
+    global exiting,PEAKS,frames_change,rec_samples,input_callbacks_all,current_sample_db_time_samples,data
 
     next_sweep_time=0
     input_callbacks_all=0
     rec_samples=0
 
-    data=zeros(FFT_SIZE_MAX)
     new_data=False
 
     while not exiting:
@@ -2606,9 +2651,7 @@ def processing():
             #from numpy.random import randn
             #data = randn(cfg['fft_size'])
 
-            #data_slice=data[-FFT_SIZE:]
-
-            current_sample_db = 10 * log10( np_mean(np_square(data[-FFT_SIZE:])) + 1e-12)
+            current_sample_db = 10 * log10( np_mean(np_square(data[-current_sample_db_time_samples:])) + 1e-12)
 
             if not PEAKS:
                 for fint in peaks_annos:
@@ -2858,17 +2901,20 @@ def main_loop():
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
             now = perf_counter()
             if now >= next_fps :
-                set_value('debug_text',
-                    f"FPS:{frames}/{frames_change} VSync:{VSYNC_STATE_NAME}\n\n"
-                    f"OUT samplerate : {output_samples}/s ({output_callbacks_all}/s)\n"
-                    f"IN samplerate: {rec_samples}/s ({input_callbacks_all})/s\n\n"
-                    f"FFT Window: {round(fft_duration,3)}s\n"
-                    f"FFT  / FBA  / act:\n"
-                    f"{FFT_POINTS} / {FFT_FBA_SIZE} / {FFT_ACTUAL_BUCKETS}\n"
-                    f"FBA: {FFT_FBA}\n"
-                    f"FBA_SIZE: {FFT_FBA_SIZE}\n"
-                    f"TDA: {FFT_TDA}\n"
-                    f"TDA_FACTOR: {FFT_TDA_FACTOR:.2f}")
+                part1 = [f"VSync:{VSYNC_STATE_NAME}   FPS:{frames} / (real:{frames_change}) \n",
+                        f"   smpls/s  blcks/s   CPU",
+                        f"O: {output_samples:6d}    {output_callbacks_all:4d}   {stream_in.cpu_load:.6f}",
+                        f"I: {rec_samples:6d}    {input_callbacks_all:4d}   {stream_out.cpu_load:.6f}\n",
+                        f"I:{stream_in.dtype} O:{stream_out.dtype}\n"]
+
+                part_fft = [f"FFT Window: {round(fft_duration,3)}s",
+                            "",
+                            f"FFT  /  FBA / act:",
+                            f"{FFT_POINTS} / {FFT_FBA_SIZE:4d} / {FFT_ACTUAL_BUCKETS:4d}"  if FFT_FBA else f"{FFT_POINTS} / ---- / ----",
+                            f"TDA_FACTOR: {FFT_TDA_FACTOR:.2f}" if FFT_TDA else ""
+                            ] if FFT else []
+
+                set_value('debug_text','\n'.join(part1 + part_fft))
                 frames = 0
                 frames_change = 0
                 input_callbacks_all = 0
