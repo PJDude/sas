@@ -129,6 +129,7 @@ cfg.setdefault('help',True)
 HELP=cfg['help']
 
 cfg.setdefault('decorated',False)
+cfg.setdefault('fft_fill',False)
 
 cfg.setdefault('pause',False)
 PAUSE=cfg['pause']
@@ -156,6 +157,12 @@ cfg.setdefault('peaks_threshold',15.0)
 
 cfg.setdefault('show_track',[False]*tracks)
 cfg.setdefault('recorded',-1)
+
+cfg.setdefault('api_in',None)
+cfg.setdefault('api_out',None)
+
+cfg.setdefault("out_dev",None)
+cfg.setdefault("in_dev",None)
 
 track_line_data_y={}
 
@@ -553,6 +560,7 @@ def refresh_devices():
     global apis,default_api_nr,devices,device_default_input,device_default_output
 
     apis = query_hostapis()
+
     default_api_nr=-1
     l_info(f'')
     l_info(f'Host APIs:')
@@ -942,7 +950,7 @@ api_out_id=None
 def api_in_callback(sender=None, app_data=None):
     global api_in_id,apis,devices
 
-    api_name=get_value('api_in')
+    api_name=cfg['api_in']=get_value('api_in')
     l_info(f'api_in_changed:{sender},{app_data},{api_name}')
 
     api_in_id=[api for api in apis if api['name']==api_name][0]
@@ -955,6 +963,9 @@ def api_in_callback(sender=None, app_data=None):
     in_dev_name=get_value("in_dev")
 
     configure_item("in_dev",items=in_values)
+
+    values_str=' - ' + '\n - '.join(in_values)
+    widget_tooltip(f"Available:\n\n{values_str}","in_dev")
 
     device_default_input_name=device_default_input['name']
     l_info(f'defaults:{device_default_input_name}')
@@ -971,7 +982,7 @@ def api_in_callback(sender=None, app_data=None):
 def api_out_callback(sender=None, app_data=None):
     global api_out_id,apis,devices
 
-    api_name=get_value('api_out')
+    api_name=cfg['api_out']=get_value('api_out')
     l_info(f'api_out_changed:{sender},{app_data},{api_name}')
 
     api_out_id=[api for api in apis if api['name']==api_name][0]
@@ -980,6 +991,9 @@ def api_out_callback(sender=None, app_data=None):
     out_dev_name=get_value("out_dev")
 
     configure_item("out_dev",items=out_values)
+
+    values_str=' - ' + '\n - '.join(out_values)
+    widget_tooltip(f"Available:\n\n{values_str}","out_dev")
 
     device_default_output_name=device_default_output['name']
     l_info(f'defaults:{device_default_output_name}')
@@ -1087,8 +1101,7 @@ def fft_window_changed(sender=None, app_data=None):
     fft_window_sum = np_sum(fft_window)
     l_info(f'{fft_window_sum=}')
 
-    configure_item("fft_line2", show=FFT)
-    configure_item("fft_line", show=FFT)
+    fft_fill_callback()
 
     l_info(f'fft_window_changed:{sender},{app_data},{cfg["fft_window"]},{len(fft_window)}')
 
@@ -1279,7 +1292,7 @@ def check_sample_rates_input(device_id):
     for rate in rates_to_test:
         try:
             check_input_settings(device=device_id, samplerate=rate)
-            supported.append(rate)
+            supported.append(str(rate))
             l_info(f'try_in:{rate}:ok')
         except Exception as try_e:
             l_error(f'try_in:{rate}:{try_e}')
@@ -1290,7 +1303,7 @@ def check_sample_rates_output(device_id):
     for rate in rates_to_test:
         try:
             check_output_settings(device=device_id, samplerate=rate)
-            supported.append(rate)
+            supported.append(str(rate))
             l_info(f'try_out:{rate}:ok')
         except Exception as try_e:
             l_error(f'try_out:{rate}:{try_e}')
@@ -1303,7 +1316,7 @@ def out_dev_changed(sender=None, app_data=None):
 
     global device_out_current
 
-    out_dev_name=get_value("out_dev")
+    out_dev_name=cfg["out_dev"]=get_value("out_dev")
 
     device_out_current=[device for device in devices if device['name']==out_dev_name][0]
 
@@ -1320,6 +1333,9 @@ def out_dev_changed(sender=None, app_data=None):
 
     sel_rates=check_sample_rates_output(device_out_current['index'])
     configure_item("out_samplerate",items=sel_rates)
+
+    values_str=' - ' + '\n - '.join(sel_rates)
+    widget_tooltip(f"Available:\n\n{values_str}","out_samplerate")
 
     set_value("out_samplerate",str(int(device_out_current['default_samplerate'])))
 
@@ -1338,7 +1354,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
     global device_in_current,fft_ready
     fft_ready=False
 
-    dev_name=get_value("in_dev")
+    dev_name=cfg["in_dev"]=get_value("in_dev")
 
     device_in_current=[device for device in devices if device['name']==dev_name][0]
 
@@ -1355,6 +1371,9 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
 
     sel_rates=check_sample_rates_input(device_in_current['index'])
     configure_item("in_samplerate",items=sel_rates)
+
+    values_str=' - ' + '\n - '.join(sel_rates)
+    widget_tooltip(f"Available:\n\n{values_str}","in_samplerate")
 
     set_value("in_samplerate",str(int(device_in_current['default_samplerate'])))
 
@@ -1414,16 +1433,17 @@ def wheel_callback(sender, val):
     if lock_frequency:
         scroll_mod(val)
     else:
-        slide_val=get_value('slider')
-        slide_val+=-3*val
+        if is_item_hovered("plot") or is_item_hovered("slider"):
+            slide_val=get_value('slider')
+            slide_val+=-3*val
 
-        if slide_val<30:
-            slide_val=30
-        elif slide_val>100:
-            slide_val=100
+            if slide_val<30:
+                slide_val=30
+            elif slide_val>100:
+                slide_val=100
 
-        set_value('slider',slide_val)
-        slide_change('slider')
+            set_value('slider',slide_val)
+            slide_change('slider')
 
 def on_mouse_move_tracks_enter(sender, app_data):
     #print('on_mouse_move_tracks:',sender,app_data)
@@ -1591,13 +1611,10 @@ with theme() as theme_light:
 
     with theme_component(dpg.mvPlot):
         dpg.add_theme_color(dpg.mvPlotCol_PlotBg, LIGHT_BG)
-        #dpg.add_theme_color(dpg.mvPlotCol_Fill, LIGHT_BG)
 
-    with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Fill,
-            (100, 150, 255, 80),
-            category=dpg.mvThemeCat_Plots
-        )
+    #with theme_component(dpg.mvShadeSeries):
+    #    dpg.add_theme_color(dpg.mvPlotCol_Fill,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
+    #    dpg.add_theme_color(dpg.mvPlotCol_Line,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
 
     with theme_component(dpg.mvTable):
         #dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, (50,50,60,255))
@@ -1658,15 +1675,12 @@ with theme() as theme_dark:
     with theme_component(dpg.mvPlot):
         #dpg.add_theme_color(dpg.mvPlotCol_PlotAreaBg, DARK_BG_LIGHTER)
         dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
-        #dpg.add_theme_color(dpg.mvPlotCol_Fill, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
 
     with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Fill,
-            (100, 150, 255, 80),
-            category=dpg.mvThemeCat_Plots
-        )
+        dpg.add_theme_color(dpg.mvPlotCol_Fill,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
 
     with theme_component(dpg.mvTooltip):
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
@@ -1726,6 +1740,12 @@ with theme() as fft_line_theme_light:
         dpg.add_theme_color(dpg.mvPlotCol_Line,(0, 0, 0, 130),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
+    with theme_component(dpg.mvShadeSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Fill,(20, 20, 20, 30),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(0, 0, 0, 130),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
+
 with theme() as fft_line2_theme_light:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Line,(245, 245, 245, 100),category=dpg.mvThemeCat_Plots)
@@ -1747,6 +1767,12 @@ with theme() as fft_line_theme_dark:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 130),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
+    with theme_component(dpg.mvShadeSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Fill,(200, 200, 200, 30),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 130),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
 
 with theme() as fft_line2_theme_dark:
     with theme_component(dpg.mvLineSeries):
@@ -1780,10 +1806,6 @@ with theme() as track_recorded_bg_theme_light:
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
 ########################
 
-with theme() as std_dev_cloud_theme:
-    with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Fill,(128, 128, 128, 25),category=dpg.mvThemeCat_Plots)
-
 with theme() as green_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Line,(30, 200, 0, 200),category=dpg.mvThemeCat_Plots)
@@ -1797,8 +1819,14 @@ with theme() as grid_line_theme:
 def widget_tooltip(message,widget=None):
     if not widget:
         widget=dpg.last_item()
-    with tooltip(widget, delay=0.3):
-        add_text(message)
+
+    tag = f"{widget}_tooltip"
+
+    if dpg.does_item_exist(tag):
+        dpg.delete_item(tag)
+
+    with dpg.tooltip(widget, delay=0.3, tag=tag):
+        dpg.add_text(message)
 
 def key_press_callback(sender, app_data):
     set_status('')
@@ -1848,6 +1876,11 @@ def key_press_callback(sender, app_data):
         fft=(True,False)[fft]
         set_value('fft',fft)
         fft_callback()
+    elif app_data==dpg.mvKey_G:
+        fft_fill=get_value('fft_fill')
+        fft_fill=(True,False)[fft_fill]
+        set_value('fft_fill',fft_fill)
+        fft_fill_callback()
     elif app_data==dpg.mvKey_F3:
         items=get_item_configuration('fft_window')['items']
         configure_item('fft_window',default_value=items[(items.index(get_value('fft_window'))+(1,-1)[Shift]) % len(items)])
@@ -1924,6 +1957,7 @@ def slide_change(sender):
 settings_height=190
 
 decorated=cfg['decorated']
+FFT_FILL=cfg['fft_fill']
 
 title_hight=(0 if decorated else 26)
 status_height=80
@@ -1944,6 +1978,9 @@ def theme_light_callback():
 
     bind_item_theme("fft_line2",fft_line2_theme_light)
     bind_item_theme("fft_line",fft_line_theme_light)
+
+    #bind_item_theme("fft_line_shade2",fft_line2_theme_light)
+    bind_item_theme("fft_line_shade",fft_line_theme_light)
 
     for track in range(tracks):
         bind_item_theme(f"track{track}_bg",track_theme_bg_light)
@@ -1972,6 +2009,9 @@ def theme_dark_callback():
 
     bind_item_theme("fft_line2",fft_line2_theme_dark)
     bind_item_theme("fft_line",fft_line_theme_dark)
+
+    #bind_item_theme("fft_line_shade2",fft_line2_theme_dark)
+    bind_item_theme("fft_line_shade",fft_line_theme_dark)
 
     for track in range(tracks):
         bind_item_theme(f"track{track}_bg",track_theme_bg_dark)
@@ -2049,6 +2089,16 @@ def pause_callback():
 def decorated_callback():
     cfg['decorated']=get_value('decorated')
 
+def fft_fill_callback():
+    global FFT_FILL
+    FFT_FILL=cfg['fft_fill']=get_value('fft_fill')
+
+    configure_item('fft_line_shade',show=FFT_FILL and FFT)
+    #configure_item('fft_line_shade2',show=FFT_FILL and FFT)
+
+    configure_item('fft_line',show=FFT)
+    configure_item('fft_line2',show=not FFT_FILL and FFT)
+
 def help_off():
     set_value('help',False)
     help_callback()
@@ -2059,7 +2109,7 @@ def help_callback():
     cfg['help']=HELP=get_value('help')
 
     if HELP:
-        set_value('help_text',
+        set_value('help_text1',
             "H - show this help\n"
             "F12 - toggle settings\n"
             "F11 - toggle debug info\n"
@@ -2079,8 +2129,13 @@ def help_callback():
             "P - peaks detection\n"
             "1-8 - toggle track visibility\n"
             " (toggle recording with Ctrl)]\n")
+
+        set_value('help_text2',
+            "TEXT2\n")
+
     else:
-        set_value('help_text','')
+        set_value('help_text1','')
+        set_value('help_text2','')
 
     next_fps=0
 
@@ -2102,9 +2157,7 @@ def settings_wrapper():
 
     try:
         if cfg['settings']:
-            values=[ api['name'] for api in apis if api['devices'] ]
-            configure_item('api_out',items=values)
-            configure_item('api_in',items=values)
+            refresh_api_combos()
 
             api_out_name=get_value('api_out')
             if api_out_name not in values:
@@ -2122,12 +2175,17 @@ def settings_wrapper():
 
     settings_wrapper_scheduled=h
 
+def refresh_api_combos():
+    values=[ api['name'] for api in apis if api['devices'] ]
+    values_str=' - ' + '\n - '.join(values)
+    configure_item('api_out',items=values); widget_tooltip(f"Available:\n\n{values_str}","api_out")
+    configure_item('api_in',items=values); widget_tooltip(f"Available:\n\n{values_str}","api_in")
+
 status_text=''
 def set_status(text,alert=False,timeout=2):
     global status_text,status_timeout
     if text!=status_text:
         set_value('status',text)
-        #set_value('help_text',text)
         status_text=text
 
         if timeout:
@@ -2166,7 +2224,8 @@ def on_viewport_resize(sender=None, app_data=None):
 
     set_item_pos('info_window',[0,title_hight])
     set_item_pos('debug_text',[85,30+title_hight])
-    set_item_pos('help_text',[385,30+title_hight])
+    set_item_pos('help_text1',[385,30+title_hight])
+    set_item_pos('help_text2',[700,30+title_hight])
 
     set_item_pos('central_info',[(vw-64-100)/2,(plot_height)/2])
 
@@ -2262,7 +2321,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         bind_item_theme("cursor_f",red_line_theme)
 
                         add_line_series([20], [-120], tag="fft_line2")
+                        #add_shade_series([20], y1=[-120], tag="fft_line_shade2")
+
                         add_line_series([20], [-120], tag="fft_line")
+                        add_shade_series([20], y1=[-120], tag="fft_line_shade")
 
                         add_line_series([20], [-120], tag="fft_line_fast")
                         add_line_series([20], [-120], tag="fft_line_slow")
@@ -2322,7 +2384,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 add_spacer(width=5)
 
                 c0width=100
-                c1width=220
+                c1width=230
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=c0width+c1width+c1width,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
                         add_text(default_value='AUDIO INTERFACE')
@@ -2464,7 +2526,8 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('key: V')
                                     add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug']); widget_tooltip('key: F11')
                                     add_text(default_value='Theme:')
-                                    add_checkbox(tag='decorated',label='Decor.',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decorations.\nUse if you experience problems with\ndragging or resizing the main window.\n(Requires application restart)')
+                                    add_checkbox(tag='decorated',label='Decorate',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decorations.\nUse if you experience problems with\ndragging or resizing the main window.\n(Requires application restart)')
+                                    add_spacer(width=100)
                                 with group():
                                     add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help']); widget_tooltip('key: H')
                                     add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: space')
@@ -2472,10 +2535,13 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     with group(horizontal=True):
                                         add_image_button(ico["light"],callback=theme_light_callback,width=16); widget_tooltip("Light theme\nkey:L")
                                         add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\nkey:D")
+                                    add_checkbox(tag='fft_fill',label='FFT Fill',callback=fft_fill_callback,default_value=cfg['fft_fill']); widget_tooltip("Filled graph\nkey:G")
+                                    add_spacer(width=100)
                 add_spacer(width=5)
 
     add_text(tag='debug_text',default_value='')
-    add_text(tag='help_text',default_value='')
+    add_text(tag='help_text1',default_value='')
+    add_text(tag='help_text2',default_value='')
     add_text(tag='central_info',default_value='')
 
     add_text(tag='mark_text_1',default_value=title,show=False)
@@ -2554,7 +2620,9 @@ stream_out=None
 
 fft_duration=0
 
+
 refresh_devices()
+refresh_api_combos()
 
 show_viewport()
 
@@ -2583,6 +2651,7 @@ try:
     configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False,mouse_draw_cursor=True)
 except:
     configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False)
+
 
 help_callback()
 
@@ -2779,8 +2848,12 @@ def processing():
                         if peaks_annos_new:
                             peaks_annos=peaks_annos_new_fints
 
-                    set_value("fft_line2", [fft_values_x, fft_values_y])
                     set_value("fft_line", [fft_values_x, fft_values_y])
+                    if FFT_FILL:
+                        #set_value("fft_line_shade2", [fft_values_x, fft_values_y+1])
+                        set_value("fft_line_shade", [fft_values_x, fft_values_y,[dbmin]*len(fft_values_y)])
+                    else:
+                        set_value("fft_line2", [fft_values_x, fft_values_y])
 
                     if FFT_TDA:
                         fft_values_y_prev=fft_values_y
@@ -2803,12 +2876,10 @@ def processing():
                 set_value('central_info',""
                             "     No signal !    \n"
                             "(Mic not connected ?)")
-                #set_value('help_text','')
                 help_off()
             elif status_timeout!=0:
                 now = perf_counter()
                 if now>status_timeout:
-                    #set_value('help_text','')
                     status_timeout=0
             elif CENTRAL_INFO_SHOWN :
                 set_value('central_info','')
@@ -2921,7 +2992,6 @@ def main_loop():
                 on_viewport_resize()
 
             settings_wrapper_scheduled=None
-
 
         render_dearpygui_frame()
         if windows:
