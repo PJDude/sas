@@ -128,6 +128,8 @@ cfg.setdefault('settings',False)
 cfg.setdefault('help',True)
 HELP=cfg['help']
 
+cfg.setdefault('decorated',False)
+
 cfg.setdefault('pause',False)
 PAUSE=cfg['pause']
 
@@ -1898,12 +1900,7 @@ def slide_change(sender):
 
 settings_height=190
 
-decorated=False
-try:
-    if environ['SAS_DECORATED']:
-        decorated=True
-except:
-    pass
+decorated=cfg['decorated']
 
 title_hight=(0 if decorated else 26)
 status_height=80
@@ -1930,7 +1927,9 @@ def theme_light_callback():
         bind_item_theme(f"track{track}",track_theme_light)
 
     configure_item('plotbg',texture_tag=ico['bg'])
-    configure_item('exit_button',texture_tag=ico['exit_light'])
+    if not decorated:
+        configure_item('exit_button',texture_tag=ico['exit_light'])
+
     cfg['theme']='light'
     refresh_tracks()
 
@@ -1956,7 +1955,8 @@ def theme_dark_callback():
         bind_item_theme(f"track{track}",track_theme_dark)
 
     configure_item('plotbg',texture_tag=ico['bg_dark'])
-    configure_item('exit_button',texture_tag=ico['exit_dark'])
+    if not decorated:
+        configure_item('exit_button',texture_tag=ico['exit_dark'])
     cfg['theme']='dark'
     refresh_tracks()
 
@@ -2022,6 +2022,9 @@ def debug_callback():
 def pause_callback():
     global PAUSE
     cfg['pause']=PAUSE=get_value('pause')
+
+def decorated_callback():
+    cfg['decorated']=get_value('decorated')
 
 def help_off():
     set_value('help',False)
@@ -2435,6 +2438,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('key: V')
                                     add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug']); widget_tooltip('key: F11')
                                     add_text(default_value='Theme:')
+                                    add_checkbox(tag='decorated',label='Decor.',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decoration.\nUse in case of any problems with\ndragging or resising main window\n(Application restart required)')
                                 with group():
                                     add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help']); widget_tooltip('key: H')
                                     add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: space')
