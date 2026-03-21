@@ -30,7 +30,7 @@ import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,theme,theme_component
-from dearpygui.dearpygui import mvKey_LControl,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height
+from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height
 
 from time import strftime,time,localtime,perf_counter,sleep
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
@@ -129,7 +129,7 @@ cfg.setdefault('help',True)
 HELP=cfg['help']
 
 cfg.setdefault('decorated',False)
-cfg.setdefault('fft_fill',False)
+cfg.setdefault('fft_fill',True)
 
 cfg.setdefault('pause',False)
 PAUSE=cfg['pause']
@@ -141,15 +141,16 @@ cfg.setdefault('vsync',False)
 cfg.setdefault('fft',True)
 cfg.setdefault('fft_size',4096)
 cfg.setdefault('fft_window','blackman')
-cfg.setdefault('fft_fba',False)
+cfg.setdefault('fft_fba',True)
 cfg.setdefault('fft_fba_size',1024)
+
 cfg.setdefault('fft_tda',False)
 cfg.setdefault('fft_tda_factor',0.1)
 
-cfg.setdefault('tracks_tda_factor',0.3)
-
-cfg.setdefault('fft_smooth',False)
+cfg.setdefault('fft_smooth',True)
 cfg.setdefault('fft_smooth_factor',2)
+
+cfg.setdefault('tracks_tda_factor',0.3)
 
 cfg.setdefault('peaks',False)
 cfg.setdefault('peaks_dist_factor',3.0)
@@ -911,7 +912,7 @@ two_pi = pi+pi
 
 phase = 0.0
 
-fmin,fini,fmax=10,442,30000
+fmin,fini,fmax=14,442,30000
 fmin_audio,fmax_audio=20,20000
 
 logf_min,logf_ini,logf_max=log10(fmin),log10(fini),log10(fmax)
@@ -1080,7 +1081,7 @@ def fft_size_callback(sender=None, app_data=None):
     fft_window_changed()
 
 def fft_window_changed(sender=None, app_data=None):
-    global FFT,fft_window,fft_window_sum,cfg,fft_ready,FFT_SIZE
+    global FFT,fft_window,fft_window_sum,cfg,fft_ready,FFT_SIZE,fft_window_name
     fft_ready=False
 
     fft_window_name=cfg['fft_window']=get_value('fft_window')
@@ -1832,7 +1833,8 @@ def key_press_callback(sender, app_data):
     set_status('')
     hide_info()
 
-    Shift = is_key_down(dpg.mvKey_LShift)
+    Shift = is_key_down(mvKey_LShift)
+    Ctrl = is_key_down(mvKey_LControl)
 
     if app_data==dpg.mvKey_Spacebar:
         pause_val=get_value('pause')
@@ -1882,29 +1884,51 @@ def key_press_callback(sender, app_data):
         set_value('fft_fill',fft_fill)
         fft_fill_callback()
     elif app_data==dpg.mvKey_F3:
-        items=get_item_configuration('fft_window')['items']
-        configure_item('fft_window',default_value=items[(items.index(get_value('fft_window'))+(1,-1)[Shift]) % len(items)])
-        fft_window_changed()
-    elif app_data==dpg.mvKey_F4:
         items=get_item_configuration('fft_size')['items']
         configure_item('fft_size',default_value=items[(items.index(get_value('fft_size'))+(1,-1)[Shift]) % len(items)])
         fft_size_callback()
+    elif app_data==dpg.mvKey_F4:
+        items=get_item_configuration('fft_window')['items']
+        configure_item('fft_window',default_value=items[(items.index(get_value('fft_window'))+(1,-1)[Shift]) % len(items)])
+        fft_window_changed()
     elif app_data==dpg.mvKey_F5:
-        items=get_item_configuration('fft_fba_size')['items']
-        configure_item('fft_fba_size',default_value=items[(items.index(get_value('fft_fba_size'))+(1,-1)[Shift]) % len(items)])
-        fft_fba_size_callback()
+        fft_fba=get_value('fft_fba')
+        if Ctrl:
+            fft_fba=(True,False)[fft_fba]
+            set_value('fft_fba',fft_fba)
+        else:
+            items=get_item_configuration('fft_fba_size')['items']
+            configure_item('fft_fba_size',default_value=items[(items.index(get_value('fft_fba_size'))+(1,-1)[Shift]) % len(items)])
+        fft_fba_callback()
     elif app_data==dpg.mvKey_F6:
-        items=get_item_configuration('fft_tda_factor')['items']
-        configure_item('fft_tda_factor',default_value=items[(items.index(get_value('fft_tda_factor'))+(1,-1)[Shift]) % len(items)])
-        fft_tda_factor_callback(None,get_value('fft_tda_factor'))
+        fft_smooth=get_value('fft_smooth')
+        if Ctrl:
+            fft_smooth=(True,False)[fft_smooth]
+            set_value('fft_smooth',fft_smooth)
+        else:
+            maxv=get_item_configuration('fft_smooth_factor')['max_value']
+            minv=get_item_configuration('fft_smooth_factor')['min_value']
+            items=list(range(minv,maxv))
+            configure_item('fft_smooth_factor',default_value=items[(items.index(get_value('fft_smooth_factor'))+(1,-1)[Shift]) % len(items)])
+        fft_smooth_callback()
     elif app_data==dpg.mvKey_F7:
-        items=get_item_configuration('track_buckets')['items']
-        configure_item('track_buckets',default_value=items[(items.index(get_value('track_buckets'))+(1,-1)[Shift]) % len(items)])
-        tracks_buckets_quant_change()
-    elif app_data==dpg.mvKey_F8:
-        items=get_item_configuration('tracks_tda_factor')['items']
-        configure_item('tracks_tda_factor',default_value=items[(items.index(get_value('tracks_tda_factor'))+(1,-1)[Shift]) % len(items)])
-        tracks_tda_factor_callback(None,get_value('tracks_tda_factor'))
+        fft_tda=get_value('fft_tda')
+        if Ctrl:
+            fft_tda=(True,False)[fft_tda]
+            set_value('fft_tda',fft_tda)
+        else:
+            maxv=get_item_configuration('fft_tda_factor')['max_value']
+            minv=get_item_configuration('fft_tda_factor')['min_value']
+            curr=get_value('fft_tda_factor')
+
+            nextv=curr+(-0.01 if Shift else 0.01)
+            if nextv<minv:
+                nextv=maxv
+            elif nextv>maxv:
+                nextv=minv
+
+            configure_item('fft_tda_factor',default_value=nextv)
+        fft_tda_callback(None,get_value('fft_tda'))
     elif app_data==dpg.mvKey_F12:
         settings_wrapper_toggle()
     elif app_data==dpg.mvKey_F11:
@@ -1979,7 +2003,6 @@ def theme_light_callback():
     bind_item_theme("fft_line2",fft_line2_theme_light)
     bind_item_theme("fft_line",fft_line_theme_light)
 
-    #bind_item_theme("fft_line_shade2",fft_line2_theme_light)
     bind_item_theme("fft_line_shade",fft_line_theme_light)
 
     for track in range(tracks):
@@ -2010,7 +2033,6 @@ def theme_dark_callback():
     bind_item_theme("fft_line2",fft_line2_theme_dark)
     bind_item_theme("fft_line",fft_line_theme_dark)
 
-    #bind_item_theme("fft_line_shade2",fft_line2_theme_dark)
     bind_item_theme("fft_line_shade",fft_line_theme_dark)
 
     for track in range(tracks):
@@ -2094,7 +2116,6 @@ def fft_fill_callback():
     FFT_FILL=cfg['fft_fill']=get_value('fft_fill')
 
     configure_item('fft_line_shade',show=FFT_FILL and FFT)
-    #configure_item('fft_line_shade2',show=FFT_FILL and FFT)
 
     configure_item('fft_line',show=FFT)
     configure_item('fft_line2',show=not FFT_FILL and FFT)
@@ -2110,28 +2131,45 @@ def help_callback():
 
     if HELP:
         set_value('help_text1',
-            "H - show this help\n"
-            "F12 - toggle settings\n"
-            "F11 - toggle debug info\n"
-            "F   - toggle FFT\n"
-            "F3 / Shift+F3 - FFT window\n"
-            "F4 / Shift+F4 - FFT size\n"
-            "F5 / Shift+F5 - FFT FBA\n"
-            "F6 / Shift+F6 - FFT TDA\n"
-            "F7 / Shift+F7 - Tracks Frequency 'buckets'\n"
-            "F8 / Shift+F8 - Tracks TDA\n"
-            "\n"
-            "F1 / F2 - about / license\n"
-            "L / D - light / dark theme\n"
-            "\n"
-            "V - toggle VSync\n"
-            "S / C - save screenshot / csv\n"
+            "H   - this help\n\n"
+            "F1  - about\n"
+            "F2  - license\n"
+            "-----------------------\n"
+            "F12 - settings\n"
+            "F11 - debug info\n"
+            "-----------------------\n"
+            "F   - FFT\n"
+            "F3  - FFT size\n"
+            "F4  - FFT window\n"
+            "F5  - FFT FBA\n"
+            "F6  - FFT Smoothing\n"
+            "F7  - FFT TDA\n"
             "P - peaks detection\n"
-            "1-8 - toggle track visibility\n"
-            " (toggle recording with Ctrl)]\n")
+            "G - Filled chart\n"
+            "-----------------------\n"
+            "\n"
+            "L / D - light / dark theme\n"
+            )
 
         set_value('help_text2',
-            "TEXT2\n")
+            "1-8 - toggle track visibility\n"
+            "       (recording with Ctrl)\n"
+            "Del - Reset recorded track\n"
+            "\n"
+            "------ chart actions ------\n"
+            " Left MB - generate specified frequency\n"
+            "Right MB - lock frequency\n"
+            "   Wheel - reduce value range\n"
+            "         - modify locked frequency\n"
+            "\n"
+            "Arrows - modify locked frequency\n"
+            "Space  - pause FFT chart refreshing\n"
+            "\n"
+            "S / C  - save screenshot / csv\n"
+            "pause  - start stop frames capture\n"
+            "\n"
+            "V - toggle VSync\n"
+            )
 
     else:
         set_value('help_text1','')
@@ -2321,7 +2359,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         bind_item_theme("cursor_f",red_line_theme)
 
                         add_line_series([20], [-120], tag="fft_line2")
-                        #add_shade_series([20], y1=[-120], tag="fft_line_shade2")
 
                         add_line_series([20], [-120], tag="fft_line")
                         add_shade_series([20], y1=[-120], tag="fft_line_shade")
@@ -2349,7 +2386,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         bind_item_handler_registry(f'showcheck{track_temp}', "tracks_handlers")
 
                     add_spacer(height=-1)
-                    add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press); widget_tooltip('Reset selected track samples\nkey: Delete')
+                    add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press); widget_tooltip('Reset selected track samples\n\nkey: Delete')
 
         with table_row():
             with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp,
@@ -2467,21 +2504,21 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             add_table_column(width_fixed=True, init_width_or_weight=c2width, width=c2width)
 
                             with table_row():
-                                add_text(default_value='size'); FFT_size_tooltip='FFT size\nF4 / Shift+F4'; widget_tooltip(FFT_size_tooltip)
+                                add_text(default_value='size'); FFT_size_tooltip='FFT size\n\nF3 / Shift+F3'; widget_tooltip(FFT_size_tooltip)
                                 add_combo(tag='fft_size',items=['64','128','256','512','1024','2048','4096','8192','16384','32768','65536','131072','262144','524288'],default_value=cfg['fft_size'],callback=fft_size_callback,width=c2width); widget_tooltip(FFT_size_tooltip)
                             with table_row():
-                                add_text(default_value='window'); FFT_window_tooltip='FFT window\nF3 / Shift+F3' ; widget_tooltip(FFT_window_tooltip)
+                                add_text(default_value='window'); FFT_window_tooltip='FFT window\n\nF4 / Shift+F4' ; widget_tooltip(FFT_window_tooltip)
                                 add_combo(tag='fft_window',items=['ones','hanning','hamming','blackman','bartlett'],default_value=cfg['fft_window'],callback=fft_window_changed,width=c2width); widget_tooltip(FFT_window_tooltip)
 
-                            FFT_buckets_tooltip='Frequency bin aggregation\n(equal frequency width "buckets" on log scale)\nF5 / Shift+F5'
+                            FFT_buckets_tooltip='Frequency Bin Aggregation\n(equal frequency "buckets" on log scale)\n\nkey: F5 / Shift+F5, (+Ctrl Toggle)'
                             with table_row():
                                 add_checkbox(tag='fft_fba',label='FBA',callback=fft_fba_callback,default_value=cfg['fft_fba']); widget_tooltip(FFT_buckets_tooltip)
                                 add_combo(tag='fft_fba_size',items=['64','128','256','512','1024','2048','4096'],default_value=cfg['fft_fba_size'],callback=fft_fba_size_callback,user_data=True,width=c2width); widget_tooltip(FFT_buckets_tooltip)
                             with table_row():
-                                add_checkbox(tag='fft_smooth',label='Smth',callback=fft_smooth_callback,default_value=cfg['fft_smooth']); widget_tooltip('Smoothing')
+                                add_checkbox(tag='fft_smooth',label='Smth',callback=fft_smooth_callback,default_value=cfg['fft_smooth']); widget_tooltip('Smoothing\n\nkey: F6 / Shift+F6 (+Ctrl Toggle)')
                                 dpg.add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_change,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5)
                             with table_row():
-                                add_checkbox(tag='fft_tda',label='TDA',callback=fft_tda_callback,default_value=cfg['fft_tda']); FFT_tda_tooltip='Time domain averaging\nF6 / Shift+F6'; widget_tooltip(FFT_tda_tooltip)
+                                add_checkbox(tag='fft_tda',label='TDA',callback=fft_tda_callback,default_value=cfg['fft_tda']); FFT_tda_tooltip='Time Domain Averaging\n\nkey: F7 / Shift+F7 (+Ctrl Toggle)'; widget_tooltip(FFT_tda_tooltip)
                                 dpg.add_slider_float(tag='fft_tda_factor',callback=fft_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['fft_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tda_tooltip)
 
                             with table_row():
@@ -2511,10 +2548,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 add_table_column(width_fixed=True, init_width_or_weight=c2width, width=c2width)
 
                                 with table_row():
-                                    add_text(default_value='buckets'); FFT_tooltip5='Recorded Tracks Frequency "buckets"\nF7 / Shift+F7'; widget_tooltip(FFT_tooltip5)
-                                    add_combo(tag='track_buckets',items=['64','128','256'],default_value=cfg['track_buckets'],callback=tracks_buckets_quant_change,width=c2width); widget_tooltip(FFT_tooltip5)
+                                    add_text(default_value='buckets')
+                                    add_combo(tag='track_buckets',items=['64','128','256'],default_value=cfg['track_buckets'],callback=tracks_buckets_quant_change,width=c2width)
                                 with table_row():
-                                    add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging\nF8 / Shift+F8'; widget_tooltip(FFT_tooltip6)
+                                    add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging'; widget_tooltip(FFT_tooltip6)
                                     dpg.add_slider_float(tag='tracks_tda_factor',callback=tracks_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['tracks_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tooltip6)
 
                     with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=100):
@@ -2530,12 +2567,12 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_spacer(width=100)
                                 with group():
                                     add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help']); widget_tooltip('key: H')
-                                    add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: space')
+                                    add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: Space')
 
                                     with group(horizontal=True):
-                                        add_image_button(ico["light"],callback=theme_light_callback,width=16); widget_tooltip("Light theme\nkey:L")
-                                        add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\nkey:D")
-                                    add_checkbox(tag='fft_fill',label='FFT Fill',callback=fft_fill_callback,default_value=cfg['fft_fill']); widget_tooltip("Filled graph\nkey:G")
+                                        add_image_button(ico["light"],callback=theme_light_callback,width=16); widget_tooltip("Light theme\n\nkey:L")
+                                        add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\n\nkey:D")
+                                    add_checkbox(tag='fft_fill',label='FFT Fill',callback=fft_fill_callback,default_value=cfg['fft_fill']); widget_tooltip("Filled graph\n\nkey:G")
                                     add_spacer(width=100)
                 add_spacer(width=5)
 
@@ -2848,12 +2885,13 @@ def processing():
                         if peaks_annos_new:
                             peaks_annos=peaks_annos_new_fints
 
-                    set_value("fft_line", [fft_values_x, fft_values_y])
+
                     if FFT_FILL:
-                        #set_value("fft_line_shade2", [fft_values_x, fft_values_y+1])
                         set_value("fft_line_shade", [fft_values_x, fft_values_y,[dbmin]*len(fft_values_y)])
                     else:
                         set_value("fft_line2", [fft_values_x, fft_values_y])
+
+                    set_value("fft_line", [fft_values_x, fft_values_y])
 
                     if FFT_TDA:
                         fft_values_y_prev=fft_values_y
@@ -3014,7 +3052,8 @@ def main_loop():
                         f"I: {rec_samples:6d}    {input_callbacks_all:4d}   {stream_out.cpu_load:.6f}\n",
                         f"I:{stream_in.dtype} O:{stream_out.dtype}\n"]
 
-                part_fft = [f"FFT Window: {round(fft_duration,3)}s",
+
+                part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
                             "",
                             f"FFT  /  FBA / act:",
                             f"{FFT_POINTS} / {FFT_FBA_SIZE:4d} / {FFT_ACTUAL_BUCKETS:4d}"  if FFT_FBA else f"{FFT_POINTS} / ---- / ----",
