@@ -48,12 +48,11 @@ With keyboard:
 | **P** | Toggle peak detection |
 | **S / C** | Save screenshot / CSV |
 | **Arrow keys** | Adjust the locked frequency |
-| **F3 / Shift+F3** | Cycle FFT window function |
-| **F4 / Shift+F4** | Cycle FFT size |
-| **F5 / Shift+F5** | Cycle FFT frequency band averaging (FBA) |
-| **F6 / Shift+F6** | Cycle FFT time domain averaging (TDA) |
-| **F7 / Shift+F7** | Cycle track frequency bucket size |
-| **F8 / Shift+F8** | Cycle track time domain averaging (TDA) |
+| **F3 / Shift+F3** | Cycle FFT size |
+| **F4 / Shift+F4** | Cycle FFT window function |
+| **F5 / Shift+F5 / Ctrl+F5** | Cycle values / Toggle FFT Frequency Band Averaging (FBA) |
+| **F6 / Shift+F6 / Ctrl+F6** | Cycle values / Toggle FFT Smoothing |
+| **F7 / Shift+F7 / Ctrl+F7** | Cycle values / Toggle FFT Time Domain Averaging (TDA) |
 |**space**| pause|
 
 ⚠️ Due to latency in the sound generation, propagation, capture, and analysis
