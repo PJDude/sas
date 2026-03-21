@@ -664,6 +664,17 @@ def out_samplerate_changed(sender=None, app_data=None,user_data=False):
 
         out_stream_init()
 
+def out_sampletype_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'out_sampletype_changed:{sender},{app_data},{user_data}')
+
+    play_stop()
+    out_stream_stop()
+
+    #get_value("out_sampletype")
+
+    if user_data:
+        out_stream_init()
+
 def in_samplerate_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_samplerate_changed:{sender},{app_data},{user_data}')
 
@@ -672,6 +683,17 @@ def in_samplerate_changed(sender=None, app_data=None,user_data=False):
 
     if user_data:
         common_precalc()
+        in_stream_init()
+
+def in_sampletype_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'in_sampletype_changed:{sender},{app_data},{user_data}')
+
+    play_stop()
+    in_stream_stop()
+
+    #get_value("in_sampletype")
+
+    if user_data:
         in_stream_init()
 
 def out_stream_stop():
@@ -760,6 +782,7 @@ def in_stream_init():
     samplerate=float(get_value('in_samplerate'))
     latency=latency_for_stream(get_value('in_latency'))
     blocksize=int(get_value('in_blocksize'))
+
     channels=1
     in_channel_buffer_mod_index=0
 
@@ -2336,11 +2359,12 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 with group(width=-1):
                                     add_text(default_value='API')
                                     add_text(default_value=' ')
-                                    add_text(default_value='Device:')
-                                    add_text(default_value='channels:')
-                                    add_text(default_value='Samplerate:')
-                                    add_text(default_value='latency:')
-                                    add_text(default_value='blckocksize:')
+                                    add_text(default_value='Device')
+                                    add_text(default_value='Channels')
+                                    add_text(default_value='Sample rate')
+                                    #add_text(default_value='Sample type')
+                                    add_text(default_value='Latency')
+                                    add_text(default_value='Blckock size')
 
                                 with group(width=-1):
                                     add_combo(tag='api_out',default_value='',callback=api_out_callback,width=c1width)
@@ -2349,6 +2373,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_combo(tag='out_dev',default_value='',callback=out_dev_changed)
                                     add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
                                     add_combo(tag='out_samplerate',default_value='',callback=out_samplerate_changed,user_data=True)
+                                    #add_combo(tag='out_sampletype',default_value='',callback=out_sampletype_changed,user_data=True)
 
                                     add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
                                     add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
@@ -2360,6 +2385,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True)
                                     add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
                                     add_combo(tag='in_samplerate',default_value='',callback=in_samplerate_changed,user_data=True)
+                                    #add_combo(tag='in_sampletype',default_value='',callback=in_sampletype_changed,user_data=True)
 
                                     add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
                                     add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
@@ -2438,7 +2464,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('key: V')
                                     add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug']); widget_tooltip('key: F11')
                                     add_text(default_value='Theme:')
-                                    add_checkbox(tag='decorated',label='Decor.',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decoration.\nUse in case of any problems with\ndragging or resising main window\n(Application restart required)')
+                                    add_checkbox(tag='decorated',label='Decor.',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decorations.\nUse if you experience problems with\ndragging or resizing the main window.\n(Requires application restart)')
                                 with group():
                                     add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help']); widget_tooltip('key: H')
                                     add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: space')
@@ -2822,7 +2848,7 @@ def output_frame_buffer_callback(sender, app_data):
 def main_loop():
     global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,status_timeout,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
-    global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg
+    global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency
     next_sweep_time=0
 
     while is_dearpygui_running():
@@ -2896,9 +2922,16 @@ def main_loop():
 
             settings_wrapper_scheduled=None
 
+
         render_dearpygui_frame()
         if windows:
-            SetCursor(arrow_cursor)
+            if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
+                while ShowCursor(False) >= 0:
+                    pass
+            else:
+                #SetCursor(arrow_cursor)
+                while ShowCursor(True) < 0:
+                    pass
 
         frames += 1
 
