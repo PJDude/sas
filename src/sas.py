@@ -64,6 +64,8 @@ l_info = logging.info
 l_warning = logging.warning
 l_error = logging.error
 
+np_fft_rfft=np_fft.rfft
+
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     EXECUTABLE_DIR = Path(sys._MEIPASS)
 else:
@@ -79,6 +81,7 @@ print(f'{EXECUTABLE_DIR_REAL=}')
 
 INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"data"])
 INTERNAL_DIR_CSV_DEBUG = sep.join([INTERNAL_DIR,'debug'])
+INTERNAL_DIR_CSV = sep.join([INTERNAL_DIR,'csv'])
 INTERNAL_DIR_LOGS = sep.join([INTERNAL_DIR,'log'])
 INTERNAL_DIR_IMAGES = sep.join([INTERNAL_DIR,'img'])
 
@@ -115,14 +118,15 @@ try:
 except Exception as e:
     print(f'cfg file "{cfg_file}" opening error {e}')
 
+windows = bool(os_name=='nt')
+if windows:
+    from sounddevice import WasapiSettings
+
 tracks=8
 
 cfg.setdefault('theme','dark')
-
 cfg.setdefault('track_buckets',256)
-
 cfg.setdefault('viewport_pos',[100,100])
-
 cfg.setdefault('settings',False)
 
 cfg.setdefault('help',True)
@@ -135,7 +139,6 @@ cfg.setdefault('pause',False)
 PAUSE=cfg['pause']
 
 cfg.setdefault('debug',True)
-
 cfg.setdefault('vsync',False)
 
 cfg.setdefault('fft',True)
@@ -165,6 +168,18 @@ cfg.setdefault('api_out',None)
 cfg.setdefault("out_dev",None)
 cfg.setdefault("in_dev",None)
 
+cfg.setdefault("in_channel","1")
+cfg.setdefault("out_channel","1")
+
+cfg.setdefault("in_samplerate",'44100')
+cfg.setdefault("out_samplerate",'44100')
+
+cfg.setdefault("in_latency",'high')
+cfg.setdefault("out_latency",'high')
+
+cfg.setdefault("in_blocksize",'256')
+cfg.setdefault("out_blocksize",'2048')
+
 track_line_data_y={}
 
 logging.basicConfig(
@@ -179,12 +194,6 @@ from io import BytesIO
 VERSION_FILE='version.txt'
 
 HOMEPAGE='https://github.com/PJDude/sas'
-
-windows = bool(os_name=='nt')
-if windows:
-    from sounddevice import WasapiSettings
-
-np_fft_rfft=np_fft.rfft
 
 f_current=0
 playing_state=0
@@ -366,14 +375,16 @@ def save_fft_bin_counts():
         #l_error()
 
 def save_csv():
-    filename='sas.csv'
+    timestamp=strftime('%Y_%m_%d-%H_%M_%S',localtime_catched(time()) )
+    filename=path_join(INTERNAL_DIR_CSV,f"sas.{timestamp}.csv")
     set_status(f'saving {filename} ...')
+    Path(INTERNAL_DIR_CSV).mkdir(parents=True,exist_ok=True)
 
     try:
         with open(filename,'w',encoding='utf-8') as f:
             f.write("# Created with " + title + "\n")
             f.write("#frequency[Hz],level[dBFS]\n")
-            f.write(f"#tracks:" + ','.join([str(track) for track in range(tracks) if cfg['show_track'][track]]) + "\n")
+            f.write(f"#tracks:" + ','.join([str(track+1) for track in range(tracks) if cfg['show_track'][track]]) + "\n")
 
             for i in range(cfg["track_buckets"]):
                 values=[]
@@ -392,11 +403,7 @@ def save_image():
     global schedule_screenshot
     schedule_screenshot=True
 
-scale_factor_logf_to_bucket_fft=1
 scale_factor_logf_to_bucket_tracks=1
-
-def logf_to_bucket_fft(logf):
-    return int(round(scale_factor_logf_to_bucket_fft * (logf - logf_min_audio)))
 
 def logf_to_bucket_tracks(logf):
     return int(round(scale_factor_logf_to_bucket_tracks * (logf - logf_min_audio)))
@@ -404,7 +411,7 @@ def logf_to_bucket_tracks(logf):
 phase_step=1.0
 
 def change_f(fpar):
-    global current_logf,current_bucket,phase_step,two_pi_by_out_samplerate,TRACK_BUCKETS
+    global current_logf,current_bucket,phase_step,two_pi_by_out_samplerate,TRACK_BUCKETS,phase_step_x_phase_i,phase_i
 
     if fmin_audio<fpar<fmax_audio:
         current_logf=log10(fpar)
@@ -419,12 +426,13 @@ def change_f(fpar):
         configure_item('cursor_f_txt',label=f'{round(fpar)}Hz')
 
         phase_step = two_pi_by_out_samplerate * fpar
+        phase_step_x_phase_i = phase_step * phase_i
 
 played_bucket=0
 played_bucket_callbacks=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,DEBUG
+    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,DEBUG,volume_ramp,phase_step_x_phase_i
 
     if DEBUG:
         global output_callbacks_count,samples_chunks_requested_new
@@ -432,7 +440,7 @@ def audio_output_callback(outdata, frames, time, status):
         samples_chunks_requested_new+=len(outdata)
 
     if playing_state:
-        phase_arr=(phase + phase_step * phase_i) % two_pi
+        phase_arr=(phase + phase_step_x_phase_i) % two_pi
         outdata[phase_i, out_channel_buffer_mod_index] = np_sin(phase_arr)
         phase = phase_arr[-1]+phase_step
 
@@ -469,14 +477,15 @@ def rec_press(sender=None, app_data=None):
     l_info(f'rec_press:{sender},{app_data}')
 
 sweeping_i=0
-def sweep_press(sender=None, app_data=None):
-    l_info(f'sweep_press:{sender},{app_data}')
+def sweep_callback(sender=None, app_data=None):
+    l_info(f'sweep_callback:{sender},{app_data}')
 
     global sweeping,lock_frequency,sweeping_i,track_line_data_y_recorded
     sweeping=(True,False)[sweeping]
 
     if not track_line_data_y_recorded:
         l_info('no recorded')
+        set_status('No track selected for recording !')
         sweep_abort()
         return
 
@@ -562,7 +571,14 @@ def refresh_devices():
 
     apis = query_hostapis()
 
+    api_in_cfg = cfg['api_in']
+    api_out_cfg = cfg['api_out']
+
     default_api_nr=-1
+
+    default_api_in=None
+    default_api_out=None
+
     l_info(f'')
     l_info(f'Host APIs:')
     for i,api in enumerate(apis):
@@ -572,11 +588,23 @@ def refresh_devices():
             if api['devices']:
                 default_api_nr=i
 
+        if api['name']==api_in_cfg:
+            default_api_in=api
+        if api['name']==api_out_cfg:
+            default_api_out=api
+
     device_default_input_index,device_default_output_index = sd_default.device
 
     l_info('')
     l_info('Query Devices ...')
     devices=query_devices()
+
+    print(default_api_in,default_api_out)
+
+    if default_api_in is not None and default_api_out is not None:
+        set_value('api_in',default_api_in['name'])
+        set_value('api_out',default_api_out['name'])
+        l_info(f'using cfg api value.')
 
     for dev in devices:
         if dev['index']==device_default_input_index:
@@ -606,12 +634,8 @@ def refresh_devices():
 latency_values=('high','low',0.01,0.02,0.03,0)
 
 out_blocksize_values=(2048,1024,512,256)
-out_blocksize_default=2048
-out_latency_default='high'
 
 in_blocksize_values=(512,256,128,64,0)
-in_blocksize_default=0
-in_latency_default='low' if windows else 'high'
 
 out_channel_buffer_mod_index=0
 
@@ -627,6 +651,8 @@ def out_blocksize_changed(sender=None, out_blocksize_str=None,user_data=False):
     volume_ramp = arange(1, out_blocksize + 1, dtype=float32) / out_blocksize
     phase_i = arange(out_blocksize)
 
+    cfg['out_blocksize']=get_value('out_blocksize')
+
     if user_data:
         out_stream_init()
 
@@ -635,11 +661,14 @@ def out_latency_changed(sender=None, app_data=None,user_data=False):
     play_stop()
     out_stream_stop()
 
+    cfg['out_latency']=get_value('out_latency')
     if user_data:
         out_stream_init()
 
 def in_blocksize_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_blocksize_changed:{sender},{app_data},{user_data}')
+
+    cfg['in_blocksize']=get_value('in_blocksize')
 
     if user_data:
         in_stream_init()
@@ -647,11 +676,14 @@ def in_blocksize_changed(sender=None, app_data=None,user_data=False):
 def in_latency_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_latency_changed:{sender},{app_data},{user_data}')
 
+    cfg['in_latency']=get_value('in_latency')
     if user_data:
         in_stream_init()
 
 def out_channel_changed(sender=None, app_data=None,user_data=False):
     l_info(f'out_channel_changed:{sender},{app_data},{user_data}')
+
+    cfg['out_channel']=get_value('out_channel')
 
     play_stop()
     out_stream_stop()
@@ -665,6 +697,8 @@ def out_samplerate_changed(sender=None, app_data=None,user_data=False):
     play_stop()
     out_stream_stop()
 
+    cfg['out_samplerate']=get_value('out_samplerate')
+
     global two_pi_by_out_samplerate
     two_pi_by_out_samplerate = two_pi/float(get_value("out_samplerate"))
 
@@ -673,36 +707,16 @@ def out_samplerate_changed(sender=None, app_data=None,user_data=False):
 
         out_stream_init()
 
-def out_sampletype_changed(sender=None, app_data=None,user_data=False):
-    l_info(f'out_sampletype_changed:{sender},{app_data},{user_data}')
-
-    play_stop()
-    out_stream_stop()
-
-    #get_value("out_sampletype")
-
-    if user_data:
-        out_stream_init()
-
 def in_samplerate_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_samplerate_changed:{sender},{app_data},{user_data}')
 
     play_stop()
     stream_in.stop()
 
+    cfg['in_samplerate']=get_value('in_samplerate')
+
     if user_data:
         common_precalc()
-        in_stream_init()
-
-def in_sampletype_changed(sender=None, app_data=None,user_data=False):
-    l_info(f'in_sampletype_changed:{sender},{app_data},{user_data}')
-
-    play_stop()
-    in_stream_stop()
-
-    #get_value("in_sampletype")
-
-    if user_data:
         in_stream_init()
 
 def out_stream_stop():
@@ -716,7 +730,6 @@ def latency_for_stream(latency):
             latency=float(latency)
         except:
             latency=0
-            set_value('out_latency',0)
     return latency
 
 def out_stream_init():
@@ -767,9 +780,11 @@ def out_stream_init():
         l_info('OutputStream init DONE.')
 
 in_channel_buffer_mod_index=0
-@catch
+
 def in_channel_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_channel_changed:{sender},{app_data},{user_data}')
+
+    cfg['in_channel']=get_value('in_channel')
 
     if stream_in:
         stream_in.stop()
@@ -791,8 +806,8 @@ def in_stream_init():
     samplerate=float(get_value('in_samplerate'))
     latency=latency_for_stream(get_value('in_latency'))
     blocksize=int(get_value('in_blocksize'))
+    channels=int(get_value('in_channel'))
 
-    channels=1
     in_channel_buffer_mod_index=0
 
     l_info('')
@@ -1160,10 +1175,8 @@ logf_max_audio_m_logf_min_audio = logf_max_audio-logf_min_audio
 
 def fft_buckets_quant_change(sender=None, app_data=None, call_common=True):
     l_info(f'fft_buckets_quant_change:{sender},{app_data},{call_common}')
-    global scale_factor_logf_to_bucket_fft,logf_sweep_step,log_bucket_fft_width,log_bucket_fft_width_by2,cfg,fft_ready
+    global logf_sweep_step,log_bucket_fft_width,log_bucket_fft_width_by2,cfg,fft_ready
     fft_ready=False
-
-    scale_factor_logf_to_bucket_fft=cfg['fft_fba_size']/logf_max_audio_m_logf_min_audio
 
     log_bucket_fft_width=logf_max_audio_m_logf_min_audio/FFT_FBA_SIZE
     log_bucket_fft_width_by2=log_bucket_fft_width*0.5
@@ -1228,6 +1241,7 @@ def tracks_tda_factor_callback(sender=None, app_data=None):
     TRACKS_TDA_FACTOR_1m=1.0-TRACKS_TDA_FACTOR
     common_precalc()
 
+data=[0]
 FFT_ACTUAL_BUCKETS=0
 def common_precalc():
     l_info('common_precalc')
@@ -1281,11 +1295,10 @@ def common_precalc():
 
     fft_values_y_prev=[0]*len(bucket_fft_freqs)
 
-    data=zeros(FFT_SIZE)
+    data=np_concatenate([zeros(FFT_SIZE),data])[:FFT_SIZE]
 
     fft_ready=True
     next_fps = 0
-
 
 rates_to_test = (44100,48000,88200,96000,176400,192000,384000)
 def check_sample_rates_input(device_id):
@@ -1326,7 +1339,7 @@ def out_dev_changed(sender=None, app_data=None):
 
     configure_item("out_channel",items=output_channels)
 
-    out_channel_value=get_value("out_channel")
+    cfg["out_channel"]=out_channel_value=get_value("out_channel")
 
     if not out_channel_value or out_channel_value not in output_channels:
         out_channel_value=1
@@ -1338,12 +1351,16 @@ def out_dev_changed(sender=None, app_data=None):
     values_str=' - ' + '\n - '.join(sel_rates)
     widget_tooltip(f"Available:\n\n{values_str}","out_samplerate")
 
-    set_value("out_samplerate",str(int(device_out_current['default_samplerate'])))
+    prev_out_samplerate = cfg['out_samplerate']
+    out_samplerate_to_set = prev_out_samplerate if prev_out_samplerate in sel_rates else str(int(device_out_current['default_samplerate']))
+    cfg['out_samplerate']=out_samplerate_to_set
+
+    set_value("out_samplerate",out_samplerate_to_set)
 
     out_samplerate_changed()
     out_channel_changed(None,out_channel_value)
-    out_latency_changed(None,out_latency_default)
-    out_blocksize_changed(None,out_blocksize_default)
+    out_latency_changed(None,cfg['out_latency'])
+    out_blocksize_changed(None,cfg['out_blocksize'])
 
     out_stream_init()
 
@@ -1363,8 +1380,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
     l_info(f'{input_channels=}')
 
     configure_item("in_channel",items=input_channels)
-
-    in_channel_value=get_value("in_channel")
+    cfg['in_channel']=in_channel_value=get_value("in_channel")
 
     if not in_channel_value or in_channel_value not in input_channels:
         in_channel_value=1
@@ -1376,11 +1392,14 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
     values_str=' - ' + '\n - '.join(sel_rates)
     widget_tooltip(f"Available:\n\n{values_str}","in_samplerate")
 
-    set_value("in_samplerate",str(int(device_in_current['default_samplerate'])))
+    prev_in_samplerate = cfg['in_samplerate']
+    in_samplerate_to_set = prev_in_samplerate if prev_in_samplerate in sel_rates else str(int(device_in_current['default_samplerate']))
+    cfg['in_samplerate']=in_samplerate_to_set
+    set_value("in_samplerate",in_samplerate_to_set)
 
     in_channel_changed(None,in_channel_value)
-    in_latency_changed(None,in_latency_default)
-    in_blocksize_changed(None,in_blocksize_default)
+    in_latency_changed(None,cfg['in_latency'])
+    in_blocksize_changed(None,cfg['in_blocksize'])
 
     if user_data:
         common_precalc()
@@ -1404,14 +1423,13 @@ def click_callback(sender, button_nr):
                 status_set_frequency()
 
         elif button_nr==1:
-            sweep_abort()
-
-            if lock_frequency:
+            if sweeping:
+                sweep_abort()
+            elif lock_frequency:
                 lock_frequency=False
                 play_stop()
             else:
                 lock_frequency=True
-
                 play_start()
                 status_set_frequency()
 
@@ -1497,11 +1515,11 @@ def on_mouse_move(sender, app_data):
     #mouse_x, mouse_y = app_data
     if is_dragging:
         mouse_x, mouse_y = get_mouse_pos(local=False)
-        curr_vp_x = curr_vp_x + mouse_x - offset_x
-        curr_vp_y = curr_vp_y + mouse_y - offset_y
+        curr_vp_x += mouse_x - offset_x
+        curr_vp_y += mouse_y - offset_y
 
         global set_viewport_pos_scheduled
-        set_viewport_pos_scheduled=[curr_vp_x, curr_vp_y]
+        set_viewport_pos_scheduled=(curr_vp_x, curr_vp_y)
 
     elif is_resizing:
         global set_viewport_width_scheduled,set_viewport_height_scheduled
@@ -1525,6 +1543,9 @@ def on_mouse_move(sender, app_data):
                     f_current=plot_x
                     status_set_frequency()
                     change_f(f_current)
+    else:
+        if not lock_frequency and not sweeping:
+            play_stop()
 
 BG_SEMI = (128, 128, 128, 220)
 
@@ -1624,7 +1645,6 @@ with theme() as theme_light:
         #dpg.add_theme_color(dpg.mvThemeCol_SeparatorHovered, (0, 255, 0, 255))
         #dpg.add_theme_color(dpg.mvThemeCol_SeparatorActive, (0, 0, 255, 255))
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0)
-
 
     with theme_component(dpg.mvTooltip):
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
@@ -1940,6 +1960,8 @@ def key_press_callback(sender, app_data):
         theme_dark_callback()
     elif app_data==dpg.mvKey_S:
         save_image()
+    elif app_data==dpg.mvKey_C:
+        save_csv()
     elif app_data==dpg.mvKey_V:
         vsync=get_value('vsync')
         vsync=(True,False)[vsync]
@@ -2195,7 +2217,7 @@ def settings_wrapper():
 
     try:
         if cfg['settings']:
-            refresh_api_combos()
+            values = refresh_api_combos()
 
             api_out_name=get_value('api_out')
             if api_out_name not in values:
@@ -2218,6 +2240,7 @@ def refresh_api_combos():
     values_str=' - ' + '\n - '.join(values)
     configure_item('api_out',items=values); widget_tooltip(f"Available:\n\n{values_str}","api_out")
     configure_item('api_in',items=values); widget_tooltip(f"Available:\n\n{values_str}","api_in")
+    return values
 
 status_text=''
 def set_status(text,alert=False,timeout=2):
@@ -2385,43 +2408,47 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_image_button(ico[f"{track_temp+1}_off"],tag=f'showcheck{track_temp}',callback=track_action_callback,user_data=track_temp); widget_tooltip(f'Show/Hide track:{track_temp+1}\nwith Ctrl - toggle recording')
                         bind_item_handler_registry(f'showcheck{track_temp}', "tracks_handlers")
 
-                    add_spacer(height=-1)
+                    add_spacer(height=20)
                     add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press); widget_tooltip('Reset selected track samples\n\nkey: Delete')
 
+                    add_spacer(height=32)
+                    add_image_button(ico["play"],tag='sweep',callback=sweep_callback); widget_tooltip('Run frequency sweep\n\nA track must be selected and recording\nmust be enabled before starting the sweep.')
+
         with table_row():
-            with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp,
+            with table(header_row=False, resizable=True, policy=mvTable_SizingStretchProp,
                 borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
                 row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
                 no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
 
                 add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
-                add_table_column(width_fixed=True, init_width_or_weight=18, width=18)
+                #add_table_column(width_fixed=True, init_width_or_weight=18, width=18)
                 add_table_column(width_stretch=True, init_width_or_weight=-1)
-                add_table_column(width_fixed=True, init_width_or_weight=255, width=255)
+                add_table_column(width_fixed=True)
 
                 with table_row():
                     add_spacer(height=6)
-                    add_spacer(height=6)
+                    #add_spacer(height=6)
 
-                    add_text(tag='status',default_value='')
+                    with group(width=-1):
+                        add_text(tag='status',default_value='')
 
                     with group(horizontal=True):
-                        add_image_button(ico["play"],tag='sweep',callback=sweep_press); widget_tooltip('Run frequency sweep')
-                        add_spacer(width=16)
-                        add_image_button(ico["save_pic"],tag='save_image',callback=save_image); widget_tooltip("Save Image file")
-                        add_image_button(ico["save_csv"],tag='save_csv_button',callback=save_csv); widget_tooltip("Save CSV file")
+                        add_image_button(ico["save_pic"],tag='save_image',callback=save_image); widget_tooltip("Save .png file\n\nkey: S")
+                        add_image_button(ico["save_csv"],tag='save_csv_button',callback=save_csv); widget_tooltip("Save .csv file of selected track\n\nkey: C")
                         add_spacer(width=16)
                         add_image_button(ico["home"],tag='homepage',callback=go_to_homepage); widget_tooltip(f'Visit project homepage ({HOMEPAGE})')
-                        add_image_button(ico["license"],tag='licensex',callback=license_wrapper); widget_tooltip('Show License')
-                        add_image_button(ico["about"],tag='aboutx',callback=about_wrapper); widget_tooltip("Show 'About' Dialog")
-                        add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper_toggle); widget_tooltip("Show settings")
+                        add_image_button(ico["license"],tag='licensex',callback=license_wrapper); widget_tooltip('Show License\n\nkey: F2')
+                        add_image_button(ico["about"],tag='aboutx',callback=about_wrapper); widget_tooltip("Show About\n\nkey: F1")
+                        add_spacer(width=16)
+                        add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper_toggle); widget_tooltip("Show settings\n\nkey: F12")
+                        add_spacer(width=8)
 
         with table_row():
             with group(horizontal=True,tag='settings_group'):
                 add_spacer(width=5)
 
                 c0width=100
-                c1width=230
+                c1width=250
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=c0width+c1width+c1width,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
                         add_text(default_value='AUDIO INTERFACE')
@@ -2455,39 +2482,39 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                         add_text(default_value='Input')
 
                             with table_row():
+                                latency_tooltip="The latency of the stream in seconds.\nA value that is too low may\nproduce inaccurate spectrum readings."
+                                blocksize_tooltip="Number of frames per block.\nThe special value 0 means that\nthe blocksize can change between blocks.\nA higher value is more secure, but increases latency."
+
                                 with group(width=-1):
                                     add_text(default_value='API')
                                     add_text(default_value=' ')
                                     add_text(default_value='Device')
                                     add_text(default_value='Channels')
                                     add_text(default_value='Sample rate')
-                                    #add_text(default_value='Sample type')
-                                    add_text(default_value='Latency')
-                                    add_text(default_value='Blckock size')
+                                    add_text(default_value='Latency') ; widget_tooltip(latency_tooltip)
+                                    add_text(default_value='Block size') ; widget_tooltip(blocksize_tooltip)
 
                                 with group(width=-1):
                                     add_combo(tag='api_out',default_value='',callback=api_out_callback,width=c1width)
                                     add_text(default_value=' ')
 
-                                    add_combo(tag='out_dev',default_value='',callback=out_dev_changed)
-                                    add_combo(tag='out_channel',default_value='',callback=out_channel_changed,user_data=True)
+                                    add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest)
+                                    add_combo(tag='out_channel',default_value=cfg['out_channel'],callback=out_channel_changed,user_data=True)
                                     add_combo(tag='out_samplerate',default_value='',callback=out_samplerate_changed,user_data=True)
-                                    #add_combo(tag='out_sampletype',default_value='',callback=out_sampletype_changed,user_data=True)
 
-                                    add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=out_latency_default,user_data=True)
-                                    add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=out_blocksize_default,user_data=True)
+                                    add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=cfg['out_latency'],user_data=True); widget_tooltip(latency_tooltip)
+                                    add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=cfg['out_blocksize'],user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                                 with group(width=-1):
                                     add_combo(tag='api_in',default_value='',callback=api_in_callback,width=c1width)
                                     add_checkbox(tag='allow_all_devices',label='All',callback=api_in_callback,default_value=False); widget_tooltip('Show all devices\n(outputs included)')
 
-                                    add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True)
-                                    add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
+                                    add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True, height_mode=dpg.mvComboHeight_Largest)
+                                    add_combo(tag='in_channel',default_value=cfg['in_channel'],callback=in_channel_changed,user_data=True)
                                     add_combo(tag='in_samplerate',default_value='',callback=in_samplerate_changed,user_data=True)
-                                    #add_combo(tag='in_sampletype',default_value='',callback=in_sampletype_changed,user_data=True)
 
-                                    add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=in_latency_default,user_data=True)
-                                    add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=in_blocksize_default,user_data=True)
+                                    add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=cfg['in_latency'],user_data=True); widget_tooltip(latency_tooltip)
+                                    add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=cfg['in_blocksize'],user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
@@ -2560,7 +2587,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             dpg.add_separator()
                             with group(horizontal=True):
                                 with group():
-                                    add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('key: V')
+                                    add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('When disabled, the graph will be refreshed as fast\nas possible, consuming more CPU power. When enabled,\nrefreshing may lag in some cases.\n\nkey: V')
                                     add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug']); widget_tooltip('key: F11')
                                     add_text(default_value='Theme:')
                                     add_checkbox(tag='decorated',label='Decorate',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decorations.\nUse if you experience problems with\ndragging or resizing the main window.\n(Requires application restart)')
@@ -2885,7 +2912,6 @@ def processing():
                         if peaks_annos_new:
                             peaks_annos=peaks_annos_new_fints
 
-
                     if FFT_FILL:
                         set_value("fft_line_shade", [fft_values_x, fft_values_y,[dbmin]*len(fft_values_y)])
                     else:
@@ -3030,18 +3056,8 @@ def main_loop():
                 on_viewport_resize()
 
             settings_wrapper_scheduled=None
-
-        render_dearpygui_frame()
-        if windows:
-            if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
-                while ShowCursor(False) >= 0:
-                    pass
-            else:
-                #SetCursor(arrow_cursor)
-                while ShowCursor(True) < 0:
-                    pass
-
-        frames += 1
+            render_dearpygui_frame()
+            continue
 
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
             now = perf_counter()
@@ -3070,6 +3086,19 @@ def main_loop():
                 output_samples = 0
 
                 next_fps = now+1.0
+
+        render_dearpygui_frame()
+
+        if windows:
+            if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
+                while ShowCursor(False) >= 0:
+                    pass
+            else:
+                #SetCursor(arrow_cursor)
+                while ShowCursor(True) < 0:
+                    pass
+
+        frames += 1
 
         ##################################
         if sweeping:
