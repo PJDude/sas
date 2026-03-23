@@ -162,8 +162,8 @@ cfg.setdefault('peaks_threshold',15.0)
 cfg.setdefault('show_track',[False]*tracks)
 cfg.setdefault('recorded',-1)
 
-cfg.setdefault('api_in',None)
-cfg.setdefault('api_out',None)
+cfg.setdefault('in_api',None)
+cfg.setdefault('out_api',None)
 
 cfg.setdefault("out_dev",None)
 cfg.setdefault("in_dev",None)
@@ -174,11 +174,18 @@ cfg.setdefault("out_channel","1")
 cfg.setdefault("in_samplerate",'44100')
 cfg.setdefault("out_samplerate",'44100')
 
-cfg.setdefault("in_latency",'high')
-cfg.setdefault("out_latency",'high')
+cfg.setdefault("in_latency",'default')
+cfg.setdefault("out_latency",'default')
 
-cfg.setdefault("in_blocksize",'256')
-cfg.setdefault("out_blocksize",'2048')
+cfg.setdefault("in_blocksize",'128')
+cfg.setdefault("out_blocksize",'128')
+
+latency_values=('high','low','default')
+
+out_blocksize_values=(1024,512,256,128,64)
+
+in_blocksize_values=(512,256,128,64,0)
+
 
 track_line_data_y={}
 
@@ -561,81 +568,94 @@ def go_to_homepage():
 
 default_api_nr=0
 
-device_default_input=None
-device_default_output=None
+default_in_dev=None
+default_out_dev=None
 
-@catch
 def refresh_devices():
     l_info('refresh_devices')
-    global apis,default_api_nr,devices,device_default_input,device_default_output
+    global default_in_dev,default_out_dev,apis,api_name2api,devices,device_name2device
+
+    default_in_dev=query_devices(kind='input')
+    default_out_dev=query_devices(kind='output')
 
     apis = query_hostapis()
+    api_name2api={ api['name']:api for api in apis if api['devices'] }
 
-    api_in_cfg = cfg['api_in']
-    api_out_cfg = cfg['api_out']
-
-    default_api_nr=-1
-
-    default_api_in=None
-    default_api_out=None
-
-    l_info(f'')
-    l_info(f'Host APIs:')
-    for i,api in enumerate(apis):
-        l_info('')
-        for key,val in api.items():
-            l_info(f'  {key}:{val}')
-            if api['devices']:
-                default_api_nr=i
-
-        if api['name']==api_in_cfg:
-            default_api_in=api
-        if api['name']==api_out_cfg:
-            default_api_out=api
-
-    device_default_input_index,device_default_output_index = sd_default.device
-
-    l_info('')
-    l_info('Query Devices ...')
     devices=query_devices()
+    device_name2device={ device['name']:device for device in devices}
 
-    print(default_api_in,default_api_out)
+    values_str=' - ' + '\n - '.join(api_name2api)
+    configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}","out_api")
+    configure_item('in_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}","in_api")
 
-    if default_api_in is not None and default_api_out is not None:
-        set_value('api_in',default_api_in['name'])
-        set_value('api_out',default_api_out['name'])
-        l_info(f'using cfg api value.')
+def initial_set_devices():
+    global api_name2api,device_name2device,default_in_dev,default_out_dev
+    ########################################
+    in_set_by_cfg=False
+    in_api = cfg['in_api']
+    print(f'{in_api=}',api_name2api.keys(),in_api in api_name2api)
+    if in_api in api_name2api:
+        api=api_name2api[in_api]
 
-    for dev in devices:
-        if dev['index']==device_default_input_index:
-            device_default_input=dev
-            default_api_nr=dev['hostapi']
-        if dev['index']==device_default_output_index:
-            device_default_output=dev
-            default_api_nr=dev['hostapi']
+        in_dev = cfg['in_dev']
+        print(f'{in_dev=}',device_name2device.keys())
+        if in_dev in device_name2device:
+            if device_name2device[in_dev]['index'] in api['devices']:
+                set_value('in_api',in_api)
+                in_dev_config_items()
+                set_value('in_dev',in_dev)
+                print('in set by cfg')
+                in_set_by_cfg=True
+                set_value('in_samplerate',cfg['in_samplerate'])
 
-    l_info(f'{default_api_nr=}')
-    l_info(f'{device_default_input=}')
-    l_info(f'{device_default_output=}')
+    if not in_set_by_cfg:
+        if default_in_dev:
+            cfg['in_api']=query_hostapis(index=default_in_dev['hostapi'])['name']
+            set_value('in_api',cfg['in_api'])
+            in_dev_config_items()
+            cfg['in_dev']=default_in_dev['name']
+            set_value('in_dev',cfg['in_dev'])
+            cfg['in_samplerate']=int(default_in_dev['default_samplerate'])
+            set_value('in_samplerate',cfg['in_samplerate'])
+            print('in set by default')
 
-    if default_api_nr!=-1:
-        l_info(f'Defaults:{apis[default_api_nr]["name"]},{device_default_input["name"]},{device_default_output["name"]}')
-        set_value('api_in',apis[default_api_nr]['name'])
-        set_value('api_out',apis[default_api_nr]['name'])
-    else:
-        l_error(f'No default API !')
+    set_value('in_channel',cfg['in_channel'])
+    set_value('in_latency',cfg['in_latency'])
+    set_value('in_blocksize',cfg['in_blocksize'])
+    ########################################
 
-    l_info('Devices:')
-    for dev in devices:
-        l_info('')
-        for key,val in dev.items():
-            l_info(f'  {key}:{val}')
+    out_set_by_cfg=False
+    out_api = cfg['out_api']
+    print(f'{out_api=}',api_name2api.keys(),out_api in api_name2api)
+    if out_api in api_name2api:
+        api=api_name2api[out_api]
 
-latency_values=('high','low',0.01,0.02,0.03,0)
+        out_dev = cfg['out_dev']
+        print(f'{out_dev=}',device_name2device.keys())
+        if out_dev in device_name2device:
+            if device_name2device[out_dev]['index'] in api['devices']:
+                set_value('out_api',out_api)
+                out_dev_config_items()
+                set_value('out_dev',out_dev)
+                print('out set by cfg')
+                out_set_by_cfg=True
+                set_value('out_samplerate',cfg['out_samplerate'])
 
-out_blocksize_values=(2048,1024,512,256)
+    if not out_set_by_cfg:
+        if default_out_dev:
+            cfg['out_api']=query_hostapis(index=default_out_dev['hostapi'])['name']
+            set_value('out_api',cfg['out_api'])
+            out_dev_config_items()
+            cfg['out_dev']=default_out_dev['name']
+            set_value('out_dev',cfg['out_dev'])
+            cfg['out_samplerate']=int(default_out_dev['default_samplerate'])
+            set_value('out_samplerate',cfg['out_samplerate'])
+            print('out set by default')
 
-in_blocksize_values=(512,256,128,64,0)
+    set_value('out_channel',cfg['out_channel'])
+    set_value('out_latency',cfg['out_latency'])
+    set_value('out_blocksize',cfg['out_blocksize'])
+    ########################################
 
 out_channel_buffer_mod_index=0
 
@@ -725,12 +745,10 @@ def out_stream_stop():
         stream_out.stop()
 
 def latency_for_stream(latency):
-    if not latency in ('low','high'):
-        try:
-            latency=float(latency)
-        except:
-            latency=0
-    return latency
+    if latency=='default':
+        return None
+    else:
+        return latency
 
 def out_stream_init():
     global stream_out,device_out_current,out_channel_buffer_mod_index
@@ -961,72 +979,77 @@ for name, data in image.items():
         add_static_texture(w, h, [v/255 for px in list(img.get_flattened_data()) for v in px], tag=name)
     ico[name] = name
 
-api_out_id=None
+out_api_id=None
 
-def api_in_callback(sender=None, app_data=None):
-    global api_in_id,apis,devices
+def in_dev_config_items():
+    global apis,devices
 
-    api_name=cfg['api_in']=get_value('api_in')
-    l_info(f'api_in_changed:{sender},{app_data},{api_name}')
+    in_api_devices_indexes=api_name2api[get_value('in_api')]['devices']
+    print(f'{in_api_devices_indexes=}')
 
-    api_in_id=[api for api in apis if api['name']==api_name][0]
+    #query_devices(device=api_devices
 
     if get_value('allow_all_devices'):
         in_values=[ dev['name'] for dev in devices]
     else:
-        in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in api_in_id['devices'] ]
+        #in_api_id=[api for api in apis if api['name']==api_name][0]
+        in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in in_api_devices_indexes ]
 
-    in_dev_name=get_value("in_dev")
-
-    configure_item("in_dev",items=in_values)
-
+    #in_dev_name=get_value("in_dev")
     values_str=' - ' + '\n - '.join(in_values)
     widget_tooltip(f"Available:\n\n{values_str}","in_dev")
 
-    device_default_input_name=device_default_input['name']
-    l_info(f'defaults:{device_default_input_name}')
+    configure_item("in_dev",items=in_values)
 
-    if in_values:
-        if in_dev_name not in in_values:
-            if device_default_input_name in in_values:
-                set_value("in_dev",device_default_input_name)
-            else:
-                set_value("in_dev",in_values[0])
+    return in_values
 
-    in_dev_changed(None,None)
+def out_dev_config_items():
+    global apis,devices
 
-def api_out_callback(sender=None, app_data=None):
-    global api_out_id,apis,devices
+    out_api_devices_indexes=api_name2api[get_value('out_api')]['devices']
+    print(f'{out_api_devices_indexes=}')
 
-    api_name=cfg['api_out']=get_value('api_out')
-    l_info(f'api_out_changed:{sender},{app_data},{api_name}')
+    #query_devices(device=api_devices
 
-    api_out_id=[api for api in apis if api['name']==api_name][0]
-    out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index'] in api_out_id['devices'] ]
+    out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index'] in out_api_devices_indexes ]
 
-    out_dev_name=get_value("out_dev")
-
-    configure_item("out_dev",items=out_values)
-
+    #in_dev_name=get_value("in_dev")
     values_str=' - ' + '\n - '.join(out_values)
     widget_tooltip(f"Available:\n\n{values_str}","out_dev")
 
-    device_default_output_name=device_default_output['name']
-    l_info(f'defaults:{device_default_output_name}')
+    configure_item("out_dev",items=out_values)
 
-    if out_values:
-        if out_dev_name not in out_values:
-            if device_default_output_name in out_values:
-                set_value("out_dev",device_default_output_name)
-            else:
-                set_value("out_dev",out_values[0])
+    return out_values
 
-    if out_values:
-        if out_dev_name not in out_values:
-            if device_default_output_name in out_values:
-                set_value("out_dev",device_default_output_name)
-            else:
-                set_value("out_dev",out_values[0])
+def in_api_callback(sender=None, app_data=None):
+    global in_api_id,apis,devices
+
+    api_name=cfg['in_api']=get_value('in_api')
+    l_info(f'in_api_callback:{sender},{app_data},{api_name}')
+
+    in_values=in_dev_config_items()
+    if default_in_dev['name'] in in_values:
+        cfg['in_dev']=default_in_dev['name']
+    else:
+        cfg['in_dev']=in_values[-1]
+
+    set_value('in_dev',cfg['in_dev'])
+
+    in_dev_changed(None,None)
+
+def out_api_callback(sender=None, app_data=None):
+    global out_api_id,apis,devices
+
+    api_name=cfg['out_api']=get_value('out_api')
+    l_info(f'out_api_callback:{sender},{app_data},{api_name}')
+
+    out_values=out_dev_config_items()
+    if default_out_dev['name'] in out_values:
+        cfg['out_dev']=default_out_dev['name']
+    else:
+        cfg['out_dev']=out_values[-1]
+
+    set_value('out_dev',cfg['out_dev'])
 
     out_dev_changed(None,None)
 
@@ -2215,32 +2238,7 @@ def settings_wrapper():
         h=max(viewport_height_min[0],get_viewport_height()-settings_height)
         set_viewport_min_height(viewport_height_min[0])
 
-    try:
-        if cfg['settings']:
-            values = refresh_api_combos()
-
-            api_out_name=get_value('api_out')
-            if api_out_name not in values:
-                if values:
-                    set_value('api_out',values[0]['name'])
-
-            api_in_name=get_value('api_in')
-
-            if api_in_name not in values:
-                if values:
-                    set_value('api_in',values[0]['name'])
-
-    except Exception as e:
-        l_error(f'settings_wrapper:{e}')
-
     settings_wrapper_scheduled=h
-
-def refresh_api_combos():
-    values=[ api['name'] for api in apis if api['devices'] ]
-    values_str=' - ' + '\n - '.join(values)
-    configure_item('api_out',items=values); widget_tooltip(f"Available:\n\n{values_str}","api_out")
-    configure_item('api_in',items=values); widget_tooltip(f"Available:\n\n{values_str}","api_in")
-    return values
 
 status_text=''
 def set_status(text,alert=False,timeout=2):
@@ -2495,7 +2493,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_text(default_value='Block size') ; widget_tooltip(blocksize_tooltip)
 
                                 with group(width=-1):
-                                    add_combo(tag='api_out',default_value='',callback=api_out_callback,width=c1width)
+                                    add_combo(tag='out_api',default_value='',callback=out_api_callback,width=c1width)
                                     add_text(default_value=' ')
 
                                     add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest)
@@ -2506,15 +2504,15 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=cfg['out_blocksize'],user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                                 with group(width=-1):
-                                    add_combo(tag='api_in',default_value='',callback=api_in_callback,width=c1width)
-                                    add_checkbox(tag='allow_all_devices',label='All',callback=api_in_callback,default_value=False); widget_tooltip('Show all devices\n(outputs included)')
+                                    add_combo(tag='in_api',default_value='',callback=in_api_callback,width=c1width)
+                                    add_checkbox(tag='allow_all_devices',label='All',callback=in_api_callback,default_value=False); widget_tooltip('Show all devices\n(outputs included)')
 
                                     add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True, height_mode=dpg.mvComboHeight_Largest)
-                                    add_combo(tag='in_channel',default_value=cfg['in_channel'],callback=in_channel_changed,user_data=True)
+                                    add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
                                     add_combo(tag='in_samplerate',default_value='',callback=in_samplerate_changed,user_data=True)
 
-                                    add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value=cfg['in_latency'],user_data=True); widget_tooltip(latency_tooltip)
-                                    add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value=cfg['in_blocksize'],user_data=True) ; widget_tooltip(blocksize_tooltip)
+                                    add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value='',user_data=True); widget_tooltip(latency_tooltip)
+                                    add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value='',user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
@@ -2589,16 +2587,16 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 with group():
                                     add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('When disabled, the graph will be refreshed as fast\nas possible, consuming more CPU power. When enabled,\nrefreshing may lag in some cases.\n\nkey: V')
                                     add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug']); widget_tooltip('key: F11')
-                                    add_text(default_value='Theme:')
                                     add_checkbox(tag='decorated',label='Decorate',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decorations.\nUse if you experience problems with\ndragging or resizing the main window.\n(Requires application restart)')
+                                    with group(horizontal=True):
+                                        add_text(default_value='Theme:')
+                                        add_image_button(ico["light"],callback=theme_light_callback,width=16); widget_tooltip("Light theme\n\nkey:L")
+                                        add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\n\nkey:D")
                                     add_spacer(width=100)
                                 with group():
                                     add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help']); widget_tooltip('key: H')
                                     add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: Space')
 
-                                    with group(horizontal=True):
-                                        add_image_button(ico["light"],callback=theme_light_callback,width=16); widget_tooltip("Light theme\n\nkey:L")
-                                        add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\n\nkey:D")
                                     add_checkbox(tag='fft_fill',label='FFT Fill',callback=fft_fill_callback,default_value=cfg['fft_fill']); widget_tooltip("Filled graph\n\nkey:G")
                                     add_spacer(width=100)
                 add_spacer(width=5)
@@ -2684,9 +2682,9 @@ stream_out=None
 
 fft_duration=0
 
-
 refresh_devices()
-refresh_api_combos()
+
+initial_set_devices()
 
 show_viewport()
 
@@ -2695,8 +2693,8 @@ fft_ready=False
 fft_buckets_quant_change(None,None,False)
 tracks_buckets_quant_change(None,None,True)
 
-api_in_callback()
-api_out_callback()
+in_api_callback()
+out_api_callback()
 fft_callback()
 
 status_timeout=0
@@ -3063,15 +3061,16 @@ def main_loop():
             now = perf_counter()
             if now >= next_fps :
                 part1 = [f"VSync:{VSYNC_STATE_NAME}   FPS:{frames} / (real:{frames_change}) \n",
-                        f"   smpls/s  blcks/s   CPU",
-                        f"O: {output_samples:6d}    {output_callbacks_all:4d}   {stream_in.cpu_load:.6f}",
-                        f"I: {rec_samples:6d}    {input_callbacks_all:4d}   {stream_out.cpu_load:.6f}\n",
-                        f"I:{stream_in.dtype} O:{stream_out.dtype}\n"]
-
+                        f"             Output       Input",
+                        f"samples/s  {output_samples:8d}    {rec_samples:8d}",
+                        f"blocks/s   {output_callbacks_all:8d}    {input_callbacks_all:8d}",
+                        f"CPU        {stream_out.cpu_load:.6f}    {stream_in.cpu_load:.6f}",
+                        f"latency[s] {stream_out.latency:.6f}    {stream_in.latency:.6f}",
+                        f"type        {stream_out.dtype}     {stream_in.dtype}\n"]
 
                 part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
                             "",
-                            f"FFT  /  FBA / act:",
+                            f" FFT  /  FBA / act:",
                             f"{FFT_POINTS} / {FFT_FBA_SIZE:4d} / {FFT_ACTUAL_BUCKETS:4d}"  if FFT_FBA else f"{FFT_POINTS} / ---- / ----",
                             f"TDA_FACTOR: {FFT_TDA_FACTOR:.2f}" if FFT_TDA else ""
                             ] if FFT else []
