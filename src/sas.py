@@ -620,17 +620,23 @@ def initial_set_devices():
 
     if in_api in api_name2api:
         api=api_name2api[in_api]
+        set_value('in_api',in_api)
+        in_dev_config_items()
 
         in_dev = cfg['in_dev']
         l_info(f'{in_dev=}')
+
         if in_dev in device_name2device:
             if device_name2device[in_dev]['index'] in api['devices']:
-                set_value('in_api',in_api)
-                in_dev_config_items()
                 set_value('in_dev',in_dev)
                 l_info('in set by cfg')
                 in_set_by_cfg=True
                 set_value('in_samplerate',cfg['in_samplerate'])
+        else:
+            #in_api_callback(None,None,True)
+            cfg['in_dev']=query_devices(device=api_name2api[in_api]['default_input_device'])['name']
+            set_value('in_dev',cfg['in_dev'])
+            in_set_by_cfg=True
 
     if not in_set_by_cfg:
         if default_in_dev:
@@ -653,17 +659,23 @@ def initial_set_devices():
     l_info(f'{out_api=}')
     if out_api in api_name2api:
         api=api_name2api[out_api]
+        set_value('out_api',out_api)
+        out_dev_config_items()
 
         out_dev = cfg['out_dev']
         l_info(f'{out_dev=}')
+
         if out_dev in device_name2device:
             if device_name2device[out_dev]['index'] in api['devices']:
-                set_value('out_api',out_api)
-                out_dev_config_items()
                 set_value('out_dev',out_dev)
                 l_info('out set by cfg')
                 out_set_by_cfg=True
                 set_value('out_samplerate',cfg['out_samplerate'])
+        else:
+            cfg['out_dev']=query_devices(device=api_name2api[out_api]['default_output_device'])['name']
+            set_value('out_dev',cfg['out_dev'])
+            #out_api_callback(None,None,True)
+            out_set_by_cfg=True
 
     if not out_set_by_cfg:
         if default_out_dev:
@@ -775,6 +787,7 @@ def latency_for_stream(latency):
         return latency
 
 def out_stream_init():
+    configure_item('out_status',texture_tag=ico['out_off'])
     global stream_out,device_out_current,out_channel_buffer_mod_index
 
     if stream_out:
@@ -814,8 +827,8 @@ def out_stream_init():
         stream_out.start()
         configure_item('out_status',texture_tag=ico['out_on'])
     except Exception as e:
+        set_status(f'OutputStream init error:{e}')
         l_error(f'OutputStream init error:{e}')
-        configure_item('out_status',texture_tag=ico['out_off'])
     else:
         l_info('OutputStream init DONE.')
 
@@ -834,7 +847,6 @@ def in_channel_changed(sender=None, app_data=None,user_data=False):
 
 def in_stream_init():
     configure_item('in_status',texture_tag=ico['in_off'])
-
     global stream_in,device_in_current,in_channel_buffer_mod_index
 
     if stream_in:
@@ -872,6 +884,7 @@ def in_stream_init():
         configure_item('in_status',texture_tag=ico['in_on'])
 
     except Exception as e:
+        set_status(f'InputStream init error:{e}')
         l_error(f'InputStream init error:{e}')
     else:
         l_info('InputStream init DONE.')
@@ -2569,7 +2582,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                                     with group(horizontal=True):
                                         add_checkbox(tag='allow_all_devices',label='All',callback=in_api_callback,default_value=cfg['allow_all_devices'],user_data=True); widget_tooltip('Show all devices\n(outputs included)')
-                                        add_checkbox(tag='in_wasapi_exclusive',label='WASAPI Exclusive',callback=in_wasapi_exclusive_callback,default_value=cfg['in_wasapi_exclusive'],user_data=True); widget_tooltip('Exclusive mode allows to receive audio\ndata directly to hardware bypassing software mixing')
+                                        add_checkbox(tag='in_wasapi_exclusive',label='WASAPI Exclusive',callback=in_wasapi_exclusive_callback,default_value=cfg['in_wasapi_exclusive'],user_data=True,show=False); widget_tooltip('Exclusive mode allows to receive audio\ndata directly to hardware bypassing software mixing')
 
                                     add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True, height_mode=dpg.mvComboHeight_Largest)
                                     add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
@@ -2643,7 +2656,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging'; widget_tooltip(FFT_tooltip6)
                                     dpg.add_slider_float(tag='tracks_tda_factor',callback=tracks_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['tracks_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tooltip6)
 
-                    with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=100):
+                    with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=116):
                         with group():
                             add_text(default_value='DISPLAY SETTINGS')
                             dpg.add_separator()
