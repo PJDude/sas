@@ -29,7 +29,7 @@
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
-from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,theme,theme_component
+from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series
 from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height
 
 from time import strftime,time,localtime,perf_counter,sleep
@@ -162,8 +162,8 @@ cfg.setdefault('peaks_threshold',15.0)
 cfg.setdefault('show_track',[False]*tracks)
 cfg.setdefault('recorded',-1)
 
-cfg.setdefault('in_api',None)
-cfg.setdefault('out_api',None)
+cfg.setdefault('in_api','Windows WASAPI' if windows else 'ALSA')
+cfg.setdefault('out_api','Windows WASAPI' if windows else 'ALSA')
 
 cfg.setdefault("out_dev",None)
 cfg.setdefault("in_dev",None)
@@ -181,7 +181,8 @@ cfg.setdefault("in_blocksize",'128')
 cfg.setdefault("out_blocksize",'128')
 
 cfg.setdefault("allow_all_devices",False)
-cfg.setdefault("wasapi_exclusive",False)
+cfg.setdefault("out_wasapi_exclusive",False)
+cfg.setdefault("in_wasapi_exclusive",False)
 
 latency_values=('high','low','default')
 
@@ -394,7 +395,7 @@ def save_csv():
         with open(filename,'w',encoding='utf-8') as f:
             f.write("# Created with " + title + "\n")
             f.write("#frequency[Hz],level[dBFS]\n")
-            f.write(f"#tracks:" + ','.join([str(track+1) for track in range(tracks) if cfg['show_track'][track]]) + "\n")
+            f.write("#tracks:" + ','.join([str(track+1) for track in range(tracks) if cfg['show_track'][track]]) + "\n")
 
             for i in range(cfg["track_buckets"]):
                 values=[]
@@ -593,11 +594,12 @@ def refresh_devices():
     default_in_dev=query_devices(kind='input')
     default_out_dev=query_devices(kind='output')
 
+    l_info(f'apis:')
     apis = query_hostapis()
     for i,api in enumerate(apis):
-        print(f'api:{i}')
+        l_info(f'  api:{i}')
         for key,val in api.items():
-            print(f'   :{key}:{val}')
+            l_info(f'    :{key}:{val}')
 
     api_name2api={ api['name']:api for api in apis if api['devices'] }
 
@@ -614,18 +616,19 @@ def initial_set_devices():
     ########################################
     in_set_by_cfg=False
     in_api = cfg['in_api']
-    print(f'{in_api=}',api_name2api.keys(),in_api in api_name2api)
+    l_info(f'{in_api=}')
+
     if in_api in api_name2api:
         api=api_name2api[in_api]
 
         in_dev = cfg['in_dev']
-        print(f'{in_dev=}',device_name2device.keys())
+        l_info(f'{in_dev=}')
         if in_dev in device_name2device:
             if device_name2device[in_dev]['index'] in api['devices']:
                 set_value('in_api',in_api)
                 in_dev_config_items()
                 set_value('in_dev',in_dev)
-                print('in set by cfg')
+                l_info('in set by cfg')
                 in_set_by_cfg=True
                 set_value('in_samplerate',cfg['in_samplerate'])
 
@@ -638,7 +641,7 @@ def initial_set_devices():
             set_value('in_dev',cfg['in_dev'])
             cfg['in_samplerate']=int(default_in_dev['default_samplerate'])
             set_value('in_samplerate',cfg['in_samplerate'])
-            print('in set by default',cfg['in_api'],cfg['in_dev'])
+            l_info(f"in set by defaults:',{cfg['in_api']},{cfg['in_dev']}")
 
     set_value('in_channel',cfg['in_channel'])
     set_value('in_latency',cfg['in_latency'])
@@ -647,18 +650,18 @@ def initial_set_devices():
 
     out_set_by_cfg=False
     out_api = cfg['out_api']
-    print(f'{out_api=}',api_name2api.keys(),out_api in api_name2api)
+    l_info(f'{out_api=}')
     if out_api in api_name2api:
         api=api_name2api[out_api]
 
         out_dev = cfg['out_dev']
-        print(f'{out_dev=}',device_name2device.keys())
+        l_info(f'{out_dev=}')
         if out_dev in device_name2device:
             if device_name2device[out_dev]['index'] in api['devices']:
                 set_value('out_api',out_api)
                 out_dev_config_items()
                 set_value('out_dev',out_dev)
-                print('out set by cfg')
+                l_info('out set by cfg')
                 out_set_by_cfg=True
                 set_value('out_samplerate',cfg['out_samplerate'])
 
@@ -671,7 +674,7 @@ def initial_set_devices():
             set_value('out_dev',cfg['out_dev'])
             cfg['out_samplerate']=int(default_out_dev['default_samplerate'])
             set_value('out_samplerate',cfg['out_samplerate'])
-            print('out set by default',cfg['out_api'],cfg['out_dev'])
+            l_info(f"out set by defaults:'{cfg['out_api']},{cfg['out_dev']}")
 
     set_value('out_channel',cfg['out_channel'])
     set_value('out_latency',cfg['out_latency'])
@@ -778,9 +781,9 @@ def out_stream_init():
         stream_out.stop()
         stream_out.close()
 
-    if cfg['wasapi_exclusive'] and cfg['out_api'] == 'Windows WASAPI':
+    if cfg['out_wasapi_exclusive'] and cfg['out_api'] == 'Windows WASAPI':
         extra_settings=WasapiSettings(exclusive=True)
-        print('WASAPI Exclusive mode !')
+        l_info('out WASAPI Exclusive mode !')
     else:
         extra_settings=None
 
@@ -838,6 +841,12 @@ def in_stream_init():
         stream_in.stop()
         stream_in.close()
 
+    if cfg['in_wasapi_exclusive'] and cfg['in_api'] == 'Windows WASAPI':
+        extra_settings=WasapiSettings(exclusive=True)
+        l_info('in WASAPI Exclusive mode !')
+    else:
+        extra_settings=None
+
     device=int(device_in_current['index'])
 
     samplerate=float(get_value('in_samplerate'))
@@ -848,9 +857,9 @@ def in_stream_init():
     in_channel_buffer_mod_index=0
 
     l_info('')
-    l_info(f'InputStream init {device=},{samplerate=},{latency=},{blocksize=},{channels=}')
+    l_info(f'InputStream init {device=},{samplerate=},{latency=},{blocksize=},{channels=},{extra_settings}')
     try:
-        stream_in = InputStream(callback=audio_input_callback,
+        stream_in = InputStream(callback=audio_input_callback, extra_settings=extra_settings,
             device=device,
             samplerate=samplerate,
             latency=latency,
@@ -1005,7 +1014,7 @@ def in_dev_config_items():
     api=api_name2api[get_value('in_api')]
 
     in_api_devices_indexes=api_name2api[get_value('in_api')]['devices']
-    print(f'{in_api_devices_indexes=}')
+    l_info(f'{in_api_devices_indexes=}')
 
     devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
 
@@ -1031,7 +1040,7 @@ def out_dev_config_items():
     api=api_name2api[get_value('out_api')]
 
     out_api_devices_indexes=api['devices']
-    print(f'{out_api_devices_indexes=}')
+    l_info(f'{out_api_devices_indexes=}')
 
     devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
 
@@ -1046,11 +1055,17 @@ def out_dev_config_items():
 
     return out_values
 
-def wasapi_exclusive_callback(sender=None, app_data=None,user_data=False):
-    cfg['wasapi_exclusive']=get_value('wasapi_exclusive')
+def out_wasapi_exclusive_callback(sender=None, app_data=None,user_data=False):
+    cfg['out_wasapi_exclusive']=get_value('out_wasapi_exclusive')
 
     if windows and cfg['out_api'] == 'Windows WASAPI':
         out_dev_changed(None,None,user_data)
+
+def in_wasapi_exclusive_callback(sender=None, app_data=None,user_data=False):
+    cfg['in_wasapi_exclusive']=get_value('in_wasapi_exclusive')
+
+    if windows and cfg['in_api'] == 'Windows WASAPI':
+        in_dev_changed(None,None,user_data)
 
 def in_api_callback(sender=None, app_data=None,user_data=False):
     global in_api_id,apis
@@ -1386,10 +1401,6 @@ def check_sample_rates_output(device_id):
 
 device_out_current=None
 
-def dev_index2dev(index):
-    query_devices()['index']
-    [device for device in devices if device['name']==dev_name][0]
-
 def out_dev_changed(sender=None, app_data=None,user_data=True):
     l_info(f'out_dev_changed:{sender},{app_data}')
 
@@ -1400,10 +1411,8 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
     out_api_devices_indexes=api_name2api[get_value('out_api')]['devices']
     devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
 
-    #print('\nout dev search:',dev_name,devices)
-    #device_out_current=[device for device in devices if device['name']==dev_name][0]
     device_out_current=device_name2device[dev_name]
-    print(device_out_current)
+    l_info(f'{device_out_current=}')
 
     output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
     l_info(f'{output_channels=}')
@@ -1448,10 +1457,8 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
     in_api_devices_indexes=api_name2api[get_value('in_api')]['devices']
     devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
 
-    #print('\nin dev search:',dev_name,devices)
-    #device_in_current=[device for device in devices if device['name']==dev_name][0]
     device_in_current=device_name2device[dev_name]
-    print(device_in_current)
+    l_info(f'{device_in_current=}')
 
     input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
     l_info(f'{input_channels=}')
@@ -2548,7 +2555,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                                 with group(width=-1):
                                     add_combo(tag='out_api',default_value='',callback=out_api_callback,width=c1width,user_data=True)
-                                    add_checkbox(tag='wasapi_exclusive',label='WASAPI Exclusive Mode',callback=wasapi_exclusive_callback,default_value=cfg['wasapi_exclusive'],user_data=True); widget_tooltip('Exclusive mode allows to deliver audio\ndata directly to hardware bypassing software mixing')
+                                    add_checkbox(tag='out_wasapi_exclusive',label='WASAPI Exclusive',callback=out_wasapi_exclusive_callback,default_value=cfg['out_wasapi_exclusive'],user_data=True); widget_tooltip('Exclusive mode allows to deliver audio\ndata directly to hardware bypassing software mixing')
 
                                     add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest,user_data=True)
                                     add_combo(tag='out_channel',default_value=cfg['out_channel'],callback=out_channel_changed,user_data=True)
@@ -2559,7 +2566,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                                 with group(width=-1):
                                     add_combo(tag='in_api',default_value='',callback=in_api_callback,width=c1width,user_data=True)
-                                    add_checkbox(tag='allow_all_devices',label='All',callback=in_api_callback,default_value=cfg['allow_all_devices'],user_data=True); widget_tooltip('Show all devices\n(outputs included)')
+
+                                    with group(horizontal=True):
+                                        add_checkbox(tag='allow_all_devices',label='All',callback=in_api_callback,default_value=cfg['allow_all_devices'],user_data=True); widget_tooltip('Show all devices\n(outputs included)')
+                                        add_checkbox(tag='in_wasapi_exclusive',label='WASAPI Exclusive',callback=in_wasapi_exclusive_callback,default_value=cfg['in_wasapi_exclusive'],user_data=True); widget_tooltip('Exclusive mode allows to receive audio\ndata directly to hardware bypassing software mixing')
 
                                     add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True, height_mode=dpg.mvComboHeight_Largest)
                                     add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
@@ -2771,7 +2781,6 @@ try:
     configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False,mouse_draw_cursor=True)
 except:
     configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False)
-
 
 help_callback()
 
@@ -3128,8 +3137,8 @@ def main_loop():
 
                 part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
                             "",
-                            f" FFT  /  FBA / act:",
-                            f"{FFT_POINTS} / {FFT_FBA_SIZE:4d} / {FFT_ACTUAL_BUCKETS:4d}"  if FFT_FBA else f"{FFT_POINTS} / ---- / ----",
+                            f"   FFT /  FBA  /  act",
+                            f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}"  if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
                             f"TDA_FACTOR: {FFT_TDA_FACTOR:.2f}" if FFT_TDA else ""
                             ] if FFT else []
 
