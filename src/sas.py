@@ -174,11 +174,13 @@ cfg.setdefault("out_channel","1")
 cfg.setdefault("in_samplerate",'44100')
 cfg.setdefault("out_samplerate",'44100')
 
-cfg.setdefault("in_latency",'default')
-cfg.setdefault("out_latency",'default')
+cfg.setdefault("in_latency",'low')
+cfg.setdefault("out_latency",'low')
 
 cfg.setdefault("in_blocksize",'128')
 cfg.setdefault("out_blocksize",'128')
+
+cfg.setdefault("allow_all_devices",False)
 
 latency_values=('high','low','default')
 
@@ -573,16 +575,25 @@ default_out_dev=None
 
 def refresh_devices():
     l_info('refresh_devices')
-    global default_in_dev,default_out_dev,apis,api_name2api,devices,device_name2device
+    global default_in_dev,default_out_dev,apis,api_name2api,devices,device_name2device,device_index2device
 
     default_in_dev=query_devices(kind='input')
     default_out_dev=query_devices(kind='output')
 
     apis = query_hostapis()
+    for i,api in enumerate(apis):
+        print(f'api:{i}')
+        for key,val in api.items():
+            print(f'   :{key}:{val}')
+
+        #api['default_input_device']
+        #api['default_output_device']
+
     api_name2api={ api['name']:api for api in apis if api['devices'] }
 
     devices=query_devices()
     device_name2device={ device['name']:device for device in devices}
+    device_index2device={ device['index']:device for device in devices}
 
     values_str=' - ' + '\n - '.join(api_name2api)
     configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}","out_api")
@@ -617,7 +628,7 @@ def initial_set_devices():
             set_value('in_dev',cfg['in_dev'])
             cfg['in_samplerate']=int(default_in_dev['default_samplerate'])
             set_value('in_samplerate',cfg['in_samplerate'])
-            print('in set by default')
+            print('in set by default',cfg['in_api'],cfg['in_dev'])
 
     set_value('in_channel',cfg['in_channel'])
     set_value('in_latency',cfg['in_latency'])
@@ -650,7 +661,7 @@ def initial_set_devices():
             set_value('out_dev',cfg['out_dev'])
             cfg['out_samplerate']=int(default_out_dev['default_samplerate'])
             set_value('out_samplerate',cfg['out_samplerate'])
-            print('out set by default')
+            print('out set by default',cfg['out_api'],cfg['out_dev'])
 
     set_value('out_channel',cfg['out_channel'])
     set_value('out_latency',cfg['out_latency'])
@@ -982,76 +993,89 @@ for name, data in image.items():
 out_api_id=None
 
 def in_dev_config_items():
-    global apis,devices
+    global apis
+    api=api_name2api[get_value('in_api')]
 
     in_api_devices_indexes=api_name2api[get_value('in_api')]['devices']
     print(f'{in_api_devices_indexes=}')
 
-    #query_devices(device=api_devices
+    devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
+
+    default_input_device_name = device_index2device[api['default_input_device']]['name']
 
     if get_value('allow_all_devices'):
         in_values=[ dev['name'] for dev in devices]
     else:
         #in_api_id=[api for api in apis if api['name']==api_name][0]
-        in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index'] in in_api_devices_indexes ]
+        in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index']]
 
-    #in_dev_name=get_value("in_dev")
-    values_str=' - ' + '\n - '.join(in_values)
-    widget_tooltip(f"Available:\n\n{values_str}","in_dev")
+    tooltip_str='\n'.join([ ('*' if name==default_input_device_name else '-') + ' ' + name for name in in_values])
+
+    widget_tooltip(f"Available:\n\n{tooltip_str}","in_dev")
 
     configure_item("in_dev",items=in_values)
 
     return in_values
 
 def out_dev_config_items():
-    global apis,devices
+    global apis
 
-    out_api_devices_indexes=api_name2api[get_value('out_api')]['devices']
+    api=api_name2api[get_value('out_api')]
+
+    out_api_devices_indexes=api['devices']
     print(f'{out_api_devices_indexes=}')
 
-    #query_devices(device=api_devices
+    devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
 
-    out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index'] in out_api_devices_indexes ]
+    default_output_device_name = device_index2device[api['default_output_device']]['name']
 
-    #in_dev_name=get_value("in_dev")
-    values_str=' - ' + '\n - '.join(out_values)
-    widget_tooltip(f"Available:\n\n{values_str}","out_dev")
+    out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index']]
+
+    tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
+    widget_tooltip(f"Available:\n\n{tooltip_str}","out_dev")
 
     configure_item("out_dev",items=out_values)
 
     return out_values
 
-def in_api_callback(sender=None, app_data=None):
-    global in_api_id,apis,devices
+def in_api_callback(sender=None, app_data=None,user_data=False):
+    global in_api_id,apis
 
     api_name=cfg['in_api']=get_value('in_api')
-    l_info(f'in_api_callback:{sender},{app_data},{api_name}')
+    l_info(f'in_api_callback:{sender},{app_data},{api_name},{user_data}')
 
-    in_values=in_dev_config_items()
-    if default_in_dev['name'] in in_values:
-        cfg['in_dev']=default_in_dev['name']
-    else:
-        cfg['in_dev']=in_values[-1]
+    if user_data:
+        cfg['in_dev']=query_devices(device=api_name2api[api_name]['default_input_device'])['name']
+
+    cfg['allow_all_devices'] = get_value('allow_all_devices')
+    in_dev_config_items()
+    #if default_in_dev['name'] in in_values:
+    #    cfg['in_dev']=default_in_dev['name']
+    #else:
+    #    cfg['in_dev']=in_values[-1]
 
     set_value('in_dev',cfg['in_dev'])
 
-    in_dev_changed(None,None)
+    in_dev_changed(None,None,user_data)
 
-def out_api_callback(sender=None, app_data=None):
-    global out_api_id,apis,devices
+def out_api_callback(sender=None, app_data=None,user_data=False):
+    global out_api_id,apis
 
     api_name=cfg['out_api']=get_value('out_api')
-    l_info(f'out_api_callback:{sender},{app_data},{api_name}')
+    l_info(f'out_api_callback:{sender},{app_data},{api_name},{user_data}')
 
-    out_values=out_dev_config_items()
-    if default_out_dev['name'] in out_values:
-        cfg['out_dev']=default_out_dev['name']
-    else:
-        cfg['out_dev']=out_values[-1]
+    if user_data:
+        cfg['out_dev']=query_devices(device=api_name2api[api_name]['default_output_device'])['name']
+
+    out_dev_config_items()
+    #if default_out_dev['name'] in out_values:
+    #    cfg['out_dev']=default_out_dev['name']
+    #else:
+    #    cfg['out_dev']=out_values[-1]
 
     set_value('out_dev',cfg['out_dev'])
 
-    out_dev_changed(None,None)
+    out_dev_changed(None,None,user_data)
 
 def refresh_tracks():
     for track in range(tracks):
@@ -1348,14 +1372,24 @@ def check_sample_rates_output(device_id):
 
 device_out_current=None
 
-def out_dev_changed(sender=None, app_data=None):
+def dev_index2dev(index):
+    query_devices()['index']
+    [device for device in devices if device['name']==dev_name][0]
+
+def out_dev_changed(sender=None, app_data=None,user_data=True):
     l_info(f'out_dev_changed:{sender},{app_data}')
 
     global device_out_current
 
-    out_dev_name=cfg["out_dev"]=get_value("out_dev")
+    dev_name=cfg["out_dev"]=get_value("out_dev")
 
-    device_out_current=[device for device in devices if device['name']==out_dev_name][0]
+    out_api_devices_indexes=api_name2api[get_value('out_api')]['devices']
+    devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
+
+    #print('\nout dev search:',dev_name,devices)
+    #device_out_current=[device for device in devices if device['name']==dev_name][0]
+    device_out_current=device_name2device[dev_name]
+    print(device_out_current)
 
     output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
     l_info(f'{output_channels=}')
@@ -1397,7 +1431,13 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
 
     dev_name=cfg["in_dev"]=get_value("in_dev")
 
-    device_in_current=[device for device in devices if device['name']==dev_name][0]
+    in_api_devices_indexes=api_name2api[get_value('in_api')]['devices']
+    devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
+
+    #print('\nin dev search:',dev_name,devices)
+    #device_in_current=[device for device in devices if device['name']==dev_name][0]
+    device_in_current=device_name2device[dev_name]
+    print(device_in_current)
 
     input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
     l_info(f'{input_channels=}')
@@ -2493,10 +2533,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_text(default_value='Block size') ; widget_tooltip(blocksize_tooltip)
 
                                 with group(width=-1):
-                                    add_combo(tag='out_api',default_value='',callback=out_api_callback,width=c1width)
+                                    add_combo(tag='out_api',default_value='',callback=out_api_callback,width=c1width,user_data=True)
                                     add_text(default_value=' ')
 
-                                    add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest)
+                                    add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest,user_data=True)
                                     add_combo(tag='out_channel',default_value=cfg['out_channel'],callback=out_channel_changed,user_data=True)
                                     add_combo(tag='out_samplerate',default_value='',callback=out_samplerate_changed,user_data=True)
 
@@ -2504,8 +2544,8 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=cfg['out_blocksize'],user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                                 with group(width=-1):
-                                    add_combo(tag='in_api',default_value='',callback=in_api_callback,width=c1width)
-                                    add_checkbox(tag='allow_all_devices',label='All',callback=in_api_callback,default_value=False); widget_tooltip('Show all devices\n(outputs included)')
+                                    add_combo(tag='in_api',default_value='',callback=in_api_callback,width=c1width,user_data=True)
+                                    add_checkbox(tag='allow_all_devices',label='All',callback=in_api_callback,default_value=cfg['allow_all_devices'],user_data=True); widget_tooltip('Show all devices\n(outputs included)')
 
                                     add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True, height_mode=dpg.mvComboHeight_Largest)
                                     add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
@@ -2558,7 +2598,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 dpg.add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=40.0,min_value=1.0,default_value=cfg['peaks_threshold'],format="%.3f",width=130,track_offset=0.5); widget_tooltip('Peak Detection Threshold.')
 
                 with group():
-                    with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=80):
+                    with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=70):
                         with group(width=-1):
                             add_text(default_value='TRACKS')
                             dpg.add_separator()
@@ -2696,6 +2736,10 @@ tracks_buckets_quant_change(None,None,True)
 in_api_callback()
 out_api_callback()
 fft_callback()
+
+#konieczne ponowienie po fft
+out_dev_changed(None,None,True)
+in_dev_changed(None,None,True)
 
 status_timeout=0
 
