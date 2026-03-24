@@ -181,6 +181,7 @@ cfg.setdefault("in_blocksize",'128')
 cfg.setdefault("out_blocksize",'128')
 
 cfg.setdefault("allow_all_devices",False)
+cfg.setdefault("wasapi_exclusive",False)
 
 latency_values=('high','low','default')
 
@@ -573,6 +574,18 @@ default_api_nr=0
 default_in_dev=None
 default_out_dev=None
 
+out_api_tooltip='\n'.join([
+    'Select preferred API for test signal generation.',
+    ' ',
+    'For Windows "Windows WASAPI" or "Windows WDM-KS" are',
+    'recommended for the lowest possible latency',
+    ' ',
+    'Check output latency on debug information (F11)',
+    ' ',
+    'WARNING: The test signal is generated at full bit depth',
+    'therefore, if the selected API bypasses the system mixer,',
+    'the sound will be played at FULL VOLUME.'])
+
 def refresh_devices():
     l_info('refresh_devices')
     global default_in_dev,default_out_dev,apis,api_name2api,devices,device_name2device,device_index2device
@@ -586,9 +599,6 @@ def refresh_devices():
         for key,val in api.items():
             print(f'   :{key}:{val}')
 
-        #api['default_input_device']
-        #api['default_output_device']
-
     api_name2api={ api['name']:api for api in apis if api['devices'] }
 
     devices=query_devices()
@@ -596,7 +606,7 @@ def refresh_devices():
     device_index2device={ device['index']:device for device in devices}
 
     values_str=' - ' + '\n - '.join(api_name2api)
-    configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}","out_api")
+    configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
     configure_item('in_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}","in_api")
 
 def initial_set_devices():
@@ -768,13 +778,11 @@ def out_stream_init():
         stream_out.stop()
         stream_out.close()
 
-    extra_settings=None
-    try:
-        if environ['SAS_WASAPI_EXCLUSIVE']:
-            extra_settings=WasapiSettings(exclusive=True)
-            print('WASAPI Exclusive mode !')
-    except:
-        pass
+    if cfg['wasapi_exclusive'] and cfg['out_api'] == 'Windows WASAPI':
+        extra_settings=WasapiSettings(exclusive=True)
+        print('WASAPI Exclusive mode !')
+    else:
+        extra_settings=None
 
     try:
         channels=int(get_value('out_channel'))
@@ -1037,6 +1045,12 @@ def out_dev_config_items():
     configure_item("out_dev",items=out_values)
 
     return out_values
+
+def wasapi_exclusive_callback(sender=None, app_data=None,user_data=False):
+    cfg['wasapi_exclusive']=get_value('wasapi_exclusive')
+
+    if windows and cfg['out_api'] == 'Windows WASAPI':
+        out_dev_changed(None,None,user_data)
 
 def in_api_callback(sender=None, app_data=None,user_data=False):
     global in_api_id,apis
@@ -2534,7 +2548,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                                 with group(width=-1):
                                     add_combo(tag='out_api',default_value='',callback=out_api_callback,width=c1width,user_data=True)
-                                    add_text(default_value=' ')
+                                    add_checkbox(tag='wasapi_exclusive',label='WASAPI Exclusive Mode',callback=wasapi_exclusive_callback,default_value=cfg['wasapi_exclusive'],user_data=True); widget_tooltip('Exclusive mode allows to deliver audio\ndata directly to hardware bypassing software mixing')
 
                                     add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest,user_data=True)
                                     add_combo(tag='out_channel',default_value=cfg['out_channel'],callback=out_channel_changed,user_data=True)
@@ -2598,7 +2612,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 dpg.add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=40.0,min_value=1.0,default_value=cfg['peaks_threshold'],format="%.3f",width=130,track_offset=0.5); widget_tooltip('Peak Detection Threshold.')
 
                 with group():
-                    with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=70):
+                    with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=65):
                         with group(width=-1):
                             add_text(default_value='TRACKS')
                             dpg.add_separator()
