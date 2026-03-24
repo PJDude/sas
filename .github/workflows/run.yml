@@ -1,5 +1,8 @@
 name: win_lin_release
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [ "main" ]
@@ -259,7 +262,7 @@ jobs:
       with:
         tag_name: ${{ steps.version.outputs.version }}
         name: sas ${{ steps.version.outputs.version }}
-        draft: true
+        draft: false
         prerelease: false
         files: |
             sas.${{ steps.version.outputs.version }}.lin.zip
