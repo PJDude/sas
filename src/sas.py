@@ -26,6 +26,18 @@
 #
 ####################################################################################
 
+
+######################################################################################
+#                                                                                    #
+#                                      Disclaimer                                    #
+#                                                                                    #
+#    This source code was created with performance in mind (in the Python sense).    #
+# It is an anti-pattern for object-oriented programming and even Python programming. #
+#                                                                                    #
+#                                         😎                                         #
+#                                                                                    #
+######################################################################################
+
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
@@ -594,7 +606,8 @@ def refresh_devices():
     default_in_dev=query_devices(kind='input')
     default_out_dev=query_devices(kind='output')
 
-    l_info(f'apis:')
+    l_info(' ')
+    l_info('APIS:')
     apis = query_hostapis()
     for i,api in enumerate(apis):
         l_info(f'  api:{i}')
@@ -606,6 +619,14 @@ def refresh_devices():
     devices=query_devices()
     device_name2device={ device['name']:device for device in devices}
     device_index2device={ device['index']:device for device in devices}
+
+    l_info(' ')
+    l_info('DEVICES:')
+    for i,dev in enumerate(devices):
+        l_info(f'  dev:{i}')
+        for key,val in dev.items():
+            l_info(f'    :{key}:{val}')
+    l_info(' ')
 
     values_str=' - ' + '\n - '.join(api_name2api)
     configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
@@ -1171,7 +1192,6 @@ def fft_callback(sender=None, app_data=None):
     configure_item('peaks_threshold',enabled=FFT)
 
 FFT_SIZE=cfg['fft_size']
-FFT_SIZE_MAX=524288
 def fft_size_callback(sender=None, app_data=None):
     global cfg,FFT_POINTS,FFT_SIZE,fft_ready
     fft_ready=False
@@ -1180,7 +1200,6 @@ def fft_size_callback(sender=None, app_data=None):
 
     FFT_SIZE=cfg['fft_size']=int(get_value('fft_size'))
     FFT_POINTS=FFT_SIZE//2+1
-    set_status(f'fft_size_callback:{FFT_SIZE}')
 
     fft_window_changed()
 
@@ -2386,6 +2405,8 @@ create_viewport(title=title,vsync=cfg['vsync'],decorated=decorated)
 with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_move=True) as main:
     set_primary_window(main, True)
 
+    dpg.add_draw_layer(tag='draw_layer')
+
     if not decorated:
         with table(header_row=False,resizable=False, policy=mvTable_SizingStretchProp,borders_outerH=False, borders_innerV=False, borders_outerV=False):
             dpg.add_table_column( width_fixed=True, init_width_or_weight=5)
@@ -2414,6 +2435,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
         add_text(tag='info_text')
         hide_item('info_window')
 
+
     with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp,
         borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
         row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
@@ -2438,6 +2460,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         ("",2000),("",3000),("",4000),("",5000),("",6000),("",7000),("",8000),("",9000),("10kHz",10000),("20kHz",20000))
                     add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
                     add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
+
 
                     with dpg.plot_axis(dpg.mvXAxis, tag='x_axis',no_highlight=True) as xaxis:
                         configure_item(dpg.last_item(),scale=dpg.mvPlotScale_Log10)
@@ -3066,133 +3089,165 @@ def main_loop():
 
     while is_dearpygui_running():
         if set_viewport_pos_scheduled:
-            set_viewport_pos(set_viewport_pos_scheduled)
-            render_dearpygui_frame()
-            set_viewport_pos_scheduled=False
-            sleep(0.0001)
-            continue
+            try:
+                set_viewport_pos(set_viewport_pos_scheduled)
+                render_dearpygui_frame()
+                set_viewport_pos_scheduled=False
+                sleep(0.0001)
+                continue
+            except Exception as pos_e:
+                l_error(f'{pos_e=}')
+                set_status(f'{pos_e=}')
 
         if set_viewport_width_scheduled:
-            set_viewport_width(set_viewport_width_scheduled)
-            on_viewport_resize()
-            render_dearpygui_frame()
-            set_viewport_width_scheduled=False
-            sleep(0.0001)
-            continue
+            try:
+                set_viewport_width(set_viewport_width_scheduled)
+                on_viewport_resize()
+                render_dearpygui_frame()
+                set_viewport_width_scheduled=False
+                sleep(0.0001)
+                continue
+            except Exception as width_e:
+                l_error(f'{width_e=}')
+                set_status(f'{width_e=}')
 
         if set_viewport_height_scheduled:
-            set_viewport_height(set_viewport_height_scheduled)
-            set_viewport_height_scheduled=False
-            on_viewport_resize()
-            render_dearpygui_frame()
-            sleep(0.0001)
-            continue
+            try:
+                set_viewport_height(set_viewport_height_scheduled)
+                set_viewport_height_scheduled=False
+                on_viewport_resize()
+                render_dearpygui_frame()
+                sleep(0.0001)
+                continue
+            except Exception as heigth_e:
+                l_error(f'{heigth_e=}')
+                set_status(f'{heigth_e=}')
 
         if schedule_screenshot:
-            hide_item('cursor_db_txt')
-            hide_item('cursor_f_txt')
-            hide_item('cursor_f')
+            try:
+                hide_item('cursor_db_txt')
+                hide_item('cursor_f_txt')
+                hide_item('cursor_f')
 
-            configure_item('mark_text_1',show=True)
-            configure_item('mark_text_2',show=True)
-            configure_item('mark_text_3',show=True)
-            configure_item('mark_text_4',show=True)
-            configure_item('mark_text_5',show=True)
-            configure_item('mark_text_6',show=True)
-            configure_item('mark_text_7',show=True)
-            configure_item('mark_text_8',show=True)
-            configure_item('mark_text',show=True)
+                configure_item('mark_text_1',show=True)
+                configure_item('mark_text_2',show=True)
+                configure_item('mark_text_3',show=True)
+                configure_item('mark_text_4',show=True)
+                configure_item('mark_text_5',show=True)
+                configure_item('mark_text_6',show=True)
+                configure_item('mark_text_7',show=True)
+                configure_item('mark_text_8',show=True)
+                configure_item('mark_text',show=True)
 
-            render_dearpygui_frame()
-            output_frame_buffer(callback=output_frame_buffer_callback)
-            render_dearpygui_frame()
+                render_dearpygui_frame()
+                output_frame_buffer(callback=output_frame_buffer_callback)
+                render_dearpygui_frame()
 
-            schedule_screenshot=False
+                schedule_screenshot=False
 
-            show_item('cursor_db_txt')
-            show_item('cursor_f_txt')
-            show_item('cursor_f')
+                show_item('cursor_db_txt')
+                show_item('cursor_f_txt')
+                show_item('cursor_f')
 
-            configure_item('mark_text_1',show=False)
-            configure_item('mark_text_2',show=False)
-            configure_item('mark_text_3',show=False)
-            configure_item('mark_text_4',show=False)
-            configure_item('mark_text_5',show=False)
-            configure_item('mark_text_6',show=False)
-            configure_item('mark_text_7',show=False)
-            configure_item('mark_text_8',show=False)
-            configure_item('mark_text',show=False)
+                configure_item('mark_text_1',show=False)
+                configure_item('mark_text_2',show=False)
+                configure_item('mark_text_3',show=False)
+                configure_item('mark_text_4',show=False)
+                configure_item('mark_text_5',show=False)
+                configure_item('mark_text_6',show=False)
+                configure_item('mark_text_7',show=False)
+                configure_item('mark_text_8',show=False)
+                configure_item('mark_text',show=False)
+            except Exception as ss_e:
+                l_error(f'{ss_e=}')
+                set_status(f'{ss_e=}')
 
         if settings_wrapper_scheduled:
-            if cfg['settings']:
-                set_viewport_height(settings_wrapper_scheduled)
-                on_viewport_resize()
-                show_item('settings_group')
-            else:
-                hide_item('settings_group')
-                set_viewport_height(settings_wrapper_scheduled)
-                on_viewport_resize()
+            try:
+                if cfg['settings']:
+                    set_viewport_height(settings_wrapper_scheduled)
+                    on_viewport_resize()
+                    show_item('settings_group')
+                else:
+                    hide_item('settings_group')
+                    set_viewport_height(settings_wrapper_scheduled)
+                    on_viewport_resize()
 
-            settings_wrapper_scheduled=None
-            render_dearpygui_frame()
-            continue
+                settings_wrapper_scheduled=None
+                render_dearpygui_frame()
+                continue
+            except Exception as settings_e:
+                l_error(f'{settings_e=}')
+                set_status(f'{settings_e=}')
 
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
-            now = perf_counter()
-            if now >= next_fps :
-                part1 = [f"VSync:{VSYNC_STATE_NAME}   FPS:{frames} / (real:{frames_change}) \n",
-                        f"             Output       Input",
-                        f"samples/s  {output_samples:8d}    {rec_samples:8d}",
-                        f"blocks/s   {output_callbacks_all:8d}    {input_callbacks_all:8d}",
-                        f"CPU        {stream_out.cpu_load:.6f}    {stream_in.cpu_load:.6f}",
-                        f"latency[s] {stream_out.latency:.6f}    {stream_in.latency:.6f}",
-                        f"type        {stream_out.dtype}     {stream_in.dtype}\n"]
+            try:
+                now = perf_counter()
 
-                part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
-                            "",
-                            f"   FFT /  FBA  /  act",
-                            f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}"  if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
-                            f"TDA_FACTOR: {FFT_TDA_FACTOR:.2f}" if FFT_TDA else ""
-                            ] if FFT else []
+                if now >= next_fps :
+                    part1 = [f"VSync:{VSYNC_STATE_NAME}   FPS:{frames} / (real:{frames_change}) \n",
+                            f"             Output       Input",
+                            f"samples/s  {output_samples:8d}    {rec_samples:8d}",
+                            f"blocks/s   {output_callbacks_all:8d}    {input_callbacks_all:8d}",
+                            f"CPU        {stream_out.cpu_load:.6f}    {stream_in.cpu_load:.6f}",
+                            f"latency[s] {stream_out.latency:.6f}    {stream_in.latency:.6f}",
+                            f"type        {stream_out.dtype}     {stream_in.dtype}\n"]
 
-                set_value('debug_text','\n'.join(part1 + part_fft))
-                frames = 0
-                frames_change = 0
-                input_callbacks_all = 0
-                rec_samples = 0
+                    part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
+                                "",
+                                f"   FFT /  FBA  /  act",
+                                f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}"  if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
+                                f"TDA_FACTOR: {FFT_TDA_FACTOR:.2f}" if FFT_TDA else ""
+                                ] if FFT else []
 
-                output_callbacks_all = 0
-                output_samples = 0
+                    set_value('debug_text','\n'.join(part1 + part_fft))
+                    frames = 0
+                    frames_change = 0
+                    input_callbacks_all = 0
+                    rec_samples = 0
 
-                next_fps = now+1.0
+                    output_callbacks_all = 0
+                    output_samples = 0
+
+                    next_fps = now+1.0
+            except Exception as debug_e:
+                l_error(f'{debug_e=}')
+                set_status(f'{debug_e=}')
 
         render_dearpygui_frame()
 
         if windows:
-            if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
-                while ShowCursor(False) >= 0:
-                    pass
-            else:
-                #SetCursor(arrow_cursor)
-                while ShowCursor(True) < 0:
-                    pass
+            try:
+                if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
+                    while ShowCursor(False) >= 0:
+                        pass
+                else:
+                    while ShowCursor(True) < 0:
+                        pass
+            except Exception as win_cur_e:
+                l_error(f'{win_cur_e=}')
+                set_status(f'{win_cur_e=}')
 
         frames += 1
 
         ##################################
         if sweeping:
-            now = perf_counter()
-            if now>next_sweep_time:
-                sweeping_i+=1
-                if sweeping_i<sweep_steps:
-                    f=10**(logf_min_audio+sweeping_i*logf_sweep_step)
-                    change_f(f)
-                    set_value('status','Sweeping (' + str(round(f))+ ' Hz), Click on the graph to abort ...')
+            try:
+                now = perf_counter()
+                if now>next_sweep_time:
+                    sweeping_i+=1
+                    if sweeping_i<sweep_steps:
+                        f=10**(logf_min_audio+sweeping_i*logf_sweep_step)
+                        change_f(f)
+                        set_value('status','Sweeping (' + str(round(f))+ ' Hz), Click on the graph to abort ...')
 
-                    next_sweep_time=now+sweeping_delay
-                else:
-                    sweeping=False
-                    play_stop()
+                        next_sweep_time=now+sweeping_delay
+                    else:
+                        sweeping=False
+                        play_stop()
+            except Exception as sweep_e:
+                l_error(f'{sweep_e=}')
+                set_status(f'{sweep_e=}')
         ##################################
 
         if exiting:
