@@ -186,7 +186,7 @@ cfg.setdefault("out_channel","1")
 cfg.setdefault("in_samplerate",'44100')
 cfg.setdefault("out_samplerate",'44100')
 
-cfg.setdefault("in_latency",'low')
+cfg.setdefault("in_latency",'high')
 cfg.setdefault("out_latency",'low')
 
 cfg.setdefault("in_blocksize",'128')
@@ -201,7 +201,6 @@ latency_values=('high','low','default')
 out_blocksize_values=(1024,512,256,128,64)
 
 in_blocksize_values=(512,256,128,64,0)
-
 
 track_line_data_y={}
 
@@ -3189,9 +3188,9 @@ def main_loop():
                             f"             Output       Input",
                             f"samples/s  {output_samples:8d}    {rec_samples:8d}",
                             f"blocks/s   {output_callbacks_all:8d}    {input_callbacks_all:8d}",
-                            f"CPU        {stream_out.cpu_load:.6f}    {stream_in.cpu_load:.6f}",
-                            f"latency[s] {stream_out.latency:.6f}    {stream_in.latency:.6f}",
-                            f"type        {stream_out.dtype}     {stream_in.dtype}\n"]
+                            f"CPU        {stream_out.cpu_load if stream_out else '':.6f}    {stream_in.cpu_load if stream_in else '':.6f}",
+                            f"latency[s] {stream_out.latency if stream_out else '':.6f}    {stream_in.latency if stream_in else '':.6f}",
+                            f"type        {stream_out.dtype if stream_out else ''}     {stream_in.dtype if stream_in else ''}\n"]
 
                     part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
                                 "",
