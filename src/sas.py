@@ -41,18 +41,19 @@
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
-from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series
-from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height
+from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,add_draw_layer,add_slider_float
+from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text
 
 from time import strftime,time,localtime,perf_counter,sleep
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8
-from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings
+from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings,_initialize,_terminate
 import numpy as np
 from threading import Thread
 
 from collections import deque
+from itertools import islice
 
 from math import pi, log10, ceil, floor
 from PIL import Image
@@ -72,9 +73,53 @@ from sys import exit as sys_exit,argv
 from images import image
 import logging
 
-l_info = logging.info
+console_buffer=deque()
+console_buffer_len=0
+console_buffer_last_elem=-1
+console_buffer_max_len=300
+
+console_buffer_append_fun=console_buffer.append
+console_buffer_popleft=console_buffer.popleft
+console_visible_lines=16
+console_fontsize=13
+console_line_height=console_fontsize+2
+
+console_shift=console_line_height
+
+#l_info = logging.info
 l_warning = logging.warning
 l_error = logging.error
+
+console_show_end_index=0
+
+def console_buffer_append(text,code=0):
+    global console_buffer,console_buffer_max_len,console_buffer_append_fun,console_buffer_popleft,console_show_end_index,console_buffer_len,console_buffer_last_elem
+
+    console_buffer_append_fun((text,code))
+
+    console_buffer_len=len(console_buffer)
+    if console_buffer_len>console_buffer_max_len:
+        popped=console_buffer_popleft()
+        console_buffer_len-=1
+        console_show_end_index=max(0,console_show_end_index-1)
+
+    console_buffer_last_elem=console_buffer_len-1
+
+def l_info(text):
+    #console_buffer_append(text)
+    logging.info(text)
+
+text_aura=tuple([(mx,my,True if mx==0 and my==0 else False) for mx in (-1,1,0) for my in (-1,1,0)])
+
+INFO=0
+WARN=1
+ERR=2
+CONST=3
+
+def c_mess(text,code=INFO):
+    for subline in text.split('\n'):
+        l_info(subline) if code==0 else l_warning(subline) if code==1 else l_error(subline)
+        console_buffer_append(subline,code)
 
 np_fft_rfft=np_fft.rfft
 
@@ -141,8 +186,8 @@ cfg.setdefault('track_buckets',256)
 cfg.setdefault('viewport_pos',[100,100])
 cfg.setdefault('settings',False)
 
-cfg.setdefault('help',True)
-HELP=cfg['help']
+#cfg.setdefault('help',True)
+#HELP=cfg['help']
 
 cfg.setdefault('decorated',False)
 cfg.setdefault('fft_fill',True)
@@ -456,6 +501,9 @@ played_bucket_callbacks=0
 def audio_output_callback(outdata, frames, time, status):
     global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,DEBUG,volume_ramp,phase_step_x_phase_i
 
+    if status:
+        c_mess(status,WARN)
+
     if DEBUG:
         global output_callbacks_count,samples_chunks_requested_new
         output_callbacks_count+=1
@@ -481,13 +529,15 @@ def audio_output_callback(outdata, frames, time, status):
     else:
         outdata.fill(0)
 
+VSYNC=False
 VSYNC_STATE_NAME='OFF'
 def vsync_callback(sender=None, app_data=None):
     l_info(f'vsync_callback:{sender},{app_data}')
     set_viewport_vsync(app_data)
-    global VSYNC_STATE_NAME,next_fps
+    global VSYNC_STATE_NAME,next_fps,VSYNC
     VSYNC_STATE_NAME=('OFF',' ON')[app_data]
-    cfg['vsync']=app_data
+    c_mess(f'VSync:{VSYNC_STATE_NAME}')
+    VSYNC=cfg['vsync']=app_data
     next_fps=0
 
 def sweep_abort():
@@ -495,8 +545,9 @@ def sweep_abort():
     sweeping=False
     configure_item('sweep',texture_tag=ico["play"])
 
-def rec_press(sender=None, app_data=None):
-    l_info(f'rec_press:{sender},{app_data}')
+#def rec_press(sender=None, app_data=None):
+#   l_info(f'rec_press:{sender},{app_data}')
+#    c_mess(f'VSync:{VSYNC_STATE_NAME}')
 
 sweeping_i=0
 def sweep_callback(sender=None, app_data=None):
@@ -568,6 +619,8 @@ samples_chunks_requested_new=0
 
 def audio_input_callback(indata, frames, time_info, status):
     samples_chunks_fifo_put(indata[:, 0].copy())
+    if status:
+        c_mess(status,WARN)
 
 @catch
 def go_to_homepage():
@@ -599,7 +652,8 @@ out_api_tooltip='\n'.join([
     'the sound will be played at FULL VOLUME.'])
 
 def refresh_devices():
-    l_info('refresh_devices')
+    #l_info('refresh_devices')
+    c_mess('Refresh Devices')
     global default_in_dev,default_out_dev,apis,api_name2api,devices,device_name2device,device_index2device
 
     default_in_dev=query_devices(kind='input')
@@ -722,6 +776,7 @@ def out_blocksize_changed(sender=None, out_blocksize_str=None,user_data=False):
 
     global volume_ramp,phase_i
     out_blocksize=int(out_blocksize_str)
+    c_mess(f'Output blocksize:{out_blocksize}')
 
     #volume_ramp = tuple([(i+1.0)/out_blocksize for i in range(out_blocksize)])
     volume_ramp = arange(1, out_blocksize + 1, dtype=float32) / out_blocksize
@@ -737,14 +792,16 @@ def out_latency_changed(sender=None, app_data=None,user_data=False):
     play_stop()
     out_stream_stop()
 
-    cfg['out_latency']=get_value('out_latency')
+    val=cfg['out_latency']=get_value('out_latency')
+    c_mess(f'Output latency:{val}')
     if user_data:
         out_stream_init()
 
 def in_blocksize_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_blocksize_changed:{sender},{app_data},{user_data}')
 
-    cfg['in_blocksize']=get_value('in_blocksize')
+    val=cfg['in_blocksize']=get_value('in_blocksize')
+    c_mess(f'Output blocksize:{val}')
 
     if user_data:
         in_stream_init()
@@ -752,14 +809,16 @@ def in_blocksize_changed(sender=None, app_data=None,user_data=False):
 def in_latency_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_latency_changed:{sender},{app_data},{user_data}')
 
-    cfg['in_latency']=get_value('in_latency')
+    val=cfg['in_latency']=get_value('in_latency')
+    c_mess(f'Input latency:{val}')
     if user_data:
         in_stream_init()
 
 def out_channel_changed(sender=None, app_data=None,user_data=False):
     l_info(f'out_channel_changed:{sender},{app_data},{user_data}')
 
-    cfg['out_channel']=get_value('out_channel')
+    val=cfg['out_channel']=get_value('out_channel')
+    c_mess(f'Output channell:{val}')
 
     play_stop()
     out_stream_stop()
@@ -773,7 +832,8 @@ def out_samplerate_changed(sender=None, app_data=None,user_data=False):
     play_stop()
     out_stream_stop()
 
-    cfg['out_samplerate']=get_value('out_samplerate')
+    val=cfg['out_samplerate']=get_value('out_samplerate')
+    c_mess(f'Output samplerate:{val}')
 
     global two_pi_by_out_samplerate
     two_pi_by_out_samplerate = two_pi/float(get_value("out_samplerate"))
@@ -789,7 +849,8 @@ def in_samplerate_changed(sender=None, app_data=None,user_data=False):
     play_stop()
     stream_in.stop()
 
-    cfg['in_samplerate']=get_value('in_samplerate')
+    val=cfg['in_samplerate']=get_value('in_samplerate')
+    c_mess(f'Input samplerate:{val}')
 
     if user_data:
         common_precalc()
@@ -797,7 +858,8 @@ def in_samplerate_changed(sender=None, app_data=None,user_data=False):
 
 def out_stream_stop():
     if stream_out:
-        l_info('OutputStream stop.')
+        c_mess('OutputStream stop.')
+        #l_info('OutputStream stop.')
         stream_out.stop()
 
 def latency_for_stream(latency):
@@ -816,7 +878,7 @@ def out_stream_init():
 
     if cfg['out_wasapi_exclusive'] and cfg['out_api'] == 'Windows WASAPI':
         extra_settings=WasapiSettings(exclusive=True)
-        l_info('out WASAPI Exclusive mode !')
+        c_mess('OutputStream WASAPI Exclusive mode')
     else:
         extra_settings=None
 
@@ -831,8 +893,11 @@ def out_stream_init():
     latency=latency_for_stream(get_value('out_latency'))
     blocksize=int(get_value('out_blocksize'))
 
-    l_info('')
-    l_info(f'OutputStream init {device=},{samplerate=},{latency=},{blocksize=},{channels=},{extra_settings=}')
+    api=cfg['out_api']
+
+    c_mess('')
+    dev_name=cfg["out_dev"]
+    c_mess(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n  {extra_settings=}\n',CONST)
 
     try:
         stream_out = OutputStream(callback=audio_output_callback, extra_settings=extra_settings,
@@ -846,18 +911,24 @@ def out_stream_init():
         #dtype="float32",
         stream_out.start()
         configure_item('out_status',texture_tag=ico['out_on'])
+        #c_mess(f' {samplerate}')
+        #c_mess(f' {latency}')
+        #c_mess(f' {blocksize}')
     except Exception as e:
         set_status(f'OutputStream init error:{e}')
-        l_error(f'OutputStream init error:{e}')
-    else:
-        l_info('OutputStream init DONE.')
+        #l_error(f'OutputStream init error:{e}')
+        c_mess(f'OutputStream init error:{e}',ERR)
+    #else:
+        #l_info('OutputStream init DONE.')
+    #    c_mess('...Initialized.')
 
 in_channel_buffer_mod_index=0
 
 def in_channel_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_channel_changed:{sender},{app_data},{user_data}')
 
-    cfg['in_channel']=get_value('in_channel')
+    val=cfg['in_channel']=get_value('in_channel')
+    c_mess(f'Input channell:{val}')
 
     if stream_in:
         stream_in.stop()
@@ -888,8 +959,12 @@ def in_stream_init():
 
     in_channel_buffer_mod_index=0
 
-    l_info('')
-    l_info(f'InputStream init {device=},{samplerate=},{latency=},{blocksize=},{channels=},{extra_settings}')
+    api=cfg['in_api']
+
+    c_mess('')
+    dev_name=cfg["in_dev"]
+    c_mess(f'InputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n  {extra_settings=}\n',CONST)
+
     try:
         stream_in = InputStream(callback=audio_input_callback, extra_settings=extra_settings,
             device=device,
@@ -905,18 +980,23 @@ def in_stream_init():
 
     except Exception as e:
         set_status(f'InputStream init error:{e}')
-        l_error(f'InputStream init error:{e}')
-    else:
-        l_info('InputStream init DONE.')
+        #l_error(f'InputStream init error:{e}')
+        c_mess(f'InputStream init error:{e}',ERR)
+    #else:
+        #l_info('InputStream init DONE.')
+        #c_mess('...Initialized.')
 
 def hide_info():
     hide_item('info_window')
     on_viewport_resize()
 
 def show_info(message):
-    on_viewport_resize()
-    set_value('info_text',normalize_text(message,info_chars))
-    show_item('info_window')
+    #on_viewport_resize()
+    console_buffer_append("",CONST)
+    for line in normalize_text(message,100):
+        console_buffer_append(line,CONST)
+    #set_value('info_text',normalize_text(message,info_chars))
+    #show_item('info_window')
 
 @catch
 def about_wrapper():
@@ -929,20 +1009,24 @@ def normalize_text(text,width):
     for line in text.split('\n'):
         to_add=' '*int((width-len(line))/2)
         res.append(to_add + line + to_add)
-    return '\n'.join(res)
+    #return '\n'.join(res)
+    return res
 
 def license_wrapper():
     try:
         license_txt=Path(path_join(EXECUTABLE_DIR,'LICENSE')).read_text(encoding='ASCII')
     except Exception as exception_lic:
-        l_info(str(exception_lic))
+        #l_info(str(exception_lic))
+        c_mess(str(exception_lic),ERR)
         try:
             license_txt=Path(path_join(dirname(EXECUTABLE_DIR),'LICENSE')).read_text(encoding='ASCII')
         except Exception as exception_lic_2:
-            l_info(str(exception_lic_2))
+            #l_info(str(exception_lic_2))
+            c_mess(str(exception_lic_2),ERR)
             sys_exit(1)
 
-    show_info('\n'+ license_txt)
+    #show_info('\n'+ license_txt)
+    show_info(license_txt)
 
 def reset_track_press(sender=None, app_data=None):
     l_info(f'resetrack:{sender},{app_data}')
@@ -951,6 +1035,7 @@ def reset_track_press(sender=None, app_data=None):
 
     if cfg['recorded']!=-1:
         track=cfg['recorded']
+        c_mess(f'Track reset:{track}')
 
         sweep_abort()
         track_line_data_y_recorded=track_line_data_y[track]=[dbinit]*TRACK_BUCKETS
@@ -1104,7 +1189,8 @@ def in_api_callback(sender=None, app_data=None,user_data=False):
     global in_api_id,apis
 
     api_name=cfg['in_api']=get_value('in_api')
-    l_info(f'in_api_callback:{sender},{app_data},{api_name},{user_data}')
+    #l_info(f'in_api_callback:{sender},{app_data},{api_name},{user_data}')
+    c_mess(f'Input API:{api_name}',CONST)
 
     if user_data:
         cfg['in_dev']=query_devices(device=api_name2api[api_name]['default_input_device'])['name']
@@ -1124,7 +1210,8 @@ def out_api_callback(sender=None, app_data=None,user_data=False):
     global out_api_id,apis
 
     api_name=cfg['out_api']=get_value('out_api')
-    l_info(f'out_api_callback:{sender},{app_data},{api_name},{user_data}')
+    #l_info(f'out_api_callback:{sender},{app_data},{api_name},{user_data}')
+    c_mess(f'Output API:{api_name}',CONST)
 
     if user_data:
         cfg['out_dev']=query_devices(device=api_name2api[api_name]['default_output_device'])['name']
@@ -1176,6 +1263,9 @@ def fft_callback(sender=None, app_data=None):
     fft_ready=False
     FFT=cfg['fft']=get_value('fft')
     l_info(f'fft_callback:{sender},{app_data},{FFT}')
+    stat='Enabled' if FFT else 'Disabled'
+
+    c_mess(f'FFT:{stat}')
     fft_size_callback()
 
     configure_item('fft_size',enabled=FFT)
@@ -1198,6 +1288,7 @@ def fft_size_callback(sender=None, app_data=None):
     l_info(f'fft_size_callback:{sender},{app_data}')
 
     FFT_SIZE=cfg['fft_size']=int(get_value('fft_size'))
+    c_mess(f'FFT size:{FFT_SIZE}')
     FFT_POINTS=FFT_SIZE//2+1
 
     fft_window_changed()
@@ -1207,6 +1298,7 @@ def fft_window_changed(sender=None, app_data=None):
     fft_ready=False
 
     fft_window_name=cfg['fft_window']=get_value('fft_window')
+    c_mess(f'FFT window:{fft_window_name}')
 
     if fft_window_name=='ones':
         fft_window=ones(FFT_SIZE)
@@ -1243,6 +1335,7 @@ def fft_fba_callback(sender=None, app_data=None):
     fft_ready=False
     FFT_FBA=cfg['fft_fba']=get_value('fft_fba')
     l_info(f'fft_fba_callback:{sender},{app_data},{FFT_FBA}')
+    c_mess(f'FFT FBA:{FFT_FBA}')
     fft_fba_size_callback()
 
     if not FFT_FBA:
@@ -1257,6 +1350,7 @@ def fft_fba_size_callback(sender=None, app_data=None):
     fft_ready=False
     FFT_FBA_SIZE=cfg['fft_fba_size']=int(get_value('fft_fba_size'))
     l_info(f'fft_fba_size_callback:{sender},{app_data},{FFT_FBA_SIZE}')
+    c_mess(f'FFT FBA Size:{FFT_FBA_SIZE}')
     fft_buckets_quant_change()
 
 FFT_TDA=cfg['fft_tda']
@@ -1265,6 +1359,7 @@ def fft_tda_callback(sender=None, app_data=None):
     fft_ready=False
     FFT_TDA=cfg['fft_tda']=get_value('fft_tda')
     l_info(f'fft_tda_callback:{sender},{app_data},{FFT_TDA}')
+    c_mess(f'FFT TDA:{FFT_TDA}')
     fft_tda_factor_callback()
 
     configure_item('fft_tda_factor',enabled=FFT_TDA)
@@ -1427,7 +1522,8 @@ def check_sample_rates_output(device_id):
             supported.append(str(rate))
             l_info(f'try_out:{rate}:ok')
         except Exception as try_e:
-            l_error(f'try_out:{rate}:{try_e}')
+            #l_error(f'try_out:{rate}:{try_e}')
+            console_buffer_append(f'{rate}:{try_e=}',ERR)
     return tuple(supported)
 
 device_out_current=None
@@ -1959,7 +2055,7 @@ def widget_tooltip(message,widget=None):
     tag = f"{widget}_tooltip"
 
     if dpg.does_item_exist(tag):
-        dpg.delete_item(tag)
+        delete_item(tag)
 
     with dpg.tooltip(widget, delay=0.3, tag=tag):
         dpg.add_text(message)
@@ -2008,6 +2104,8 @@ def key_press_callback(sender, app_data):
         about_wrapper()
     elif app_data==dpg.mvKey_F2:
         license_wrapper()
+    elif app_data==dpg.mvKey_Back:
+        c_mess('\n'*console_visible_lines)
     elif app_data==dpg.mvKey_F:
         fft=get_value('fft')
         fft=(True,False)[fft]
@@ -2083,9 +2181,9 @@ def key_press_callback(sender, app_data):
         set_value('vsync',vsync)
         vsync_callback(None,vsync)
     elif app_data==dpg.mvKey_H:
-        help_val=get_value('help')
-        help_val=(True,False)[help_val]
-        set_value('help',help_val)
+        #help_val=get_value('help')
+        #help_val=(True,False)[help_val]
+        #set_value('help',help_val)
         help_callback()
     elif app_data==dpg.mvKey_P:
         peaks_val=get_value('peaks')
@@ -2122,7 +2220,8 @@ FFT_FILL=cfg['fft_fill']
 
 title_hight=(0 if decorated else 26)
 status_height=80
-plot_min_height=270
+#plot_min_height=270
+plot_min_height=320
 plot_axis_height=40
 
 viewport_height_min=(plot_min_height+status_height+title_hight,
@@ -2257,62 +2356,68 @@ def fft_fill_callback():
     configure_item('fft_line',show=FFT)
     configure_item('fft_line2',show=not FFT_FILL and FFT)
 
-def help_off():
-    set_value('help',False)
-    help_callback()
+#def help_off():
+#    set_value('help',False)
+#    help_callback()
 
 def help_callback():
     l_info('help_callback')
-    global HELP,next_fps
-    cfg['help']=HELP=get_value('help')
+    global next_fps
+    #cfg['help']=HELP=get_value('help')
 
-    if HELP:
-        set_value('help_text1',
-            "H   - this help\n\n"
-            "F1  - about\n"
-            "F2  - license\n"
-            "-----------------------\n"
-            "F12 - settings\n"
-            "F11 - debug info\n"
-            "-----------------------\n"
-            "F   - FFT\n"
-            "F3  - FFT size\n"
-            "F4  - FFT window\n"
-            "F5  - FFT FBA\n"
-            "F6  - FFT Smoothing\n"
-            "F7  - FFT TDA\n"
-            "P - peaks detection\n"
-            "G - Filled chart\n"
-            "-----------------------\n"
-            "\n"
-            "L / D - light / dark theme\n"
-            )
+    vals= [
+            "H   - this help            Backspace - clean the console ",
+            "F1  - about                F2  - license",
+            "F12 - settings             F11 - debug info",
+            "F   - FFT                  F3  - FFT size",
+            "F4  - FFT window           F5  - FFT FBA",
+            "F6  - FFT Smoothing        F7  - FFT TDA",
+            "P - peaks detection        G - Filled chart",
+            "-----------------------",
+            "L / D - light / dark theme",
+            "1-8 - toggle track visibility      (recording with Ctrl)",
+            "Del - Reset recorded track",
+            "",
+            "------ chart actions ------",
+            " Left MB - generate specified frequency    Right MB - lock frequency",
+            "   Wheel - reduce value range   - modify locked frequency",
+            "",
+            "Arrows - modify locked frequency Space  - pause FFT chart refreshing",
+            "",
+            "S / C  - save screenshot / csv pause  - start stop frames capture",
+            "V - toggle VSync"]
 
-        set_value('help_text2',
-            "1-8 - toggle track visibility\n"
-            "       (recording with Ctrl)\n"
-            "Del - Reset recorded track\n"
-            "\n"
-            "------ chart actions ------\n"
-            " Left MB - generate specified frequency\n"
-            "Right MB - lock frequency\n"
-            "   Wheel - reduce value range\n"
-            "         - modify locked frequency\n"
-            "\n"
-            "Arrows - modify locked frequency\n"
-            "Space  - pause FFT chart refreshing\n"
-            "\n"
-            "S / C  - save screenshot / csv\n"
-            "pause  - start stop frames capture\n"
-            "\n"
-            "V - toggle VSync\n"
-            )
+    for line in vals:
+        c_mess(line,CONST)
 
-    else:
-        set_value('help_text1','')
-        set_value('help_text2','')
+    #else:
+        #set_value('help_text1','')
+        #set_value('help_text2','')
 
     next_fps=0
+
+def in_refresh_calllback():
+    in_stream_init()
+
+def out_refresh_calllback():
+    out_stream_init()
+
+def sd_refresh_calllback():
+    c_mess('Terminating...')
+
+    try:
+        _terminate()
+    except Exception as t_e:
+        c_mess(f'error:{t_e}',ERR)
+
+    c_mess('Reinitializing...')
+    try:
+        _initialize()
+    except Exception as i_e:
+        c_mess(f'error:{i_e}',ERR)
+
+    in_stream_init()
+    out_stream_init()
 
 def settings_wrapper_toggle():
     global cfg
@@ -2322,6 +2427,8 @@ def settings_wrapper_toggle():
 def settings_wrapper():
     global cfg,settings_wrapper_scheduled
     l_info(f'settings_wrapper:' + str(cfg['settings']))
+    console_buffer_append(f"Settings:{cfg['settings']}")
+    #console_buffer_append("-")
 
     if cfg['settings']:
         h=max(viewport_height_min[1],get_viewport_height()+settings_height)
@@ -2332,20 +2439,10 @@ def settings_wrapper():
 
     settings_wrapper_scheduled=h
 
-status_text=''
+#status_text=''
 def set_status(text,alert=False,timeout=2):
-    global status_text,status_timeout
-    if text!=status_text:
-        set_value('status',text)
-        status_text=text
-
-        if timeout:
-            status_timeout=perf_counter()+timeout
-
-        #if alert:
-        #    bind_item_theme("status_text", text_alert)
-        #else:
-        #    bind_item_theme("status_text", text_ok)
+    if text:
+        console_buffer_append(text,ERR if alert else INFO )
 
 info_chars=0
 def plot_drag_callback(sender=None, app_data=None):
@@ -2356,11 +2453,10 @@ def plot_drop_callback(sender=None, app_data=None):
 
 vw,vh=0,0
 def on_viewport_resize(sender=None, app_data=None):
-    global vw,vh,curr_vp_x, curr_vp_y
+    global vw,vh,curr_vp_x, curr_vp_y,info_chars,settings_height,cfg,console_visible_lines
+
     vw,vh = get_viewport_client_width(),get_viewport_client_height()
     curr_vp_x, curr_vp_y = get_viewport_pos()
-
-    global info_chars,settings_height,cfg
 
     info_chars=int(vw/7)
 
@@ -2375,8 +2471,8 @@ def on_viewport_resize(sender=None, app_data=None):
 
     set_item_pos('info_window',[0,title_hight])
     set_item_pos('debug_text',[85,30+title_hight])
-    set_item_pos('help_text1',[385,30+title_hight])
-    set_item_pos('help_text2',[700,30+title_hight])
+    #set_item_pos('help_text1',[385,30+title_hight])
+    #set_item_pos('help_text2',[700,30+title_hight])
 
     set_item_pos('central_info',[(vw-64-100)/2,(plot_height)/2])
 
@@ -2394,6 +2490,8 @@ def on_viewport_resize(sender=None, app_data=None):
     set_item_width('info_window', vw)
     set_item_height('info_window', vh)
 
+    console_visible_lines = int(floor(plot_height/console_line_height))-2
+
 def exit_press(sender=None, app_data=None):
     global exiting
     exiting=True
@@ -2404,16 +2502,16 @@ create_viewport(title=title,vsync=cfg['vsync'],decorated=decorated)
 with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_move=True) as main:
     set_primary_window(main, True)
 
-    dpg.add_draw_layer(tag='draw_layer')
+    add_draw_layer(tag='draw_layer')
 
     if not decorated:
         with table(header_row=False,resizable=False, policy=mvTable_SizingStretchProp,borders_outerH=False, borders_innerV=False, borders_outerV=False):
-            dpg.add_table_column( width_fixed=True, init_width_or_weight=5)
-            dpg.add_table_column( width_fixed=True, init_width_or_weight=16)
-            dpg.add_table_column( width_fixed=True, init_width_or_weight=300)
-            dpg.add_table_column( width_stretch=True, init_width_or_weight=10)
-            dpg.add_table_column( width_fixed=True, init_width_or_weight=16)
-            dpg.add_table_column( width_fixed=True, init_width_or_weight=3)
+            add_table_column( width_fixed=True, init_width_or_weight=5)
+            add_table_column( width_fixed=True, init_width_or_weight=16)
+            add_table_column( width_fixed=True, init_width_or_weight=300)
+            add_table_column( width_stretch=True, init_width_or_weight=10)
+            add_table_column( width_fixed=True, init_width_or_weight=16)
+            add_table_column( width_fixed=True, init_width_or_weight=3)
 
             with table_row():
                 add_spacer(height=3)
@@ -2434,7 +2532,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
         add_text(tag='info_text')
         hide_item('info_window')
 
-
     with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp,
         borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
         row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
@@ -2449,7 +2546,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                 add_spacer(width=6)
 
-                dpg.add_slider_float(tag='slider',callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,format="",width=10,track_offset=0.5)
+                add_slider_float(tag='slider',callback=slide_change,vertical=True,max_value=30,min_value=100,default_value=100,format="",width=10,track_offset=0.5)
                 widget_tooltip('Adjust dynamic range')
 
                 with plot(tag='plot',no_mouse_pos=True,no_menus=True,no_frame=True,drag_callback=plot_drag_callback,drop_callback=plot_drop_callback):
@@ -2521,7 +2618,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                 with table_row():
                     add_spacer(height=6)
-                    #add_spacer(height=6)
 
                     with group(width=-1):
                         add_text(tag='status',default_value='')
@@ -2545,7 +2641,15 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 c1width=250
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=c0width+c1width+c1width,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
-                        add_text(default_value='AUDIO INTERFACE')
+                        with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp):
+                            add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                            add_table_column(width_fixed=True, init_width_or_weight=120)
+
+                            with table_row():
+                                add_image_button(ico["refresh"],tag='sd_refresh',width=16,callback=sd_refresh_calllback); widget_tooltip('SoundDevice reload')
+                                add_text(default_value='AUDIO INTERFACE')
+
+
                         dpg.add_separator()
 
                         with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp,
@@ -2562,16 +2666,20 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
 
                                 with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp):
                                     add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
-                                    add_table_column(width_fixed=True, init_width_or_weight=66)
+                                    add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                                    add_table_column(width_fixed=True, init_width_or_weight=80)
 
                                     with table_row():
+                                        add_image_button(ico["refresh"],tag='out_refresh',width=16,callback=out_refresh_calllback); widget_tooltip('Output Stream refresh')
                                         dpg.add_image(ico["out_off"],tag='out_status',width=16); widget_tooltip('Output Stream status')
                                         add_text(default_value='Output')
 
                                 with table(tag='in_tab1',header_row=False, resizable=False, policy=mvTable_SizingStretchProp):
                                     add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
-                                    add_table_column(width_fixed=True, init_width_or_weight=66)
+                                    add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
+                                    add_table_column(width_fixed=True, init_width_or_weight=80)
                                     with table_row():
+                                        add_image_button(ico["refresh"],tag='in_refresh',width=16,callback=in_refresh_calllback); widget_tooltip('Input Stream refresh')
                                         dpg.add_image(ico["in_off"],tag='in_status',width=16); widget_tooltip('Input Stream status')
                                         add_text(default_value='Input')
 
@@ -2643,18 +2751,18 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 dpg.add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_change,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5)
                             with table_row():
                                 add_checkbox(tag='fft_tda',label='TDA',callback=fft_tda_callback,default_value=cfg['fft_tda']); FFT_tda_tooltip='Time Domain Averaging\n\nkey: F7 / Shift+F7 (+Ctrl Toggle)'; widget_tooltip(FFT_tda_tooltip)
-                                dpg.add_slider_float(tag='fft_tda_factor',callback=fft_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['fft_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tda_tooltip)
+                                add_slider_float(tag='fft_tda_factor',callback=fft_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['fft_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tda_tooltip)
 
                             with table_row():
                                 add_checkbox(tag='peaks',label='Peaks',callback=peaks_callback,default_value=cfg['peaks']); widget_tooltip('Peaks detection')
 
                             with table_row():
                                 add_text(default_value='S.L.F.')
-                                dpg.add_slider_float(tag='peaks_dist_factor',callback=peaks_dist_factor_change,max_value=5.0,min_value=1.0,default_value=cfg['peaks_dist_factor'],format="%.1f",width=130,track_offset=0.5); widget_tooltip('Short Length Factor\n... that\'s complicated ...')
+                                add_slider_float(tag='peaks_dist_factor',callback=peaks_dist_factor_change,max_value=5.0,min_value=1.0,default_value=cfg['peaks_dist_factor'],format="%.1f",width=130,track_offset=0.5); widget_tooltip('Short Length Factor\n... that\'s complicated ...')
 
                             with table_row():
                                 add_text(default_value='Threshold')
-                                dpg.add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=40.0,min_value=1.0,default_value=cfg['peaks_threshold'],format="%.3f",width=130,track_offset=0.5); widget_tooltip('Peak Detection Threshold.')
+                                add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=40.0,min_value=1.0,default_value=cfg['peaks_threshold'],format="%.3f",width=130,track_offset=0.5); widget_tooltip('Peak Detection Threshold.')
 
                 with group():
                     with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=65):
@@ -2676,7 +2784,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     add_combo(tag='track_buckets',items=['64','128','256'],default_value=cfg['track_buckets'],callback=tracks_buckets_quant_change,width=c2width)
                                 with table_row():
                                     add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging'; widget_tooltip(FFT_tooltip6)
-                                    dpg.add_slider_float(tag='tracks_tda_factor',callback=tracks_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['tracks_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tooltip6)
+                                    add_slider_float(tag='tracks_tda_factor',callback=tracks_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['tracks_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tooltip6)
 
                     with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=116):
                         with group():
@@ -2693,7 +2801,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                         add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\n\nkey:D")
                                     add_spacer(width=100)
                                 with group():
-                                    add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help']); widget_tooltip('key: H')
+                                    #add_checkbox(tag='help',label='Help',callback=help_callback,default_value=cfg['help']); widget_tooltip('key: H')
                                     add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: Space')
 
                                     add_checkbox(tag='fft_fill',label='FFT Fill',callback=fft_fill_callback,default_value=cfg['fft_fill']); widget_tooltip("Filled graph\n\nkey:G")
@@ -2701,8 +2809,8 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                 add_spacer(width=5)
 
     add_text(tag='debug_text',default_value='')
-    add_text(tag='help_text1',default_value='')
-    add_text(tag='help_text2',default_value='')
+    #add_text(tag='help_text1',default_value='')
+    #add_text(tag='help_text2',default_value='')
     add_text(tag='central_info',default_value='')
 
     add_text(tag='mark_text_1',default_value=title,show=False)
@@ -2766,7 +2874,8 @@ except Exception as exception_1:
     print(exception_1)
     distro_info = 'Error. No distro.info.txt file.'
 
-distro_info+= "\nnumpy       " + str(numpy_version) + "\nsounddevice " + str(sounddevice_version) + "\nportaudio " + str(get_portaudio_version()) + "\n\nDearPyGui   " + str(dpg.get_dearpygui_version()) + "\n\n"
+portaudio_release,portaudio_descr=get_portaudio_version()
+distro_info+= "\nnumpy       " + str(numpy_version) + "\nsounddevice " + str(sounddevice_version) + "\nportaudio release " + str(portaudio_release) + "\n" + portaudio_descr + "\n\nDearPyGui   " + str(dpg.get_dearpygui_version()) + "\n\n"
 
 print(distro_info)
 l_info(distro_info)
@@ -2800,7 +2909,7 @@ fft_callback()
 out_dev_changed(None,None,True)
 in_dev_changed(None,None,True)
 
-status_timeout=0
+#status_timeout=0
 
 next_fps = 0
 status_shown=True
@@ -2834,7 +2943,8 @@ def output_frame_buffer_callback_gif(sender, app_data):
         capture_frames[CAPTURE]=(Image_fromarray(rgba_u8, mode="RGBA").convert("RGB"),Image_fromarray(rgba_u8[y:y+ih, x:x+iw, :], mode="RGBA").convert("RGB"))
 
     except Exception as ofbce:
-        l_error(f"output_frame_buffer_callback error: {ofbce}")
+        #l_error(f"output_frame_buffer_callback error: {ofbce}")
+        console_buffer_append(f'{ofbce=}',ERR)
 
 def capture_loop():
     global CAPTURE,CAPTURE_saving,CAPTURE_INTERVAL,viewport_rect,capture_frames
@@ -2859,10 +2969,12 @@ def capture_loop():
         sorted_keys_but_first=list(sorted(capture_frames.keys(),reverse=True))[1:]
 
         for i in (1,2,3,4,5):
-            set_status(f'saving gif {i} v...')
-            capture_frames[max_frame][0].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_{i}_v.gif"),save_all=True,append_images=[capture_frames[key][0] for key in sorted_keys_but_first if not key%i],duration=duration,loop=1)
-            set_status(f'saving gif {i} p...')
-            capture_frames[max_frame][1].save(path_join(INTERNAL_DIR_IMAGES,f"recording_{timestamp}_{i}_p.gif"),save_all=True,append_images=[capture_frames[key][1] for key in sorted_keys_but_first if not key%i],duration=duration,loop=1)
+            filename=f"recording_{timestamp}_{i}_v.gif"
+            set_status(f'saving {filename}...')
+            capture_frames[max_frame][0].save(path_join(INTERNAL_DIR_IMAGES,filename),save_all=True,append_images=[capture_frames[key][0] for key in sorted_keys_but_first if not key%i],duration=duration,loop=1)
+            filename=f"recording_{timestamp}_{i}_p.gif"
+            set_status(f'saving {filename}...')
+            capture_frames[max_frame][1].save(path_join(INTERNAL_DIR_IMAGES,filename),save_all=True,append_images=[capture_frames[key][1] for key in sorted_keys_but_first if not key%i],duration=duration,loop=1)
 
         CAPTURE_saving=False
         set_status('')
@@ -2874,7 +2986,7 @@ def processing():
 
     CENTRAL_INFO_SHOWN=False
 
-    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,status_timeout,fft_window_sum
+    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
     global exiting,PEAKS,frames_change,rec_samples,input_callbacks_all,current_sample_db_time_samples,data
 
@@ -2903,8 +3015,9 @@ def processing():
                 new_data=True
             except IndexError:
                 break
-            except Exception as data_new_chunk_error:
-                l_error(f'{data_new_chunk_error=}')
+            except Exception as dnc_e:
+                #l_error(f'{dnc_e=}')
+                console_buffer_append(f'{dnc_e=}',ERR)
                 break
 
         if new_data and not (is_dragging or is_resizing or PAUSE):
@@ -3023,8 +3136,9 @@ def processing():
                         fft_values_y_prev=fft_values_y
 
                 except Exception as exception_fft:
-                    l_error(f'FFT Exception:{exception_fft}')
-                    print('FFT Exception:',exception_fft)
+                    #l_error(f'FFT Exception:{exception_fft}')
+                    #print('FFT Exception:',exception_fft)
+                    console_buffer_append(f'{exception_fft=}',ERR)
 
             if playing_state==2 and track_line_data_y_recorded and current_bucket<TRACK_BUCKETS:
                 track_line_data_y_recorded[current_bucket]*=TRACKS_TDA_FACTOR
@@ -3040,11 +3154,11 @@ def processing():
                 set_value('central_info',""
                             "     No signal !    \n"
                             "(Mic not connected ?)")
-                help_off()
-            elif status_timeout!=0:
-                now = perf_counter()
-                if now>status_timeout:
-                    status_timeout=0
+                #help_off()
+            #elif status_timeout!=0:
+            #    now = perf_counter()
+            #    if now>status_timeout:
+            #        status_timeout=0
             elif CENTRAL_INFO_SHOWN :
                 set_value('central_info','')
                 CENTRAL_INFO_SHOWN=False
@@ -3074,19 +3188,30 @@ def output_frame_buffer_callback(sender, app_data):
 
         rgba_u8 = (clip(frombuffer(app_data, dtype=float32, count=w*h*4).reshape(h, w, 4), 0.0, 1.0) * 255.0).astype(uint8)
 
-        Image_fromarray(rgba_u8, mode="RGBA").save(path_join(INTERNAL_DIR_IMAGES,f"img{timestamp}.png"))
-        Image_fromarray(rgba_u8[y:y+ih, x:x+iw, :], mode="RGBA").save(path_join(INTERNAL_DIR_IMAGES,f"img{timestamp}-crop.png"))
+        filename1=f"img{timestamp}.png"
+        filename2=f"img{timestamp}-crop.png"
+
+        c_mess(f'saving:{filename1} ...')
+        Image_fromarray(rgba_u8, mode="RGBA").save(path_join(INTERNAL_DIR_IMAGES,filename1))
+
+        c_mess(f'saving:{filename2} ...')
+        Image_fromarray(rgba_u8[y:y+ih, x:x+iw, :], mode="RGBA").save(path_join(INTERNAL_DIR_IMAGES,filename2))
 
     except Exception as ofbce:
-        l_error(f"output_frame_buffer_callback error: {ofbce}")
+        #l_error(f"output_frame_buffer_callback error: {ofbce}")
+        console_buffer_append(f'{ofbce=}',ERR)
 
+next_console_time=0.0
 def main_loop():
-    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,status_timeout,fft_window_sum
+    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
-    global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency
+    global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_console_time
+    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura
     next_sweep_time=0
 
     while is_dearpygui_running():
+        now=perf_counter()
+
         if set_viewport_pos_scheduled:
             try:
                 set_viewport_pos(set_viewport_pos_scheduled)
@@ -3095,8 +3220,9 @@ def main_loop():
                 sleep(0.0001)
                 continue
             except Exception as pos_e:
-                l_error(f'{pos_e=}')
-                set_status(f'{pos_e=}')
+                #l_error(f'{pos_e=}')
+                #set_status(f'{pos_e=}')
+                console_buffer_append(f'{pos_e=}',ERR)
 
         if set_viewport_width_scheduled:
             try:
@@ -3107,8 +3233,9 @@ def main_loop():
                 sleep(0.0001)
                 continue
             except Exception as width_e:
-                l_error(f'{width_e=}')
-                set_status(f'{width_e=}')
+                #l_error(f'{width_e=}')
+                #set_status(f'{width_e=}')
+                console_buffer_append(f'{width_e=}',ERR)
 
         if set_viewport_height_scheduled:
             try:
@@ -3119,8 +3246,9 @@ def main_loop():
                 sleep(0.0001)
                 continue
             except Exception as heigth_e:
-                l_error(f'{heigth_e=}')
-                set_status(f'{heigth_e=}')
+                #l_error(f'{heigth_e=}')
+                #set_status(f'{heigth_e=}')
+                console_buffer_append(f'{heigth_e=}',ERR)
 
         if schedule_screenshot:
             try:
@@ -3158,8 +3286,9 @@ def main_loop():
                 configure_item('mark_text_8',show=False)
                 configure_item('mark_text',show=False)
             except Exception as ss_e:
-                l_error(f'{ss_e=}')
-                set_status(f'{ss_e=}')
+                #l_error(f'{ss_e=}')
+                #set_status(f'{ss_e=}')
+                console_buffer_append(f'{ss_e=}',ERR)
 
         if settings_wrapper_scheduled:
             try:
@@ -3176,21 +3305,22 @@ def main_loop():
                 render_dearpygui_frame()
                 continue
             except Exception as settings_e:
-                l_error(f'{settings_e=}')
-                set_status(f'{settings_e=}')
+                #l_error(f'{settings_e=}')
+                #set_status(f'{settings_e=}')
+                console_buffer_append(f'{settings_e=}',ERR)
 
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
             try:
-                now = perf_counter()
-
                 if now >= next_fps :
+
                     part1 = [f"VSync:{VSYNC_STATE_NAME}   FPS:{frames} / (real:{frames_change}) \n",
                             f"             Output       Input",
                             f"samples/s  {output_samples:8d}    {rec_samples:8d}",
                             f"blocks/s   {output_callbacks_all:8d}    {input_callbacks_all:8d}",
-                            f"CPU        {stream_out.cpu_load if stream_out else '':.6f}    {stream_in.cpu_load if stream_in else '':.6f}",
-                            f"latency[s] {stream_out.latency if stream_out else '':.6f}    {stream_in.latency if stream_in else '':.6f}",
-                            f"type        {stream_out.dtype if stream_out else ''}     {stream_in.dtype if stream_in else ''}\n"]
+                            " ",
+                            f"CPU        {stream_out.cpu_load if stream_out else 0:.6f}    {stream_in.cpu_load if stream_in else 0:.6f}",
+                            f"latency[s] {stream_out.latency if stream_out else 0:.6f}    {stream_in.latency if stream_in else 0:.6f}",
+                            f"type        {stream_out.dtype if stream_out else '':6s}     {stream_in.dtype if stream_in else '':8s}\n"]
 
                     part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
                                 "",
@@ -3210,10 +3340,9 @@ def main_loop():
 
                     next_fps = now+1.0
             except Exception as debug_e:
-                l_error(f'{debug_e=}')
-                set_status(f'{debug_e=}')
-
-        render_dearpygui_frame()
+                #l_error(f'{debug_e=}')
+                #set_status(f'{debug_e=}')
+                console_buffer_append(f'{debug_e=}',ERR)
 
         if windows:
             try:
@@ -3224,15 +3353,15 @@ def main_loop():
                     while ShowCursor(True) < 0:
                         pass
             except Exception as win_cur_e:
-                l_error(f'{win_cur_e=}')
-                set_status(f'{win_cur_e=}')
+                #l_error(f'{win_cur_e=}')
+                console_buffer_append(f'{win_cur_e=}',ERR)
+                #set_status(f'{win_cur_e=}')
 
         frames += 1
 
         ##################################
         if sweeping:
             try:
-                now = perf_counter()
                 if now>next_sweep_time:
                     sweeping_i+=1
                     if sweeping_i<sweep_steps:
@@ -3245,12 +3374,66 @@ def main_loop():
                         sweeping=False
                         play_stop()
             except Exception as sweep_e:
-                l_error(f'{sweep_e=}')
-                set_status(f'{sweep_e=}')
+                #l_error(f'{sweep_e=}')
+                console_buffer_append(f'{sweep_e=}',ERR)
+                #set_status(f'{sweep_e=}')
         ##################################
+
+        if VSYNC or now>next_console_time:
+            try:
+                next_console_time=now+0.015
+
+                delete_item('draw_layer', children_only=True)
+
+                #console_lines=list()
+                if console_shift<=0:
+                    if console_show_end_index<console_buffer_last_elem:
+                        console_show_end_index+=1
+                        console_shift+=console_line_height
+
+                for l,(text,code) in enumerate(list(islice(console_buffer,max(0,console_show_end_index-console_visible_lines),console_show_end_index+1))):
+                    alpha_fact=255/console_visible_lines
+                    alpha=l*alpha_fact
+                    if cfg['theme']=='dark':
+                        color=(200,235,200,255)
+                        color_bg=DARK_BG
+                    else:
+                        color=LIGHT_TEXT
+                        color_bg=LIGHT_BG
+
+                    if code==ERR:
+                        color=[255,170,170,255]
+                        color_bg=[100,20,20,100]
+                    elif code!=CONST:
+                        #color=(255,255,255,alpha) if code<2 else (255,0,0,alpha)
+                        color=list(color)[0:3]+[alpha]
+                        #color_bg=(255-alpha,alpha,0,alpha)
+                        color_bg=list(color_bg)[0:3]+[alpha]
+
+                    x = 330
+                    y = 50+l*console_line_height + console_shift
+
+                    color_tab=(color_bg,color)
+
+                    _ = [draw_text(pos=(x+mx,y+my),text=text,color=color_tab[center],parent='draw_layer',size=console_fontsize) for (mx,my,center) in text_aura]
+
+                lines_to_show=console_buffer_len-console_show_end_index
+
+                if console_shift>0:
+                    if lines_to_show>1:
+                        console_shift-=int(np_log10(lines_to_show)*console_line_height)
+                    else:
+                        console_shift-=1
+
+            except Exception as console_e:
+                l_error(f'{console_e=}')
+                console_buffer_append(f'{console_e=}',ERR)
+                print(f'{console_e=}')
 
         if exiting:
             break
+
+        render_dearpygui_frame()
 
 main_loop()
 
