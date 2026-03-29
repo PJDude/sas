@@ -264,11 +264,11 @@ cfg.setdefault("out_channel","1")
 cfg.setdefault("in_samplerate",'44100')
 cfg.setdefault("out_samplerate",'44100')
 
-cfg.setdefault("in_latency",'high')
+cfg.setdefault("in_latency",'low')
 cfg.setdefault("out_latency",'low')
 
-cfg.setdefault("in_blocksize",'128')
-cfg.setdefault("out_blocksize",'128')
+cfg.setdefault("in_blocksize",'256')
+cfg.setdefault("out_blocksize",'256')
 
 cfg.setdefault("allow_all_devices",False)
 cfg.setdefault("out_wasapi_exclusive",False)
@@ -517,15 +517,18 @@ def change_f(fpar):
 
 played_bucket=0
 played_bucket_callbacks=0
+output_callbacks_count=0
+output_errors_count=0
+samples_chunks_requested_new=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,DEBUG,volume_ramp,phase_step_x_phase_i
+    global phase,playing_state,played_bucket,played_bucket_callbacks,phase_step,two_pi,current_bucket,out_channel_buffer_mod_index,phase_i,DEBUG,volume_ramp,phase_step_x_phase_i,output_callbacks_count,output_errors_count,samples_chunks_requested_new
 
     if status:
         cons_err(f'Output callback Error:{status}')
+        output_errors_count+=1
 
     if DEBUG:
-        global output_callbacks_count,samples_chunks_requested_new
         output_callbacks_count+=1
         samples_chunks_requested_new+=len(outdata)
 
@@ -629,14 +632,15 @@ processed_data_fifo=deque()
 processed_data_fifo_put=processed_data_fifo.append
 processed_data_fifo_get=processed_data_fifo.popleft
 
-output_callbacks_count=0
-samples_chunks_requested_new=0
 ###########################################################
 
+input_errors_all=0
 def audio_input_callback(indata, frames, time_info, status):
     samples_chunks_fifo_put(indata[:, 0].copy())
     if status:
         cons_err(f'Input callback Error:{status}')
+        global input_errors_all
+        input_errors_all+=1
 
 @catch
 def go_to_homepage():
@@ -1450,7 +1454,7 @@ FFT_ACTUAL_BUCKETS=0
 def common_precalc():
     l_info('common_precalc')
 
-    global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_fps,current_sample_db_time_samples
+    global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_fps,current_sample_db_time_samples,fft_bin_indices_selected,fft_values_x_bins,data_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
 
     current_sample_db_time=0.1
     current_sample_db_time_samples=int(float(get_value('in_samplerate'))*current_sample_db_time)
@@ -1492,14 +1496,13 @@ def common_precalc():
         except:
             pass
 
-    global fft_bin_indices_selected,fft_values_x_bins,data_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
     fft_bin_indices_selected=np_array([i for i,i_n in enumerate(isnan(bincount(fft_bin_indices, weights=dummy_data)[1:] / fft_bin_counts[1:])) if not i_n])
     FFT_ACTUAL_BUCKETS=len(fft_bin_indices_selected)
     fft_values_x_bins=np_array([bucket_fft_freqs[i] for i in fft_bin_indices_selected[:-1]])
 
     fft_values_y_prev=[0]*len(bucket_fft_freqs)
 
-    data=np_concatenate([zeros(FFT_SIZE),data])[:FFT_SIZE]
+    data=np_concatenate([zeros(FFT_SIZE),data])[-FFT_SIZE:]
 
     data_ready=True
     next_fps = 0
@@ -2069,6 +2072,14 @@ def widget_tooltip(message,widget=None):
         add_text(message)
 
 def key_press_callback(sender, app_data):
+    global data_ready
+
+    for delay in range(1024):
+        if data_ready:
+            break
+        else:
+            sleep(0.001)
+
     Shift = is_key_down(mvKey_LShift)
     Ctrl = is_key_down(mvKey_LControl)
 
@@ -2572,7 +2583,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                     add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
                     add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
 
-
                     with dpg.plot_axis(dpg.mvXAxis, tag='x_axis',no_highlight=True) as xaxis:
                         configure_item(dpg.last_item(),scale=dpg.mvPlotScale_Log10)
                         set_axis_limits("x_axis", fmin,fmax)
@@ -2626,8 +2636,8 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
             with group(horizontal=True,tag='settings_group'):
                 add_spacer(width=5)
 
-                c0width=100
-                c1width=250
+                c0width=80
+                c1width=260
                 with child_window(border=True,autosize_y=False,autosize_x=False,width=c0width+c1width+c1width,no_scrollbar=True,height=settings_height-5):
                     with group(width=-1):
                         with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp):
@@ -2914,8 +2924,9 @@ status_hide_time=0
 on_viewport_resize()
 frames = 0
 
-output_callbacks_all = 0
-output_samples = 0
+
+#output_callbacks_all = 0
+#output_samples = 0
 
 render_dearpygui_frame()
 if not decorated:
@@ -2990,7 +3001,7 @@ def processing():
     peaks_annos=set()
     peaks_annos_clear = peaks_annos.clear
 
-    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,fft_window_sum
+    global sweeping,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
     global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready
 
@@ -3001,20 +3012,19 @@ def processing():
     new_data=False
 
     while not exiting:
-        if DEBUG :
-            output_callbacks_all+=output_callbacks_count
-            output_callbacks_count=0
-
-            output_samples+=samples_chunks_requested_new
-            samples_chunks_requested_new=0
-
         if data_ready:
             while True:
                 try:
+                    data_len=len(data)
+
                     data_new_chunk=samples_chunks_fifo_get()
                     data_new_chunk_len=len(data_new_chunk)
-                    data = np_roll(data,-data_new_chunk_len)
-                    data[-data_new_chunk_len:]=data_new_chunk
+                    if data_new_chunk_len>data_len:
+                        data = data_new_chunk[-data_len:]
+                    else:
+                        data = np_roll(data,-data_new_chunk_len)
+                        data[-data_new_chunk_len:]=data_new_chunk
+
                     input_callbacks_all+=1
                     rec_samples+=data_new_chunk_len
                     new_data=True
@@ -3022,6 +3032,9 @@ def processing():
                     break
                 except Exception as dnc_e:
                     cons_err(f'{dnc_e=}')
+                    cons_err(f'{data_new_chunk_len=}')
+                    cons_err(f'{data_len=}')
+
                     break
 
         if new_data and not (is_dragging or is_resizing or PAUSE):
@@ -3058,6 +3071,7 @@ def processing():
                     if FFT_TDA:
                         try:
                             fft_values_y=FFT_TDA_FACTOR_1m*np_array(fft_values_y) + FFT_TDA_FACTOR*np_array(fft_values_y_prev)
+                            fft_values_y_prev=fft_values_y
                         except:
                             pass
 
@@ -3136,9 +3150,6 @@ def processing():
 
                     set_value("fft_line", [fft_values_x, fft_values_y])
 
-                    if FFT_TDA:
-                        fft_values_y_prev=fft_values_y
-
                 except Exception as exception_fft:
                     cons_err(f'{exception_fft=}')
 
@@ -3192,10 +3203,10 @@ def output_frame_buffer_callback(sender, app_data):
 
 next_console_time=0.0
 def main_loop():
-    global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,fft_window_sum
+    global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
     global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_console_time
-    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab
+    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all
     next_sweep_time=0
 
     while is_dearpygui_running():
@@ -3291,11 +3302,20 @@ def main_loop():
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
             try:
                 if now >= next_fps :
+                    output_samples=samples_chunks_requested_new
+                    samples_chunks_requested_new=0
 
-                    part1 = [f"VSync:{VSYNC_STATE_NAME}   FPS:{frames} / (real:{frames_change}) \n",
+                    output_callbacks_all=output_callbacks_count
+                    output_callbacks_count=0
+
+                    output_errors_all=output_errors_count
+                    output_errors_count=0
+
+                    part1 = [f"VSync:{VSYNC_STATE_NAME:3s} FPS:{frames} UPS:{frames_change}\n",
                             f"             Output       Input",
                             f"samples/s  {output_samples:8d}    {rec_samples:8d}",
                             f"blocks/s   {output_callbacks_all:8d}    {input_callbacks_all:8d}",
+                            f"errors/s   {output_errors_all:8d}    {input_errors_all:8d}",
                             " ",
                             f"CPU        {stream_out.cpu_load if stream_out else 0:.6f}    {stream_in.cpu_load if stream_in else 0:.6f}",
                             f"latency[s] {stream_out.latency if stream_out else 0:.6f}    {stream_in.latency if stream_in else 0:.6f}",
@@ -3309,8 +3329,7 @@ def main_loop():
                     fft_calcs=0
 
                     part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
-                                f"FFT Calculation: {fft_calc_mean:.6f}s",
-                                f"         (~{fft_calc_in_sec:6d}/sec)",
+                                f"FFT Calc: {fft_calc_mean:.5f}s ({fft_calc_in_sec:5d}/s)",
                                 "",
                                 f"   FFT /  FBA  /  act",
                                 f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}"  if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
@@ -3319,11 +3338,9 @@ def main_loop():
                     set_value('debug_text','\n'.join(part1 + part_fft))
                     frames = 0
                     frames_change = 0
-                    input_callbacks_all = 0
                     rec_samples = 0
-
-                    output_callbacks_all = 0
-                    output_samples = 0
+                    input_callbacks_all = 0
+                    input_errors_all=0
 
                     next_fps = now+1.0
             except Exception as debug_e:
