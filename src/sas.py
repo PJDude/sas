@@ -98,7 +98,14 @@ ERR=2
 CONST=3
 OPT=4
 
+CODES=(INFO,WARN,ERR,CONST,OPT)
+
 NO_SCROLL_CODES=(ERR,WARN,OPT)
+
+lock_frequency=False
+two_pi_by_out_samplerate=1
+phase_i=[0,]
+f_current=0
 
 def console_buffer_append(text,code=0):
     global console_buffer,console_buffer_max_len,console_buffer_append_fun,console_buffer_popleft,console_show_end_index,console_buffer_len,console_buffer_last_elem,NO_SCROLL_CODES
@@ -489,6 +496,7 @@ def logf_to_bucket_tracks(logf):
 
 phase_step=1.0
 
+@catch
 def change_f(fpar):
     global current_logf,current_bucket,phase_step,two_pi_by_out_samplerate,TRACK_BUCKETS,phase_step_x_phase_i,phase_i
 
@@ -676,17 +684,27 @@ def refresh_devices():
 
     api_name2api={ api['name']:api for api in apis if api['devices'] }
 
-    devices=query_devices()
-    device_name2device={ device['name']:device for device in devices}
-    device_index2device={ device['index']:device for device in devices}
+    try:
+        devices=query_devices()
+    except Exception as d_e1:
+        cons_err(f'd_e1:{d_e1}')
 
-    l_info(' ')
-    l_info('DEVICES:')
-    for i,dev in enumerate(devices):
-        l_info(f'  dev:{i}')
-        for key,val in dev.items():
-            l_info(f'    :{key}:{val}')
-    l_info(' ')
+    try:
+        device_name2device={ device['name']:device for device in devices}
+        device_index2device={ device['index']:device for device in devices}
+
+        l_info(' ')
+        l_info('DEVICES:')
+        for i,dev in enumerate(devices):
+            l_info(f'  dev:{i}')
+            for key,val in dev.items():
+                l_info(f'    :{key}:{val}')
+        l_info(' ')
+    except Exception as d_e2:
+        cons_err(f'd_e2:{d_e2}')
+        device_name2device={}
+        device_index2device={}
+
 
     values_str=' - ' + '\n - '.join(api_name2api)
     configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
@@ -1110,45 +1128,53 @@ def in_dev_config_items():
     api_name=get_value('in_api')
     api=api_name2api[api_name]
 
-    in_api_devices_indexes=api_name2api[api_name]['devices']
-    l_info(f'{in_api_devices_indexes=}')
+    try:
+        in_api_devices_indexes=api_name2api[api_name]['devices']
+        l_info(f'{in_api_devices_indexes=}')
 
-    devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
+        devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
+        default_input_device_name = device_index2device[api['default_input_device']]['name']
 
-    default_input_device_name = device_index2device[api['default_input_device']]['name']
+        if get_value('allow_all_devices'):
+            in_values=[ dev['name'] for dev in devices]
+        else:
+            in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index']]
 
-    if get_value('allow_all_devices'):
-        in_values=[ dev['name'] for dev in devices]
-    else:
-        in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index']]
+        tooltip_str='\n'.join([ ('*' if name==default_input_device_name else '-') + ' ' + name for name in in_values])
 
-    tooltip_str='\n'.join([ ('*' if name==default_input_device_name else '-') + ' ' + name for name in in_values])
+        widget_tooltip(f"Available (API:{api_name}):\n\n{tooltip_str}","in_dev")
 
-    widget_tooltip(f"Available (API:{api_name}):\n\n{tooltip_str}","in_dev")
+        configure_item("in_dev",items=in_values)
 
-    configure_item("in_dev",items=in_values)
-
-    return in_values
+        return in_values
+    except Exception as idcn_e:
+        cons_err(f'{idcn_e=}')
+        return []
 
 def out_dev_config_items():
     api_name=get_value('out_api')
     api=api_name2api[api_name]
 
-    out_api_devices_indexes=api['devices']
-    l_info(f'{out_api_devices_indexes=}')
+    try:
+        out_api_devices_indexes=api['devices']
+        l_info(f'{out_api_devices_indexes=}')
 
-    devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
+        devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
 
-    default_output_device_name = device_index2device[api['default_output_device']]['name']
+        default_output_device_name = device_index2device[api['default_output_device']]['name']
 
-    out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index']]
+        out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index']]
 
-    tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
-    widget_tooltip(f"Available (API:{api_name}):\n\n{tooltip_str}","out_dev")
+        tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
+        widget_tooltip(f"Available (API:{api_name}):\n\n{tooltip_str}","out_dev")
 
-    configure_item("out_dev",items=out_values)
+        configure_item("out_dev",items=out_values)
 
-    return out_values
+        return out_values
+
+    except Exception as odcn_e:
+        cons_err(f'{odcn_e=}')
+        return []
 
 def out_wasapi_exclusive_callback(sender=None, app_data=None,user_data=False):
     cfg['out_wasapi_exclusive']=get_value('out_wasapi_exclusive')
@@ -1194,7 +1220,7 @@ def refresh_tracks():
         if track==int(cfg['recorded']):
             configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_sel"])
 
-            if cfg['theme']=='dark':
+            if DARK_THEME:
                 bind_item_theme(f"track{track}_bg",track_recorded_bg_theme_dark)
                 bind_item_theme(f"track{track}",track_recorded_core_theme_dark)
             else:
@@ -1419,6 +1445,8 @@ def tracks_tda_factor_callback(sender=None, app_data=None):
 
 data=[0]
 FFT_ACTUAL_BUCKETS=0
+
+@catch
 def common_precalc():
     l_info('common_precalc')
 
@@ -1501,6 +1529,7 @@ def check_sample_rates_output(device_id):
 
 device_out_current=None
 
+@catch
 def out_dev_changed(sender=None, app_data=None,user_data=True):
     l_info(f'out_dev_changed:{sender},{app_data}')
 
@@ -1546,6 +1575,7 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
 device_in_current=None
 
+@catch
 def in_dev_changed(sender=None, app_data=None,user_data=False):
     global device_in_current,data_ready
 
@@ -1733,6 +1763,7 @@ def on_mouse_move(sender, app_data):
 BG_SEMI = (128, 128, 128, 220)
 
 LIGHT_BG = (240, 240, 240, 255)
+LIGHT_BG_CONS = (240, 240, 240, 128)
 LIGHT_CHILD_BG = (255, 255, 255, 255)
 LIGHT_BORDER = (200, 200, 200, 255)
 LIGHT_FRAME = (230, 230, 230, 255)
@@ -2192,7 +2223,7 @@ FFT_FILL=cfg['fft_fill']
 title_hight=(0 if decorated else 34)
 #status_height=80
 status_height=20
-plot_min_height=300
+plot_min_height=306
 
 viewport_height_min=(plot_min_height+status_height+title_hight,
                      plot_min_height+status_height+title_hight+settings_height)
@@ -2232,6 +2263,23 @@ def theme_light_callback():
     bind_item_theme('mark_text_8',white_text)
     bind_item_theme('mark_text',black_text)
 
+    #[code][center]
+
+    res=[]
+    #INFO=0
+    res.append( (LIGHT_BG_CONS,(0,50,0,255)) )
+    #WARN=1
+    res.append( (LIGHT_BG_CONS,(200,235,235,255)) )
+    #ERR=2
+    res.append( ((100,20,20,100),(255,170,170,255)) )
+    #CONST=3
+    res.append( (LIGHT_BG_CONS,(0,50,0,255)) )
+    #OPT=4
+    res.append( (LIGHT_BG_CONS,(0,50,0,255)) )
+
+    global console_color_tab
+    console_color_tab=tuple(res)
+
 def theme_dark_callback():
     l_info('theme_dark_callback')
     dpg.bind_theme(theme_dark)
@@ -2248,6 +2296,7 @@ def theme_dark_callback():
     configure_item('plotbg',texture_tag=ico['bg_dark'])
     if not decorated:
         configure_item('exit_button',texture_tag=ico['exit_dark'])
+
     cfg['theme']='dark'
     refresh_tracks()
 
@@ -2260,6 +2309,23 @@ def theme_dark_callback():
     bind_item_theme('mark_text_7',black_text)
     bind_item_theme('mark_text_8',black_text)
     bind_item_theme('mark_text',white_text)
+
+    #[code][center]
+
+    res=[]
+    #INFO=0
+    res.append( (DARK_BG,(200,235,200,255)) )
+    #WARN=1
+    res.append( (DARK_BG,(200,235,235,255)) )
+    #ERR=2
+    res.append( ((100,20,20,100),(255,170,170,255)) )
+    #CONST=3
+    res.append( (DARK_BG,(200,235,200,255)) )
+    #OPT=4
+    res.append( (DARK_BG,(200,235,200,255)) )
+
+    global console_color_tab
+    console_color_tab=tuple(res)
 
 PEAKS=cfg['peaks']
 def peaks_callback():
@@ -2420,7 +2486,8 @@ def on_viewport_resize(sender=None, app_data=None):
     vw,vh = get_viewport_client_width(),get_viewport_client_height()
     curr_vp_x, curr_vp_y = get_viewport_pos()
 
-    plot_height  = max(plot_min_height, vh - (settings_height if cfg['settings'] else 0) -status_height -title_hight)
+    plot_height = max(plot_min_height, vh - (settings_height if cfg['settings'] else 0) -status_height -title_hight)
+    plot_width = vw-64
 
     set_item_height('slider', plot_height-xaxis_height-plot_upper_margin+5)
     set_item_pos('slider',[5,title_hight+plot_upper_margin+5])
@@ -2430,12 +2497,8 @@ def on_viewport_resize(sender=None, app_data=None):
 
     set_item_pos('debug_text',[slider_width+yaxis_width+20,title_hight+plot_upper_margin])
 
-    #slider_rect=get_item_rect_size('slider')
-    #print(f'{slider_rect=}')
-
-    #text_aura
     x_offset=80
-    y_offset=title_hight+plot_height-30
+    y_offset=title_hight+plot_height-xaxis_height-4
 
     set_item_pos('mark_text_1',[x_offset-1,y_offset])
     set_item_pos('mark_text_2',[x_offset-1,y_offset-1])
@@ -2448,8 +2511,6 @@ def on_viewport_resize(sender=None, app_data=None):
     set_item_pos('mark_text',[x_offset,y_offset])
 
     console_visible_lines = int(floor((plot_height-xaxis_height-plot_upper_margin)/console_line_height))
-
-    set_item_pos('sweeping', [slider_width+yaxis_width+20, title_hight + plot_height-xaxis_height-20])
 
 def exit_press(sender=None, app_data=None):
     global exiting
@@ -2556,22 +2617,10 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                     add_spacer(height=20)
                     add_image_button(ico["reset"],tag='resetrack',callback=reset_track_press); widget_tooltip('Reset selected track samples\n\nkey: Delete')
 
-                    add_spacer(height=32)
+                    add_spacer(height=20)
                     add_image_button(ico["play"],tag='sweeping',callback=sweep_callback); widget_tooltip('Run frequency sweep\n\nA track must be selected and recording\nmust be enabled before starting the sweep.')
-                    add_image_button(ico["settings"],tag='settingsx',callback=settings_wrapper_toggle); widget_tooltip("Show settings\n\nkey: F12")
-
-        #with table_row():
-        #    with table(header_row=False, resizable=True, policy=mvTable_SizingStretchProp,
-        #        borders_innerH=False, borders_innerV=False, borders_outerH=False, borders_outerV=False,
-        #        row_background=False, context_menu_in_body=False, freeze_rows=0, freeze_columns=0,
-        #        no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
-
-        #        add_table_column(width_fixed=True, init_width_or_weight=6, width=6)
-        #        add_table_column(width_stretch=True, init_width_or_weight=-1)
-        #        add_table_column(width_fixed=True)
-
-        #        with table_row():
-        #            add_spacer(height=6)
+                    add_spacer(height=20)
+                    add_image_button(ico["settings"],callback=settings_wrapper_toggle); widget_tooltip("Show settings\n\nkey: F12")
 
         with table_row():
             with group(horizontal=True,tag='settings_group'):
@@ -2777,7 +2826,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
         add_mouse_wheel_handler(callback=wheel_callback)
         add_key_press_handler(callback=key_press_callback)
 
-        #dpg.add_mouse_drag_handler(button=0, threshold=0.0, callback=drag_viewport)
         dpg.add_mouse_down_handler(button=0, callback=on_mouse_down)
         dpg.add_mouse_move_handler(callback=on_mouse_move)
 
@@ -2808,11 +2856,13 @@ dpg.setup_dearpygui()
 
 ########################################################################
 
+DARK_THEME=True
 try:
     if cfg['theme']=='dark':
         theme_dark_callback()
     else:
         theme_light_callback()
+        DARK_THEME=False
 except:
     theme_dark_callback()
 
@@ -2978,9 +3028,6 @@ def processing():
             new_data=False
             frames_change+=1
 
-            #from numpy.random import randn
-            #data = randn(cfg['fft_size'])
-
             current_sample_db = 10 * log10( np_mean(np_square(data[-current_sample_db_time_samples:])) + 1e-12)
 
             if not PEAKS:
@@ -2996,21 +3043,14 @@ def processing():
                     fft_calc_sum_time+=perf_counter()-t1
 
                     if FFT_FBA:
-                        #print('a1',FFT_SIZE,len(fft_window),len(data),len(fft_values_y))
-                        #print(f'{len(fft_bin_indices)},{len(fft_values_y)},{len(fft_bin_counts)}')
                         fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
-                        #print('a2')
-                        #print(f'{len(fft_bin_indices)},{len(fft_values_y)},{len(fft_bin_counts)},{len(fft_values_means_in_buckets)},{len(fft_bin_indices_selected)}')
                         fft_values_y=np_array([fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]])
-                        #print('a3')
                         fft_values_x = fft_values_x_bins
-                        #print('a4')
 
                         if FFT_SMOOTH:
                             for i_smooth in range(FFT_SMOOTH_FACTOR):
                                 csum = np_cumsum(np_pad(fft_values_y,2,'reflect'))
                                 fft_values_y = (csum[3:] - csum[:-3])/3
-                        #print('a5')
 
                     else:
                         fft_values_x = fft_values_x_all
@@ -3155,7 +3195,7 @@ def main_loop():
     global sweeping,output_callbacks_all,output_callbacks_count,output_samples,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
     global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_console_time
-    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs
+    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab
     next_sweep_time=0
 
     while is_dearpygui_running():
@@ -3274,7 +3314,6 @@ def main_loop():
                                 "",
                                 f"   FFT /  FBA  /  act",
                                 f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}"  if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
-                                f"TDA_FACTOR: {FFT_TDA_FACTOR:.2f}" if FFT_TDA else ""
                                 ] if FFT else []
 
                     set_value('debug_text','\n'.join(part1 + part_fft))
@@ -3326,38 +3365,15 @@ def main_loop():
             try:
                 next_console_time=now+0.015
 
-                delete_item('draw_layer', children_only=True)
-
                 if console_shift<=0:
                     if console_show_end_index<console_buffer_last_elem:
                         console_show_end_index+=1
                         console_shift+=console_line_height
 
+                delete_item('draw_layer', children_only=True)
                 for l,(text,code) in enumerate(list(islice(console_buffer,max(0,console_show_end_index-console_visible_lines),console_show_end_index+1))):
-                    alpha_fact=255/console_visible_lines
-                    alpha=l*alpha_fact
-                    if cfg['theme']=='dark':
-                        color=(200,235,200,255)
-                        color_bg=DARK_BG
-                    else:
-                        color=LIGHT_TEXT
-                        color_bg=LIGHT_BG
-
-                    if code==ERR:
-                        color=[255,170,170,255]
-                        color_bg=[100,20,20,100]
-                    elif code!=CONST:
-                        #color=(255,255,255,alpha) if code<2 else (255,0,0,alpha)
-                        color=list(color)[0:3]+[alpha]
-                        #color_bg=(255-alpha,alpha,0,alpha)
-                        color_bg=list(color_bg)[0:3]+[alpha]
-
-                    x = 330
-                    y = title_hight + plot_upper_margin + l*console_line_height + console_shift
-
-                    color_tab=(color_bg,color)
-
-                    _ = [draw_text(pos=(x+mx,y+my),text=text,color=color_tab[center],parent='draw_layer',size=console_fontsize) for (mx,my,center) in text_aura]
+                    for (mx,my,center) in text_aura:
+                        draw_text(pos=(330 + mx,title_hight + plot_upper_margin + l*console_line_height + console_shift + my),text=text,color=console_color_tab[code][center],parent='draw_layer',size=console_fontsize)\
 
                 lines_to_show=console_buffer_len-console_show_end_index
 
