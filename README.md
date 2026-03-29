@@ -1,5 +1,5 @@
 ## <img src="./src/icons/sas.png" width=30> Simple Audio Sweeper
-**A handy tool for DIY audio projects**
+**A handy tool for DIY audio projects and all kinds of sound experiments**
 
 ### Features
 - Automatic and manual sweeping of the audio frequency spectrum to determine the system's frequency response
@@ -88,6 +88,16 @@ automatic sweep, which is designed to operate at a controlled, steady pace.
   - Disabling VSync
   - Increasing the latency and block size of the devices
   - Reducing the number of active FFT processing stages or disabling it entirely
+
+**CPU consumption is high**
+- VSync is disabled by default and the application refreshes the GUI as fast as possible. Enabling VSync will reduce CPU load in most cases, at the cost of a slight increase in latency.
+- The FFT size may be too large. Reducing the FFT size decreases the number of calculations, while enabling FBA (Frequency Bin Aggregation) reduces the number of GUI objects to render.
+
+**Any other problems**
+- Try reinitializing the device or the entire audio interface.
+- Close other applications that may be using the audio device.
+- Delete the configuration files from the data folder and restart the application.
+- Report a bug. It is impossible to predict all possible hardware and software configurations. Please open an issue on GitHub and share logs and screenshots to help diagnose the problem.
 
 Ensure silence during analysis — only the sound emitted by the speakers should be recorded. The resulting characteristics will reflect the combined response of the microphone, speakers, and all other components in the audio path. For example, when analyzing an amplifier with speakers, the microphone's frequency response should be more accurate than that of the speakers being measured.
 
