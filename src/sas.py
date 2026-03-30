@@ -50,6 +50,7 @@ from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, 
 from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8
 from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings,_initialize,_terminate
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 from threading import Thread
 
 from collections import deque
@@ -246,8 +247,9 @@ cfg.setdefault('fft_smooth_factor',2)
 cfg.setdefault('tracks_tda_factor',0.3)
 
 cfg.setdefault('peaks',False)
-cfg.setdefault('peaks_dist_factor',3.0)
-cfg.setdefault('peaks_threshold',15.0)
+cfg.setdefault('peaks_avg_factor',10)
+cfg.setdefault('peaks_dist_factor',10)
+cfg.setdefault('peaks_limit',3)
 
 cfg.setdefault('show_track',[False]*tracks)
 cfg.setdefault('recorded',-1)
@@ -565,23 +567,24 @@ def vsync_callback(sender=None, app_data=None):
 
 def sweep_abort():
     global sweeping
-    sweeping=False
-    configure_item('sweeping',texture_tag=ico["play"])
+    if sweeping:
+        cons_info('Sweeping ended.')
+        configure_item('sweeping',texture_tag=ico["play"])
+        sweeping=False
 
 sweeping_i=0
 def sweep_callback(sender=None, app_data=None):
     l_info(f'sweep_callback:{sender},{app_data}')
 
     global sweeping,lock_frequency,sweeping_i,track_line_data_y_recorded
-    sweeping=(True,False)[sweeping]
+    lock_frequency=False
 
     if not track_line_data_y_recorded:
-        l_info('no recorded')
         cons_err('No track selected for recording !')
         sweep_abort()
         return
 
-    lock_frequency=False
+    sweeping=(True,False)[sweeping]
 
     if sweeping:
         configure_item('sweeping',texture_tag=ico["play_on"])
@@ -1007,7 +1010,7 @@ def show_info(message):
 def about_wrapper():
     text1= f'Simple Audio Sweeper {VER_TIMESTAMP}\nAuthor: Piotr Jochymek\n\n{HOMEPAGE}\n\nPJ.soft.dev.x@gmail.com\n'
     text2='\n' + distro_info + '\n'
-    show_info('\n' + text1+text2 + '\n\nPress H for help')
+    show_info('\n' + text1+text2 + '\nPress H for help\n')
 
 def normalize_text(text):
     res=[]
@@ -1259,17 +1262,22 @@ def fft_callback(sender=None, app_data=None):
     FFT=cfg['fft']=get_value('fft')
     l_info(f'fft_callback:{sender},{app_data},{FFT}')
 
-    configure_item('fft_size',enabled=FFT)
-    configure_item('fft_window',enabled=FFT)
+    configure_item('fft_size',enabled=FFT,show=FFT)
+    configure_item('fft_window',enabled=FFT,show=FFT)
 
     configure_item('fft_fba',enabled=FFT)
-    configure_item('fft_fba_size',enabled=FFT)
+    configure_item('fft_fba_size',enabled=FFT,show=FFT)
+
+    configure_item('fft_smooth',enabled=FFT)
+    configure_item('fft_smooth_factor',enabled=FFT,show=FFT)
+
     configure_item('fft_tda',enabled=FFT)
-    configure_item('fft_tda_factor',enabled=FFT)
+    configure_item('fft_tda_factor',enabled=FFT,show=FFT)
 
     configure_item('peaks',enabled=FFT)
-    configure_item('peaks_dist_factor',enabled=FFT)
-    configure_item('peaks_threshold',enabled=FFT)
+    configure_item('peaks_avg_factor',enabled=FFT,show=FFT)
+    configure_item('peaks_dist_factor',enabled=FFT,show=FFT)
+    configure_item('peaks_limit',enabled=FFT,show=FFT)
 
     fft_size_callback()
 
@@ -1336,8 +1344,8 @@ def fft_fba_callback(sender=None, app_data=None):
     if not FFT_FBA:
         set_value('fft_smooth',False)
 
-    configure_item('fft_smooth',enabled=FFT_FBA)
-    configure_item('fft_smooth_factor',enabled=FFT_FBA)
+    configure_item('fft_smooth',enabled=FFT_FBA,show=FFT_FBA)
+    configure_item('fft_smooth_factor',enabled=FFT_FBA,show=FFT_FBA)
 
     fft_fba_size_callback()
 
@@ -1361,7 +1369,7 @@ def fft_tda_callback(sender=None, app_data=None):
     val_str=off_on[FFT_TDA]
     cons_opt(f'FFT TDA:{val_str}')
 
-    configure_item('fft_tda_factor',enabled=FFT_TDA)
+    configure_item('fft_tda_factor',enabled=FFT_TDA,show=FFT_TDA)
 
     fft_tda_factor_callback()
 
@@ -2226,7 +2234,7 @@ def slide_change(sender):
     val=get_value(sender)
     set_axis_limits("y_axis", dbmin_display*val/100, dbmax_display)
 
-settings_height=180
+settings_height=186
 
 decorated=cfg['decorated']
 FFT_FILL=cfg['fft_fill']
@@ -2343,15 +2351,14 @@ def peaks_callback():
     global PEAKS
     val=cfg['peaks']=PEAKS=get_value('peaks')
 
-    configure_item('peaks_dist_factor',enabled=PEAKS)
-    configure_item('peaks_threshold',enabled=PEAKS)
+    configure_item('peaks_avg_factor',enabled=PEAKS,show=PEAKS)
+    configure_item('peaks_dist_factor',enabled=PEAKS,show=PEAKS)
+    configure_item('peaks_limit',enabled=PEAKS,show=PEAKS)
 
     if PEAKS:
-        configure_item("fft_line_fast",show=DEBUG)
-        configure_item("fft_line_slow",show=DEBUG)
+        configure_item("fft_avg",show=DEBUG)
     else:
-        configure_item("fft_line_fast",show=False)
-        configure_item("fft_line_slow",show=False)
+        configure_item("fft_avg",show=False)
 
     val_str=off_on[val]
     cons_opt(f'Peaks detection:{val_str}')
@@ -2373,15 +2380,23 @@ def fft_smooth_factor_change():
     else:
         set_value('fft_smooth_factor',cfg['fft_smooth_factor'])
 
+PEAKS_AVG_FACTOR=cfg['peaks_avg_factor']
+def peaks_avg_factor_change():
+    global PEAKS_AVG_FACTOR
+    cfg['peaks_avg_factor']=PEAKS_AVG_FACTOR=get_value('peaks_avg_factor')
+    cons_opt(f'Peaks Avarage Factor:{PEAKS_AVG_FACTOR}')
+
 PEAKS_DIST_FACTOR=cfg['peaks_dist_factor']
-def peaks_dist_factor_change():
+def peaks_distance_change():
     global PEAKS_DIST_FACTOR
     cfg['peaks_dist_factor']=PEAKS_DIST_FACTOR=get_value('peaks_dist_factor')
+    cons_opt(f'Peaks Distance Factor:{PEAKS_DIST_FACTOR}')
 
-PEAKS_THRESHOLD=cfg['peaks_threshold']
-def peaks_threshold_change():
-    global PEAKS_THRESHOLD
-    cfg['peaks_threshold']=PEAKS_THRESHOLD=get_value('peaks_threshold')
+PEAKS_LIMIT=cfg['peaks_limit']
+def peaks_limit_change():
+    global PEAKS_LIMIT
+    cfg['peaks_limit']=PEAKS_LIMIT=get_value('peaks_limit')
+    cons_opt(f'Peaks number limit:{PEAKS_LIMIT}')
 
 DEBUG=cfg['debug']
 def debug_callback():
@@ -2391,11 +2406,9 @@ def debug_callback():
     next_fps=0
 
     if DEBUG:
-        configure_item("fft_line_fast",show=PEAKS)
-        configure_item("fft_line_slow",show=PEAKS)
+        configure_item("fft_avg",show=PEAKS)
     else:
-        configure_item("fft_line_fast",show=False)
-        configure_item("fft_line_slow",show=False)
+        configure_item("fft_avg",show=False)
 
 def pause_callback():
     global PAUSE
@@ -2416,28 +2429,19 @@ def help_callback():
     l_info('help_callback')
     global next_fps
 
-    vals= [ "--------------------------------------------------------------------------------",
-            "H   - this help            Backspace - clean the console ",
-            "F1  - about                F2  - license",
-            "F12 - settings             F11 - debug info",
-            "F   - FFT                  F3  - FFT size",
-            "F4  - FFT window           F5  - FFT FBA",
-            "F6  - FFT Smoothing        F7  - FFT TDA",
-            "P - peaks detection        G - Filled chart",
-            "-----------------------",
-            "L / D - light / dark theme",
-            "1-8 - toggle track visibility      (recording with Ctrl)",
-            "Del - Reset recorded track",
-            "",
-            "------ chart actions ------",
-            " Left MB - generate specified frequency    Right MB - lock frequency",
-            "   Wheel - reduce value range   - modify locked frequency",
-            "",
-            "Arrows - modify locked frequency Space  - pause FFT chart refreshing",
-            "",
-            "S / C  - save screenshot / csv pause  - start stop frames capture",
-            "V - toggle VSync",
-            "--------------------------------------------------------------------------------"]
+    vals= [ "--------------------------------------------------------------------------------------------------------",
+            "H   - this help                      F   - FFT Toggle                1-8 - toggle track visibility      ",
+            "F1  - about                          F3  - FFT size                         (recording with Ctrl)       ",
+            "F2  - license                        F4  - FFT window                Del - Reset recorded track         ",
+            "F11 - debug info                     F5  - FFT FBA                   LMB - generate specified frequency ",
+            "F12 - settings                       F6  - FFT Smoothing             RMB -lock frequency                ",
+            "G   - Filled chart                   F7  - FFT TDA                   Wheel - reduce value range         ",
+            "L / D  - light/dark theme            P - peaks detection                     modify locked frequency    ",
+            "Space  - pause refreshing                                            Arrows - modify locked frequency   ",
+            "S / C  - save file (png/csv)                                                                            ",
+            "Pause  - frames capture (gif)                                                                           ",
+            "Backspace - clean the console        V - toggle VSync                                                   ",
+            "--------------------------------------------------------------------------------------------------------"]
 
     for line in vals:
         cons_const(line)
@@ -2602,8 +2606,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                         add_line_series([20], [-120], tag="fft_line")
                         add_shade_series([20], y1=[-120], tag="fft_line_shade")
 
-                        add_line_series([20], [-120], tag="fft_line_fast")
-                        add_line_series([20], [-120], tag="fft_line_slow")
+                        add_line_series([20], [-120], tag="fft_avg")
 
                         for lab,val in xticks:
                             if lab:
@@ -2755,15 +2758,19 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                 add_checkbox(tag='peaks',label='Peaks',callback=peaks_callback,default_value=cfg['peaks']); widget_tooltip('Peaks detection')
 
                             with table_row():
-                                add_text(default_value='S.L.F.')
-                                add_slider_float(tag='peaks_dist_factor',callback=peaks_dist_factor_change,max_value=5.0,min_value=1.0,default_value=cfg['peaks_dist_factor'],format="%.1f",width=130,track_offset=0.5); widget_tooltip('Short Length Factor\n... that\'s complicated ...')
+                                add_text(default_value='Avarage')
+                                dpg.add_slider_int(tag='peaks_avg_factor',callback=peaks_avg_factor_change,max_value=100,min_value=1,default_value=cfg['peaks_avg_factor'],width=130,track_offset=0.5); widget_tooltip('Reference average - relative length factor')
 
                             with table_row():
-                                add_text(default_value='Threshold')
-                                add_slider_float(tag='peaks_threshold',callback=peaks_threshold_change,max_value=40.0,min_value=1.0,default_value=cfg['peaks_threshold'],format="%.3f",width=130,track_offset=0.5); widget_tooltip('Peak Detection Threshold.')
+                                add_text(default_value='Distance')
+                                dpg.add_slider_int(tag='peaks_dist_factor',callback=peaks_distance_change,max_value=100,min_value=1,default_value=cfg['peaks_dist_factor'],width=130,track_offset=0.5); widget_tooltip('relative distance of neighbours')
+
+                            with table_row():
+                                add_text(default_value='Limit')
+                                dpg.add_slider_int(tag='peaks_limit',callback=peaks_limit_change,max_value=32,min_value=1,default_value=cfg['peaks_limit'],width=130,track_offset=0.5); widget_tooltip('Absolute limit of peaks shown')
 
                 with group():
-                    with child_window(border=True,autosize_y=False,autosize_x=False,width=210,no_scrollbar=True,height=65):
+                    with child_window(border=True,autosize_y=False,autosize_x=False,width=210,no_scrollbar=True,height=71):
                         with group(width=-1):
                             add_text(default_value='TRACKS')
                             dpg.add_separator()
@@ -2774,7 +2781,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                                     no_host_extendX=False, no_host_extendY=False, pad_outerX=False, no_pad_outerX=True):
 
                                 c2width=130
-                                add_table_column(width_fixed=True, init_width_or_weight=70, width=70)
+                                add_table_column(width_fixed=True, init_width_or_weight=60, width=60)
                                 add_table_column(width_fixed=True, init_width_or_weight=c2width, width=c2width)
 
                                 with table_row():
@@ -2924,10 +2931,6 @@ status_hide_time=0
 on_viewport_resize()
 frames = 0
 
-
-#output_callbacks_all = 0
-#output_samples = 0
-
 render_dearpygui_frame()
 if not decorated:
     try:
@@ -2996,14 +2999,19 @@ def capture_loop():
 
 frames_change=0
 fft_calcs=0
+
 fft_calc_sum_time=0.0
+fft_proc_sum_time=0.0
+fft_peaks_sum_time=0.0
+
 def processing():
     peaks_annos=set()
     peaks_annos_clear = peaks_annos.clear
+    peaks_annos_add = peaks_annos.add
 
     global sweeping,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
-    global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready
+    global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready,fft_proc_sum_time,fft_peaks_sum_time
 
     next_sweep_time=0
     input_callbacks_all=0
@@ -3037,143 +3045,121 @@ def processing():
 
                     break
 
-        if new_data and not (is_dragging or is_resizing or PAUSE):
-            new_data=False
-            frames_change+=1
+            if new_data and not (is_dragging or is_resizing or PAUSE):
+                new_data=False
+                frames_change+=1
 
-            current_sample_db = 10 * log10( np_mean(np_square(data[-current_sample_db_time_samples:])) + 1e-12)
+                current_sample_db = 10 * log10( np_mean(np_square(data[-current_sample_db_time_samples:])) + 1e-12)
 
-            if not PEAKS:
-                for fint in peaks_annos:
-                    delete_item(f'peak{fint}')
+                for tag in peaks_annos:
+                    delete_item(tag)
                 peaks_annos_clear()
 
-            if FFT and data_ready:
-                try:
-                    t1=perf_counter()
-                    fft_values_y=20*np_log10( np_abs( np_fft_rfft(data[-FFT_SIZE:]*fft_window)) / FFT_SIZE + 1e-12 )
-                    fft_calcs+=1
-                    fft_calc_sum_time+=perf_counter()-t1
+                if FFT and data_ready:
+                    try:
+                        t1=perf_counter()
+                        fft_values_y=20*np_log10( np_abs( np_fft_rfft(data[-FFT_SIZE:]*fft_window)) / FFT_SIZE + 1e-12 )
+                        fft_calcs+=1
 
-                    if FFT_FBA:
-                        fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
-                        fft_values_y=np_array([fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]])
-                        fft_values_x = fft_values_x_bins
+                        t2=perf_counter()
+                        fft_calc_sum_time+=t2-t1
 
-                        if FFT_SMOOTH:
-                            for i_smooth in range(FFT_SMOOTH_FACTOR):
-                                csum = np_cumsum(np_pad(fft_values_y,2,'reflect'))
-                                fft_values_y = (csum[3:] - csum[:-3])/3
+                        if PEAKS:
+                            fft_values_y_org=fft_values_y
 
-                    else:
-                        fft_values_x = fft_values_x_all
+                        if FFT_FBA:
 
-                    if FFT_TDA:
-                        try:
-                            fft_values_y=FFT_TDA_FACTOR_1m*np_array(fft_values_y) + FFT_TDA_FACTOR*np_array(fft_values_y_prev)
-                            fft_values_y_prev=fft_values_y
-                        except:
-                            pass
+                            fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
+                            fft_values_y=np_array([fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]])
+                            fft_values_x = fft_values_x_bins
 
-                    if PEAKS:
-                        points=len(fft_values_y)
-
-                        dist_fast_half=int(PEAKS_DIST_FACTOR*points/64)
-                        dist_fast=dist_fast_half*2
-
-                        csum_fast = np_cumsum(np_pad(fft_values_y,dist_fast_half,'reflect'))
-                        window_sum_fast = csum_fast[dist_fast:] - csum_fast[:-dist_fast]
-                        fft_values_y_avg_fast = window_sum_fast / dist_fast
-
-                        dist_slow_half=points//16
-                        dist_slow=dist_slow_half*2
-
-                        csum_slow = np_cumsum(np_pad(fft_values_y_avg_fast,dist_slow_half,'reflect'))
-                        window_sum_slow = csum_slow[dist_slow:] - csum_slow[:-dist_slow]
-                        fft_values_y_avg_slow = window_sum_slow / dist_slow
-
-                        if DEBUG:
-                            set_value("fft_line_fast", [fft_values_x, fft_values_y_avg_fast])
-                            set_value("fft_line_slow", [fft_values_x, fft_values_y_avg_slow])
-
-                        area_len_threshold=PEAKS_DIST_FACTOR*points/64
-
-                        peaks_annos_new=set()
-                        peaks_annos_new_add=peaks_annos_new.add
-                        area_len=0
-
-                        min_val=0
-                        max_val=-200
-                        max_val_f=-1
-
-                        for i,(f,v,mask) in enumerate(zip(fft_values_x,fft_values_y,fft_values_y_avg_fast > fft_values_y_avg_slow)):
-                            if mask:
-                                area_len+=1
-                                if v<min_val:
-                                    min_val=v
-                                if v>max_val:
-                                    max_val=v
-                                    max_val_f=f
-
-                            else:
-                                if area_len>1:
-                                    if area_len>area_len_threshold:
-                                        ratio=max_val-min_val
-                                        if ratio>PEAKS_THRESHOLD:
-                                            peaks_annos_new_add((ratio,int(max_val_f),max_val))
-
-                                    area_len=0
-                                    max_val=-999
-                                    min_val=0
-                                    max_val_f=0
-
-                        if peaks_annos_new:
-                            peaks_annos_new_fints={fint for ratio,fint,v in peaks_annos_new}
-
-                            for ratio,fint,v in peaks_annos_new:
-                                if fint not in peaks_annos:
-                                    add_plot_annotation(tag=f'peak{fint}',label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(100, 100, 100, 130), offset=(16,-10))
+                            if FFT_SMOOTH:
+                                for i_smooth in range(FFT_SMOOTH_FACTOR):
+                                    csum = np_cumsum(np_pad(fft_values_y,2,'reflect'))
+                                    fft_values_y = (csum[3:] - csum[:-3])/3
                         else:
-                            peaks_annos_new_fints={}
+                            fft_values_x = fft_values_x_all
 
-                        for fint in peaks_annos:
-                            if fint not in peaks_annos_new_fints:
-                                delete_item(f'peak{fint}')
+                        if FFT_TDA:
+                            try:
+                                fft_values_y=FFT_TDA_FACTOR_1m*np_array(fft_values_y) + FFT_TDA_FACTOR*np_array(fft_values_y_prev)
+                                fft_values_y_prev=fft_values_y
+                            except:
+                                pass
 
-                        if peaks_annos_new:
-                            peaks_annos=peaks_annos_new_fints
+                        t3=perf_counter()
+                        fft_proc_sum_time+=t3-t2
 
-                    if FFT_FILL:
-                        set_value("fft_line_shade", [fft_values_x, fft_values_y,[dbmin]*len(fft_values_y)])
-                    else:
-                        set_value("fft_line2", [fft_values_x, fft_values_y])
+                        if PEAKS:
+                            points=len(fft_values_y)
 
-                    set_value("fft_line", [fft_values_x, fft_values_y])
+                            dist_fast_half=int(PEAKS_AVG_FACTOR*points/100.0)
+                            dist_fast=dist_fast_half*2
 
-                except Exception as exception_fft:
-                    cons_err(f'{exception_fft=}')
+                            csum_fast = np_cumsum(np_pad(fft_values_y,dist_fast_half,'reflect'))
+                            fft_values_y_avg = window_sum_fast = (csum_fast[dist_fast:] - csum_fast[:-dist_fast]) / dist_fast
 
-            if playing_state==2 and track_line_data_y_recorded and current_bucket<TRACK_BUCKETS:
-                track_line_data_y_recorded[current_bucket]*=TRACKS_TDA_FACTOR
-                track_line_data_y_recorded[current_bucket]+=current_sample_db*TRACKS_TDA_FACTOR_1m
-                redraw_track_line=True
+                            diffs=fft_values_y-fft_values_y_avg
 
-            set_value('cursor_db_txt', (25000, current_sample_db))
-            configure_item('cursor_db_txt',label=f'{round(current_sample_db)}dB')
+                            margin=int(1+(PEAKS_AVG_FACTOR/100.0)*PEAKS_DIST_FACTOR*points/100.0)
 
-            if current_sample_db<-110:
-                cons_err('No signal / Mic not connected')
+                            #print('dist_fast_half:',dist_fast_half)
+                            #print('margin:',margin)
 
-            if redraw_track_line:
-                track=int(cfg['recorded'])
-                if track!=-1:
-                    if cfg['show_track'][track]:
-                        set_value(f"track{track}_bg", [bucket_tracks_freqs, track_line_data_y[track]])
-                        set_value(f"track{track}", [bucket_tracks_freqs, track_line_data_y[track]])
+                            diffs_padded_windows = sliding_window_view( np_pad(diffs, margin, mode="constant", constant_values=-np.inf) , window_shape=2 * margin + 1)
 
-                redraw_track_line=False
+                            maxs=diffs_padded_windows[:, margin] == diffs_padded_windows.max(axis=1)
+
+                            if DEBUG:
+                                set_value("fft_avg", [fft_values_x, fft_values_y_avg])
+
+                            for i,(d,f,m,v) in enumerate(sorted(zip(diffs,fft_values_x,maxs,fft_values_y),reverse=True,key=lambda x: x[0])):
+                                if i>PEAKS_LIMIT:
+                                    break
+
+                                fint=int(f)
+
+                                if m:
+                                    tag=f'peak{fint}'
+                                    add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(100, 100, 100, 130), offset=(16,-10))
+                                    peaks_annos_add(tag)
+
+                        t4=perf_counter()
+                        fft_peaks_sum_time+=t4-t3
+
+                        if FFT_FILL:
+                            set_value("fft_line_shade", [fft_values_x, fft_values_y,[dbmin]*len(fft_values_y)])
+                        else:
+                            set_value("fft_line2", [fft_values_x, fft_values_y])
+
+                        set_value("fft_line", [fft_values_x, fft_values_y])
+
+                    except Exception as exception_fft:
+                        cons_err(f'{exception_fft=}')
+
+                if playing_state==2 and track_line_data_y_recorded and current_bucket<TRACK_BUCKETS:
+                    track_line_data_y_recorded[current_bucket]*=TRACKS_TDA_FACTOR
+                    track_line_data_y_recorded[current_bucket]+=current_sample_db*TRACKS_TDA_FACTOR_1m
+                    redraw_track_line=True
+
+                set_value('cursor_db_txt', (25000, current_sample_db))
+                configure_item('cursor_db_txt',label=f'{round(current_sample_db)}dB')
+
+                if current_sample_db<-110:
+                    cons_err('No signal / Mic not connected')
+
+                if redraw_track_line:
+                    track=int(cfg['recorded'])
+                    if track!=-1:
+                        if cfg['show_track'][track]:
+                            set_value(f"track{track}_bg", [bucket_tracks_freqs, track_line_data_y[track]])
+                            set_value(f"track{track}", [bucket_tracks_freqs, track_line_data_y[track]])
+
+                    redraw_track_line=False
+            else:
+                sleep(0.00001)
         else:
-            sleep(0.0001)
+            sleep(0.00001)
 
 Thread(target=processing,daemon=True).start()
 
@@ -3302,40 +3288,42 @@ def main_loop():
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
             try:
                 if now >= next_fps :
-                    output_samples=samples_chunks_requested_new
-                    samples_chunks_requested_new=0
-
-                    output_callbacks_all=output_callbacks_count
-                    output_callbacks_count=0
-
-                    output_errors_all=output_errors_count
-                    output_errors_count=0
-
                     part1 = [f"VSync:{VSYNC_STATE_NAME:3s} FPS:{frames} UPS:{frames_change}\n",
                             f"             Output       Input",
-                            f"samples/s  {output_samples:8d}    {rec_samples:8d}",
-                            f"blocks/s   {output_callbacks_all:8d}    {input_callbacks_all:8d}",
-                            f"errors/s   {output_errors_all:8d}    {input_errors_all:8d}",
+                            f"samples/s  {samples_chunks_requested_new:8d}    {rec_samples:8d}",
+                            f"blocks/s   {output_callbacks_count:8d}    {input_callbacks_all:8d}",
+                            f"errors/s   {output_errors_count:8d}    {input_errors_all:8d}",
                             " ",
                             f"CPU        {stream_out.cpu_load if stream_out else 0:.6f}    {stream_in.cpu_load if stream_in else 0:.6f}",
                             f"latency[s] {stream_out.latency if stream_out else 0:.6f}    {stream_in.latency if stream_in else 0:.6f}",
                             f"type        {stream_out.dtype if stream_out else '':6s}     {stream_in.dtype if stream_in else '':8s}\n"]
 
-
                     fft_calc_mean=fft_calc_sum_time/fft_calcs if fft_calcs else 0.0
                     fft_calc_in_sec=int(1.0/fft_calc_mean) if fft_calc_mean else 0
 
+                    fft_proc_mean=fft_proc_sum_time/fft_calcs if fft_calcs else 0.0
+                    fft_peaks_mean=fft_peaks_sum_time/fft_calcs if fft_calcs else 0.0
+
+                    fft_proc_sum_time=0.0
                     fft_calc_sum_time=0
+                    fft_peaks_sum_time=0.0
                     fft_calcs=0
 
                     part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
-                                f"FFT Calc: {fft_calc_mean:.5f}s ({fft_calc_in_sec:5d}/s)",
+                                f"FFT Calc: {fft_calc_mean:.5f}s / {fft_calc_in_sec:5d}/s",
+                                f"FFT Procs: {fft_proc_mean:.5f}s",
+                                f"FFT Peaks: {fft_peaks_mean:.5f}s",
                                 "",
                                 f"   FFT /  FBA  /  act",
                                 f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}"  if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
                                 ] if FFT else []
 
                     set_value('debug_text','\n'.join(part1 + part_fft))
+
+                    samples_chunks_requested_new=0
+                    output_callbacks_count=0
+                    output_errors_count=0
+
                     frames = 0
                     frames_change = 0
                     rec_samples = 0
@@ -3407,10 +3395,6 @@ def main_loop():
             break
 
         render_dearpygui_frame()
-
-#dpg.show_style_editor()
-#dpg.show_debug()
-#dpg.show_metrics()
 
 main_loop()
 
