@@ -92,6 +92,7 @@ l_warning = logging.warning
 l_error = logging.error
 
 console_show_end_index=0
+console_direction_mod=2
 
 INFO=0
 WARN=1
@@ -109,7 +110,7 @@ phase_i=[0,]
 f_current=0
 
 def console_buffer_append(text,code=0):
-    global console_buffer,console_buffer_max_len,console_buffer_append_fun,console_buffer_popleft,console_show_end_index,console_buffer_len,console_buffer_last_elem,NO_SCROLL_CODES
+    global console_buffer,console_buffer_max_len,console_buffer_append_fun,console_buffer_popleft,console_show_end_index,console_buffer_len,console_buffer_last_elem,NO_SCROLL_CODES,console_direction_mod
 
     try:
         last_line_text,last_line_code=console_buffer[-1]
@@ -120,6 +121,7 @@ def console_buffer_append(text,code=0):
         console_buffer[-1]=(text,code)
     else:
         console_buffer_append_fun((text,code))
+        console_direction_mod=2
 
         console_buffer_len=len(console_buffer)
         if console_buffer_len>console_buffer_max_len:
@@ -2081,6 +2083,7 @@ def widget_tooltip(message,widget=None):
 
 def key_press_callback(sender, app_data):
     global data_ready
+    global console_show_end_index,console_direction_mod,console_buffer_last_elem,next_console_time,lock_frequency
 
     for delay in range(1024):
         if data_ready:
@@ -2121,9 +2124,27 @@ def key_press_callback(sender, app_data):
     elif app_data==dpg.mvKey_Right:
         scroll_mod(1,0.001)
     elif app_data==dpg.mvKey_Up:
-        scroll_mod(1,0.0001)
+        if lock_frequency:
+            scroll_mod(1,0.0001)
+        else:
+            console_show_end_index=max(console_visible_lines,console_show_end_index-1)
+            console_direction_mod=-1
+            next_console_time=0.0
+    elif app_data==dpg.mvKey_Prior or app_data==517:
+        console_show_end_index=max(console_visible_lines,console_show_end_index-10)
+        console_direction_mod=-1
+        next_console_time=0.0
     elif app_data==dpg.mvKey_Down:
-        scroll_mod(-1,0.0001)
+        if lock_frequency:
+            scroll_mod(-1,0.0001)
+        else:
+            console_show_end_index=min(console_buffer_last_elem,console_show_end_index+1)
+            console_direction_mod=1
+            next_console_time=0.0
+    elif app_data==dpg.mvKey_Next or app_data==518:
+        console_show_end_index=min(console_buffer_last_elem,console_show_end_index+10)
+        console_direction_mod=1
+        next_console_time=0.0
     elif app_data==dpg.mvKey_F1:
         about_wrapper()
     elif app_data==dpg.mvKey_F2:
@@ -2224,10 +2245,11 @@ def key_press_callback(sender, app_data):
     elif app_data==dpg.mvKey_Delete:
         reset_track_press()
     elif app_data==dpg.mvKey_Escape:
-        global lock_frequency,sweeping
+        global sweeping
         play_stop()
         sweeping=False
     else:
+        #print(app_data)
         pass
 
 def slide_change(sender):
@@ -2437,8 +2459,8 @@ def help_callback():
             "F12 - settings                       F6  - FFT Smoothing             RMB -lock frequency                ",
             "G   - Filled chart                   F7  - FFT TDA                   Wheel - reduce value range         ",
             "L / D  - light/dark theme            P - peaks detection                     modify locked frequency    ",
-            "Space  - pause refreshing                                            Arrows - modify locked frequency   ",
-            "S / C  - save file (png/csv)                                                                            ",
+            "Space  - pause refreshing                                            Arrows,PgUp,PgDown - console scroll",
+            "S / C  - save file (png/csv)                                                 modify locked frequency    ",
             "Pause  - frames capture (gif)                                                                           ",
             "Backspace - clean the console        V - toggle VSync                                                   ",
             "--------------------------------------------------------------------------------------------------------"]
@@ -3192,7 +3214,7 @@ def main_loop():
     global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
     global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_console_time
-    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all
+    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
     next_sweep_time=0
 
     while is_dearpygui_running():
@@ -3298,21 +3320,24 @@ def main_loop():
                             f"latency[s] {stream_out.latency if stream_out else 0:.6f}    {stream_in.latency if stream_in else 0:.6f}",
                             f"type        {stream_out.dtype if stream_out else '':6s}     {stream_in.dtype if stream_in else '':8s}\n"]
 
-                    fft_calc_mean=fft_calc_sum_time/fft_calcs if fft_calcs else 0.0
+                    fft_calc_mean=fft_calc_sum_time/fft_calcs if fft_calcs else 0
                     fft_calc_in_sec=int(1.0/fft_calc_mean) if fft_calc_mean else 0
 
-                    fft_proc_mean=fft_proc_sum_time/fft_calcs if fft_calcs else 0.0
-                    fft_peaks_mean=fft_peaks_sum_time/fft_calcs if fft_calcs else 0.0
+                    fft_proc_mean=fft_proc_sum_time/fft_calcs if fft_calcs else 0
+                    fft_proc_in_sec=int(1.0/fft_proc_mean) if fft_proc_mean and (FFT_TDA or FFT_FBA or FFT_SMOOTH) else 0
 
-                    fft_proc_sum_time=0.0
+                    fft_peaks_mean=fft_peaks_sum_time/fft_calcs if fft_calcs else 0
+                    fft_peaks_in_sec=int(1.0/fft_peaks_mean) if fft_peaks_mean and PEAKS else 0
+
+                    fft_proc_sum_time=0
                     fft_calc_sum_time=0
-                    fft_peaks_sum_time=0.0
+                    fft_peaks_sum_time=0
                     fft_calcs=0
 
                     part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
-                                f"FFT Calc: {fft_calc_mean:.5f}s / {fft_calc_in_sec:5d}/s",
-                                f"FFT Procs: {fft_proc_mean:.5f}s",
-                                f"FFT Peaks: {fft_peaks_mean:.5f}s",
+                                f"FFT Calcs: {fft_calc_mean:.5f}s / {fft_calc_in_sec:5d}/s",
+                                f"FFT Procs: {fft_proc_mean:.5f}s / {fft_proc_in_sec:5d}/s",
+                                f"FFT Peaks: {fft_peaks_mean:.5f}s / {fft_peaks_in_sec:5d}/s",
                                 "",
                                 f"   FFT /  FBA  /  act",
                                 f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}"  if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
@@ -3370,10 +3395,11 @@ def main_loop():
             try:
                 next_console_time=now+0.015
 
-                if console_shift<=0:
-                    if console_show_end_index<console_buffer_last_elem:
-                        console_show_end_index+=1
-                        console_shift+=console_line_height
+                if console_direction_mod==2:
+                    if console_shift<=0:
+                        if console_show_end_index<console_buffer_last_elem:
+                            console_show_end_index+=1
+                            console_shift+=console_line_height
 
                 delete_item('draw_layer', children_only=True)
                 for l,(text,code) in enumerate(list(islice(console_buffer,max(0,console_show_end_index-console_visible_lines),console_show_end_index+1))):
@@ -3382,11 +3408,12 @@ def main_loop():
 
                 lines_to_show=console_buffer_len-console_show_end_index
 
-                if console_shift>0:
-                    if lines_to_show>1:
-                        console_shift-=int(np_log10(lines_to_show)*console_line_height)
-                    else:
-                        console_shift-=1
+                if console_direction_mod==2:
+                    if console_shift>0:
+                        if lines_to_show>1:
+                            console_shift-=int(np_log10(lines_to_show)*console_line_height)
+                        else:
+                            console_shift-=1
 
             except Exception as console_e:
                 cons_err(f'{console_e=}')
