@@ -100,6 +100,13 @@ ERR=2
 CONST=3
 OPT=4
 
+l_func={}
+l_func[INFO]=l_info
+l_func[WARN]=l_warning
+l_func[ERR]=l_error
+l_func[CONST]=l_info
+l_func[OPT]=l_info
+
 CODES=(INFO,WARN,ERR,CONST,OPT)
 
 NO_SCROLL_CODES=(ERR,WARN,OPT)
@@ -134,30 +141,31 @@ def console_buffer_append(text,code=0):
 text_aura=tuple([(mx,my,True if mx==0 and my==0 else False) for mx in (-1,1,0) for my in (-1,1,0)])
 
 def c_mess(text,code=INFO):
+    func=l_func[code]
     for subline in text.split('\n'):
-        l_info(subline) if code==0 else l_warning(subline) if code==1 else l_error(subline)
+        func(subline)
         console_buffer_append(subline,code)
 
 def cons_opt(text):
-    l_info(f'C_OPT:{text}')
+    #l_info(f'C_OPT:{text}')
     c_mess(text,OPT)
 
 def cons_const(text):
-    l_info(f'C_CON:{text}')
+    #l_info(f'C_CON:{text}')
     c_mess(text,CONST)
 
 def cons_err(text):
-    l_error(f'C_ERR:{text}')
-    print(f'C_ERR:{text}')
+    #l_error(f'C_ERR:{text}')
+    #print(f'C_ERR:{text}')
     c_mess(text,ERR)
 
 def cons_warn(text):
-    l_warning(f'C_WAR:{text}')
-    print(f'C_WAR:{text}')
+    #l_warning(f'C_WAR:{text}')
+    #print(f'C_WAR:{text}')
     c_mess(text,WARN)
 
 def cons_info(text):
-    l_info(f'C_INF:{text}')
+    #l_info(f'C_INF:{text}')
     c_mess(text,INFO)
 
 np_fft_rfft=np_fft.rfft
@@ -711,9 +719,9 @@ def refresh_devices():
     l_info('APIS:')
     apis = query_hostapis()
     for i,api in enumerate(apis):
-        l_info(f'  api:{i}')
+        l_info(f'  api:{i}:')
         for key,val in api.items():
-            l_info(f'    :{key}:{val}')
+            l_info(f'    :{key}:{val}:')
 
     api_name2api={ api['name']:api for api in apis if api['devices'] }
 
@@ -729,15 +737,14 @@ def refresh_devices():
         l_info(' ')
         l_info('DEVICES:')
         for i,dev in enumerate(devices):
-            l_info(f'  dev:{i}')
+            l_info(f'  dev:{i}:')
             for key,val in dev.items():
-                l_info(f'    :{key}:{val}')
+                l_info(f'    :{key}:{val}:')
         l_info(' ')
     except Exception as d_e2:
         cons_err(f'd_e2:{d_e2}')
         device_name2device={}
         device_index2device={}
-
 
     values_str=' - ' + '\n - '.join(api_name2api)
     configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
@@ -761,13 +768,16 @@ def initial_set_devices():
         if in_dev in device_name2device:
             if device_name2device[in_dev]['index'] in api['devices']:
                 set_value('in_dev',in_dev)
-                l_info('in set by cfg')
+                l_info(f'in_dev set by cfg:{in_dev}')
                 in_set_by_cfg=True
                 set_value('in_samplerate',cfg['in_samplerate'])
+            else:
+                l_error(f'in_dev problem')
         else:
             #in_api_callback(None,None,True)
-            cfg['in_dev']=query_devices(device=api_name2api[in_api]['default_input_device'])['name']
+            val=cfg['in_dev']=query_devices(device=api_name2api[in_api]['default_input_device'])['name']
             set_value('in_dev',cfg['in_dev'])
+            l_info(f'in_dev set by default:{val}')
             in_set_by_cfg=True
 
     if not in_set_by_cfg:
@@ -800,12 +810,15 @@ def initial_set_devices():
         if out_dev in device_name2device:
             if device_name2device[out_dev]['index'] in api['devices']:
                 set_value('out_dev',out_dev)
-                l_info('out set by cfg')
+                l_info(f'out_dev set by cfg:{out_dev}')
                 out_set_by_cfg=True
                 set_value('out_samplerate',cfg['out_samplerate'])
+            else:
+                l_error(f'out_dev problem')
         else:
-            cfg['out_dev']=query_devices(device=api_name2api[out_api]['default_output_device'])['name']
+            val=cfg['out_dev']=query_devices(device=api_name2api[out_api]['default_output_device'])['name']
             set_value('out_dev',cfg['out_dev'])
+            l_info(f'out_dev set by default:{val}')
             #out_api_callback(None,None,True)
             out_set_by_cfg=True
 
@@ -1029,9 +1042,9 @@ def in_stream_init():
         cons_err(f'InputStream init error:{e}')
 
 def show_info(message):
-    console_buffer_append("",CONST)
+    cons_const("")
     for line in normalize_text(message):
-        console_buffer_append(line,CONST)
+        cons_const(line)
 
 def about_wrapper():
     text1= f'Simple Audio Sweeper {VER_TIMESTAMP}\nAuthor: Piotr Jochymek\n\n{HOMEPAGE}\n\nPJ.soft.dev.x@gmail.com\n'
