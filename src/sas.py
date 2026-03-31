@@ -40,7 +40,7 @@
 
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
-from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_vsync,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
+from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,add_draw_layer,add_slider_float
 from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text
 
@@ -232,7 +232,7 @@ cfg.setdefault('pause',False)
 PAUSE=cfg['pause']
 
 cfg.setdefault('debug',True)
-cfg.setdefault('vsync',False)
+#cfg.setdefault('vsync',False)
 
 cfg.setdefault('fft',True)
 cfg.setdefault('fft_size',4096)
@@ -268,11 +268,11 @@ cfg.setdefault("out_channel","1")
 cfg.setdefault("in_samplerate",'44100')
 cfg.setdefault("out_samplerate",'44100')
 
-cfg.setdefault("in_latency",'low')
+cfg.setdefault("in_latency",'high')
 cfg.setdefault("out_latency",'low')
 
 cfg.setdefault("in_blocksize",'256')
-cfg.setdefault("out_blocksize",'256')
+cfg.setdefault("out_blocksize",'1024')
 
 cfg.setdefault("allow_all_devices",False)
 cfg.setdefault("out_wasapi_exclusive",False)
@@ -310,6 +310,8 @@ playing_state=0
 -1 - ramp off
 '''
 
+TARGET_FPS=60
+
 if windows:
     from os import startfile
     import ctypes
@@ -327,6 +329,27 @@ if windows:
         return LoadCursorW(None, idc_id)
 
     arrow_cursor = load_cursor(IDC_ARROW)
+
+    try:
+        hdc = ctypes.windll.user32.GetDC(None)
+        rate = ctypes.windll.gdi32.GetDeviceCaps(hdc, 116)
+        ctypes.windll.user32.ReleaseDC(None, hdc)
+        if rate > 0:
+            TARGET_FPS=float(rate)
+            print(f'{TARGET_FPS=}')
+    except Exception as fps_e:
+        print(f'{fps_e=}')
+
+else:
+    try:
+        import subprocess, re
+        out = subprocess.check_output(["xrandr"], text=True)
+        m = re.search(r"(\d+\.\d+)\*", out)
+        if m:
+            TARGET_FPS=float(m.group(1))
+            print(f'{TARGET_FPS=}')
+    except Exception as fps_e:
+        print(f'{fps_e=}')
 
 def catch(func):
     def wrapper(*args,**kwargs):
@@ -556,16 +579,16 @@ def audio_output_callback(outdata, frames, time, status):
     else:
         outdata.fill(0)
 
-VSYNC=False
-VSYNC_STATE_NAME='OFF'
-def vsync_callback(sender=None, app_data=None):
-    l_info(f'vsync_callback:{sender},{app_data}')
-    set_viewport_vsync(app_data)
-    global VSYNC_STATE_NAME,next_fps,VSYNC
-    VSYNC_STATE_NAME=off_on[app_data]
-    cons_opt(f'VSync:{VSYNC_STATE_NAME}')
-    VSYNC=cfg['vsync']=app_data
-    next_fps=0
+#VSYNC=False
+#VSYNC_STATE_NAME='OFF'
+#def vsync_callback(sender=None, app_data=None):
+#    l_info(f'vsync_callback:{sender},{app_data}')
+#    set_viewport_vsync(app_data)
+#    global VSYNC_STATE_NAME,next_fps,VSYNC
+#    VSYNC_STATE_NAME=off_on[app_data]
+#    cons_opt(f'VSync:{VSYNC_STATE_NAME}')
+#    VSYNC=cfg['vsync']=app_data
+#    next_fps=0
 
 def sweep_abort():
     global sweeping
@@ -639,13 +662,8 @@ processed_data_fifo_get=processed_data_fifo.popleft
 
 ###########################################################
 
-input_errors_all=0
 def audio_input_callback(indata, frames, time_info, status):
-    samples_chunks_fifo_put(indata[:, 0].copy())
-    if status:
-        cons_err(f'Input callback Error:{status}')
-        global input_errors_all
-        input_errors_all+=1
+    samples_chunks_fifo_put( (indata[:, 0].copy(),status) )
 
 @catch
 def go_to_homepage():
@@ -1662,7 +1680,7 @@ def release_callback(sender, button_nr):
     if button_nr==0:
         global is_dragging,is_resizing
         is_dragging,is_resizing = False,False
-        set_viewport_vsync(cfg['vsync'])
+        #set_viewport_vsync(cfg['vsync'])
 
         if is_item_hovered("plot"):
             play_stop()
@@ -1721,12 +1739,12 @@ def on_mouse_down(sender, app_data):
 
         if offset_y<20:
             is_dragging = True
-            set_viewport_vsync(False)
+            #set_viewport_vsync(False)
             #print('on_mouse_down - start dragging')
             #gc_disable()
         elif offset_x>vw-30 and offset_y>vh-30:
             is_resizing = True
-            set_viewport_vsync(False)
+            #set_viewport_vsync(False)
 
 set_viewport_pos_scheduled=False
 set_viewport_height_scheduled=False
@@ -2220,11 +2238,11 @@ def key_press_callback(sender, app_data):
         save_image()
     elif app_data==dpg.mvKey_C:
         save_csv()
-    elif app_data==dpg.mvKey_V:
-        vsync=get_value('vsync')
-        vsync=(True,False)[vsync]
-        set_value('vsync',vsync)
-        vsync_callback(None,vsync)
+    #elif app_data==dpg.mvKey_V:
+        #vsync=get_value('vsync')
+    #    vsync=(True,False)[vsync]
+    #    set_value('vsync',vsync)
+    #    vsync_callback(None,vsync)
     elif app_data==dpg.mvKey_H:
         help_callback()
     elif app_data==dpg.mvKey_P:
@@ -2462,7 +2480,7 @@ def help_callback():
             "Space  - pause refreshing                                            Arrows,PgUp,PgDown - console scroll",
             "S / C  - save file (png/csv)                                                 modify locked frequency    ",
             "Pause  - frames capture (gif)                                                                           ",
-            "Backspace - clean the console        V - toggle VSync                                                   ",
+            "Backspace - clean the console                                                                           ",
             "--------------------------------------------------------------------------------------------------------"]
 
     for line in vals:
@@ -2553,7 +2571,7 @@ def exit_press(sender=None, app_data=None):
     global exiting
     exiting=True
 
-create_viewport(title=title,vsync=cfg['vsync'],decorated=decorated)
+create_viewport(title=title,vsync=False,decorated=decorated)
 
 ###################################################
 with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_move=True) as main:
@@ -2819,7 +2837,7 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             dpg.add_separator()
                             with group(horizontal=True):
                                 with group():
-                                    add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('When disabled, the graph will be refreshed as fast\nas possible, consuming more CPU power. When enabled,\nrefreshing may lag in some cases.\n\nkey: V')
+                                    #add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('When disabled, the graph will be refreshed as fast\nas possible, consuming more CPU power. When enabled,\nrefreshing may lag in some cases.\n\nkey: V')
                                     add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug']); widget_tooltip('key: F11')
                                     add_checkbox(tag='decorated',label='Decorate',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decorations.\nUse if you experience problems with\ndragging or resizing the main window.\n(Requires application restart)')
                                     with group(horizontal=True):
@@ -3026,6 +3044,8 @@ fft_calc_sum_time=0.0
 fft_proc_sum_time=0.0
 fft_peaks_sum_time=0.0
 
+input_errors_all=0
+
 def processing():
     peaks_annos=set()
     peaks_annos_clear = peaks_annos.clear
@@ -3033,7 +3053,7 @@ def processing():
 
     global sweeping,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
-    global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready,fft_proc_sum_time,fft_peaks_sum_time
+    global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready,fft_proc_sum_time,fft_peaks_sum_time,input_errors_all
 
     next_sweep_time=0
     input_callbacks_all=0
@@ -3044,10 +3064,17 @@ def processing():
     while not exiting:
         if data_ready:
             while True:
+                data_new_chunk_len=0
+                data_len=0
                 try:
                     data_len=len(data)
 
-                    data_new_chunk=samples_chunks_fifo_get()
+                    data_new_chunk,status = samples_chunks_fifo_get()
+
+                    if status:
+                        cons_err(f'Input callback Error:{status}')
+                        input_errors_all+=1
+
                     data_new_chunk_len=len(data_new_chunk)
                     if data_new_chunk_len>data_len:
                         data = data_new_chunk[-data_len:]
@@ -3142,7 +3169,7 @@ def processing():
                                 fint=int(f)
 
                                 if m:
-                                    tag=f'peak{fint}'
+                                    tag=f'p{fint}'
                                     add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(100, 100, 100, 130), offset=(16,-10))
                                     peaks_annos_add(tag)
 
@@ -3216,6 +3243,11 @@ def main_loop():
     global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_console_time
     global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
     next_sweep_time=0
+
+    frame_time=1.0/TARGET_FPS
+    next_redraw=0
+
+    need_to_redraw=False
 
     while is_dearpygui_running():
         now=perf_counter()
@@ -3310,7 +3342,7 @@ def main_loop():
         if DEBUG and not (is_dragging or is_resizing or PAUSE):
             try:
                 if now >= next_fps :
-                    part1 = [f"VSync:{VSYNC_STATE_NAME:3s} FPS:{frames} UPS:{frames_change}\n",
+                    part1 = [f"FPS:{frames} UPS:{frames_change}\n",
                             f"             Output       Input",
                             f"samples/s  {samples_chunks_requested_new:8d}    {rec_samples:8d}",
                             f"blocks/s   {output_callbacks_count:8d}    {input_callbacks_all:8d}",
@@ -3370,8 +3402,6 @@ def main_loop():
             except Exception as win_cur_e:
                 cons_err(f'{win_cur_e=}')
 
-        frames += 1
-
         ##################################
         if sweeping:
             try:
@@ -3391,7 +3421,7 @@ def main_loop():
 
         ##################################
 
-        if VSYNC or now>next_console_time:
+        if now>next_console_time:
             try:
                 next_console_time=now+0.015
 
@@ -3421,7 +3451,12 @@ def main_loop():
         if exiting:
             break
 
-        render_dearpygui_frame()
+        if now>next_redraw or need_to_redraw:
+            render_dearpygui_frame()
+            next_redraw=now+frame_time
+            frames += 1
+        else:
+            sleep(0.0001)
 
 main_loop()
 
