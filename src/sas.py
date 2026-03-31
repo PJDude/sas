@@ -340,6 +340,12 @@ if windows:
     except Exception as fps_e:
         print(f'{fps_e=}')
 
+    import psutil
+    try:
+        psutil.Process(os.getpid()).nice(psutil.HIGH_PRIORITY_CLASS)
+    except Exception as prior_e:
+        print(f'{prior_e=}')
+
 else:
     try:
         import subprocess, re
