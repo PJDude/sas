@@ -263,13 +263,11 @@ cfg.setdefault('peaks_limit',3)
 cfg.setdefault('show_track',[False]*tracks)
 cfg.setdefault('recorded',-1)
 
-cfg.setdefault('in_api_name','Windows WASAPI' if windows else 'ALSA')
+cfg.setdefault('in_api','Windows WASAPI' if windows else 'ALSA')
 cfg.setdefault('out_api','Windows WASAPI' if windows else 'ALSA')
 
 cfg.setdefault("out_dev",None)
-cfg.setdefault("out_dev_id",-1)
 cfg.setdefault("in_dev",None)
-cfg.setdefault("in_dev_id",-1)
 
 cfg.setdefault("in_channel","1")
 cfg.setdefault("out_channel","1")
@@ -2277,7 +2275,6 @@ decorated=cfg['decorated']
 FFT_FILL=cfg['fft_fill']
 
 title_hight=(0 if decorated else 34)
-#status_height=80
 status_height=20
 plot_min_height=306
 
@@ -3147,9 +3144,6 @@ def processing():
                             diffs=fft_values_y-fft_values_y_avg
 
                             margin=int(1+(PEAKS_AVG_FACTOR/100.0)*PEAKS_DIST_FACTOR*points/100.0)
-
-                            #print('dist_fast_half:',dist_fast_half)
-                            #print('margin:',margin)
 
                             diffs_padded_windows = sliding_window_view( np_pad(diffs, margin, mode="constant", constant_values=-np.inf) , window_shape=2 * margin + 1)
 
