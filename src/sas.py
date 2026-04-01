@@ -240,7 +240,6 @@ cfg.setdefault('pause',False)
 PAUSE=cfg['pause']
 
 cfg.setdefault('debug',True)
-#cfg.setdefault('vsync',False)
 
 cfg.setdefault('fft',True)
 cfg.setdefault('fft_size',4096)
@@ -264,11 +263,13 @@ cfg.setdefault('peaks_limit',3)
 cfg.setdefault('show_track',[False]*tracks)
 cfg.setdefault('recorded',-1)
 
-cfg.setdefault('in_api','Windows WASAPI' if windows else 'ALSA')
+cfg.setdefault('in_api_name','Windows WASAPI' if windows else 'ALSA')
 cfg.setdefault('out_api','Windows WASAPI' if windows else 'ALSA')
 
 cfg.setdefault("out_dev",None)
+cfg.setdefault("out_dev_id",-1)
 cfg.setdefault("in_dev",None)
+cfg.setdefault("in_dev_id",-1)
 
 cfg.setdefault("in_channel","1")
 cfg.setdefault("out_channel","1")
@@ -593,17 +594,6 @@ def audio_output_callback(outdata, frames, time, status):
     else:
         outdata.fill(0)
 
-#VSYNC=False
-#VSYNC_STATE_NAME='OFF'
-#def vsync_callback(sender=None, app_data=None):
-#    l_info(f'vsync_callback:{sender},{app_data}')
-#    set_viewport_vsync(app_data)
-#    global VSYNC_STATE_NAME,next_fps,VSYNC
-#    VSYNC_STATE_NAME=off_on[app_data]
-#    cons_opt(f'VSync:{VSYNC_STATE_NAME}')
-#    VSYNC=cfg['vsync']=app_data
-#    next_fps=0
-
 def sweep_abort():
     global sweeping
     if sweeping:
@@ -691,8 +681,6 @@ def go_to_homepage():
     except Exception as e:
         l_error(f'go_to_homepage error:{e}')
 
-default_api_nr=0
-
 default_in_dev=None
 default_out_dev=None
 
@@ -710,7 +698,7 @@ out_api_tooltip='\n'.join([
 
 def refresh_devices():
     cons_info('Refresh Devices')
-    global default_in_dev,default_out_dev,apis,api_name2api,devices,device_name2device,device_index2device
+    global default_in_dev,default_out_dev,apis,api_name2api,devices
 
     default_in_dev=query_devices(kind='input')
     default_out_dev=query_devices(kind='output')
@@ -731,9 +719,6 @@ def refresh_devices():
         cons_err(f'd_e1:{d_e1}')
 
     try:
-        device_name2device={ device['name']:device for device in devices}
-        device_index2device={ device['index']:device for device in devices}
-
         l_info(' ')
         l_info('DEVICES:')
         for i,dev in enumerate(devices):
@@ -743,15 +728,13 @@ def refresh_devices():
         l_info(' ')
     except Exception as d_e2:
         cons_err(f'd_e2:{d_e2}')
-        device_name2device={}
-        device_index2device={}
 
     values_str=' - ' + '\n - '.join(api_name2api)
     configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
     configure_item('in_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}","in_api")
 
 def initial_set_devices():
-    global api_name2api,device_name2device,default_in_dev,default_out_dev
+    global api_name2api,default_in_dev,default_out_dev
     ########################################
     in_set_by_cfg=False
     in_api = cfg['in_api']
@@ -765,16 +748,16 @@ def initial_set_devices():
         in_dev = cfg['in_dev']
         l_info(f'{in_dev=}')
 
-        if in_dev in device_name2device:
-            if device_name2device[in_dev]['index'] in api['devices']:
-                set_value('in_dev',in_dev)
-                l_info(f'in_dev set by cfg:{in_dev}')
-                in_set_by_cfg=True
-                set_value('in_samplerate',cfg['in_samplerate'])
-            else:
-                l_error(f'in_dev problem')
+        devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
+
+        devices_names_of_api=[dev['name'] for dev in devices_of_api]
+
+        if in_dev in devices_names_of_api:
+            set_value('in_dev',in_dev)
+            l_info(f'in_dev set by cfg:{in_dev}')
+            in_set_by_cfg=True
+            set_value('in_samplerate',cfg['in_samplerate'])
         else:
-            #in_api_callback(None,None,True)
             val=cfg['in_dev']=query_devices(device=api_name2api[in_api]['default_input_device'])['name']
             set_value('in_dev',cfg['in_dev'])
             l_info(f'in_dev set by default:{val}')
@@ -807,19 +790,18 @@ def initial_set_devices():
         out_dev = cfg['out_dev']
         l_info(f'{out_dev=}')
 
-        if out_dev in device_name2device:
-            if device_name2device[out_dev]['index'] in api['devices']:
-                set_value('out_dev',out_dev)
-                l_info(f'out_dev set by cfg:{out_dev}')
-                out_set_by_cfg=True
-                set_value('out_samplerate',cfg['out_samplerate'])
-            else:
-                l_error(f'out_dev problem')
+        devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
+        devices_names_of_api=[dev['name'] for dev in devices_of_api]
+
+        if out_dev in devices_names_of_api:
+            set_value('out_dev',out_dev)
+            l_info(f'out_dev set by cfg:{out_dev}')
+            out_set_by_cfg=True
+            set_value('out_samplerate',cfg['out_samplerate'])
         else:
             val=cfg['out_dev']=query_devices(device=api_name2api[out_api]['default_output_device'])['name']
             set_value('out_dev',cfg['out_dev'])
             l_info(f'out_dev set by default:{val}')
-            #out_api_callback(None,None,True)
             out_set_by_cfg=True
 
     if not out_set_by_cfg:
@@ -967,7 +949,7 @@ def out_stream_init():
 
     cons_const('')
     dev_name=cfg["out_dev"]
-    cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n  {extra_settings=}\n')
+    cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n  {extra_settings=}')
 
     try:
         stream_out = OutputStream(callback=audio_output_callback, extra_settings=extra_settings,
@@ -978,6 +960,7 @@ def out_stream_init():
             channels=channels,
             dither_off=True
         )
+        cons_const('init done.\nStarting stream...')
         stream_out.start()
         configure_item('out_status',texture_tag=ico['out_on'])
     except Exception as e:
@@ -1024,7 +1007,7 @@ def in_stream_init():
 
     cons_const('')
     dev_name=cfg["in_dev"]
-    cons_const(f'InputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n  {extra_settings=}\n')
+    cons_const(f'InputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n  {extra_settings=}')
 
     try:
         stream_in = InputStream(callback=audio_input_callback, extra_settings=extra_settings,
@@ -1035,6 +1018,7 @@ def in_stream_init():
             channels=channels,
             dither_off=True
         )
+        cons_const('init done.\nStarting stream...')
         stream_in.start()
         configure_item('in_status',texture_tag=ico['in_on'])
 
@@ -1176,10 +1160,9 @@ def in_dev_config_items():
 
     try:
         in_api_devices_indexes=api_name2api[api_name]['devices']
-        l_info(f'{in_api_devices_indexes=}')
 
         devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
-        default_input_device_name = device_index2device[api['default_input_device']]['name']
+        default_input_device_name=query_devices(api['default_input_device'])
 
         if get_value('allow_all_devices'):
             in_values=[ dev['name'] for dev in devices]
@@ -1203,11 +1186,10 @@ def out_dev_config_items():
 
     try:
         out_api_devices_indexes=api['devices']
-        l_info(f'{out_api_devices_indexes=}')
 
         devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
 
-        default_output_device_name = device_index2device[api['default_output_device']]['name']
+        default_output_device_name=query_devices(api['default_output_device'])
 
         out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index']]
 
@@ -1563,7 +1545,7 @@ def check_sample_rates_input(device_id):
             supported.append(str(rate))
             l_info(f'try_in:{rate}:ok')
         except Exception as try_e:
-            l_error(f'try_in:{rate}:{try_e}')
+            l_warning(f'try_in:{rate}:{try_e}')
     return tuple(supported)
 
 def check_sample_rates_output(device_id):
@@ -1572,14 +1554,13 @@ def check_sample_rates_output(device_id):
         try:
             check_output_settings(device=device_id, samplerate=rate)
             supported.append(str(rate))
-            l_info(f'try_out:{rate}:ok')
+            l_warning(f'try_out:{rate}:ok')
         except Exception as try_e:
             cons_err(f'{rate}:{try_e=}')
     return tuple(supported)
 
 device_out_current=None
 
-@catch
 def out_dev_changed(sender=None, app_data=None,user_data=True):
     l_info(f'out_dev_changed:{sender},{app_data}')
 
@@ -1587,14 +1568,15 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
     dev_name=cfg["out_dev"]=get_value("out_dev")
 
-    out_api_devices_indexes=api_name2api[get_value('out_api')]['devices']
-    devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
+    api_name=get_value('out_api')
+    api=[api for api in query_hostapis() if api['name']==api_name][0]
 
-    device_out_current=device_name2device[dev_name]
-    l_info(f'{device_out_current=}')
+    devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
+    devices_names_of_api=[dev['name'] for dev in devices_of_api]
+
+    device_out_current=[dev for dev in devices_of_api if dev['name']==dev_name][0]
 
     output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
-    l_info(f'{output_channels=}')
 
     configure_item("out_channel",items=output_channels)
 
@@ -1625,24 +1607,21 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
 device_in_current=None
 
-@catch
 def in_dev_changed(sender=None, app_data=None,user_data=False):
     global device_in_current,data_ready
-
     data_ready=False
 
     l_info(f'in_dev_changed:{sender},{app_data},{user_data}')
 
     dev_name=cfg["in_dev"]=get_value("in_dev")
 
-    in_api_devices_indexes=api_name2api[get_value('in_api')]['devices']
-    devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
+    api_name=get_value('in_api')
+    api=[api for api in query_hostapis() if api['name']==api_name][0]
 
-    device_in_current=device_name2device[dev_name]
-    l_info(f'{device_in_current=}')
+    devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
+    device_in_current=[dev for dev in devices_of_api if dev['name']==dev_name][0]
 
     input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
-    l_info(f'{input_channels=}')
 
     configure_item("in_channel",items=input_channels)
     cfg['in_channel']=in_channel_value=get_value("in_channel")
@@ -1699,7 +1678,6 @@ def release_callback(sender, button_nr):
     if button_nr==0:
         global is_dragging,is_resizing
         is_dragging,is_resizing = False,False
-        #set_viewport_vsync(cfg['vsync'])
 
         if is_item_hovered("plot"):
             play_stop()
@@ -1710,11 +1688,22 @@ def release_callback(sender, button_nr):
 
 def wheel_callback(sender, val):
     global lock_frequency
+    global console_show_end_index,console_direction_mod,next_redraw
 
     if lock_frequency:
         scroll_mod(val)
     else:
-        if is_item_hovered("plot") or is_item_hovered("slider"):
+        if is_item_hovered("plot"):
+            if val>0:
+                console_show_end_index=max(console_visible_lines,console_show_end_index-2)
+                console_direction_mod=-1
+                next_redraw=0.0
+            else:
+                console_show_end_index=min(console_buffer_last_elem,console_show_end_index+2)
+                console_direction_mod=1
+                next_redraw=0.0
+
+        elif is_item_hovered("slider"):
             slide_val=get_value('slider')
             slide_val+=-3*val
 
@@ -1758,12 +1747,8 @@ def on_mouse_down(sender, app_data):
 
         if offset_y<20:
             is_dragging = True
-            #set_viewport_vsync(False)
-            #print('on_mouse_down - start dragging')
-            #gc_disable()
         elif offset_x>vw-30 and offset_y>vh-30:
             is_resizing = True
-            #set_viewport_vsync(False)
 
 set_viewport_pos_scheduled=False
 set_viewport_height_scheduled=False
@@ -1794,7 +1779,6 @@ def on_mouse_move(sender, app_data):
 
     elif is_item_hovered("plot"):
         plot_x, plot_y = get_plot_mouse_pos()
-        #print(get_mouse_pos(local=False))
 
         if plot_x is not None:
             global prev_plot_x,f_current
@@ -2119,8 +2103,7 @@ def widget_tooltip(message,widget=None):
         add_text(message)
 
 def key_press_callback(sender, app_data):
-    global data_ready
-    global console_show_end_index,console_direction_mod,console_buffer_last_elem,next_console_time,lock_frequency
+    global data_ready,next_redraw,console_show_end_index,console_direction_mod,console_buffer_last_elem,lock_frequency
 
     for delay in range(1024):
         if data_ready:
@@ -2166,22 +2149,22 @@ def key_press_callback(sender, app_data):
         else:
             console_show_end_index=max(console_visible_lines,console_show_end_index-1)
             console_direction_mod=-1
-            next_console_time=0.0
+            next_redraw=0.0
     elif app_data==dpg.mvKey_Prior or app_data==517:
         console_show_end_index=max(console_visible_lines,console_show_end_index-10)
         console_direction_mod=-1
-        next_console_time=0.0
+        next_redraw=0.0
     elif app_data==dpg.mvKey_Down:
         if lock_frequency:
             scroll_mod(-1,0.0001)
         else:
             console_show_end_index=min(console_buffer_last_elem,console_show_end_index+1)
             console_direction_mod=1
-            next_console_time=0.0
+            next_redraw=0.0
     elif app_data==dpg.mvKey_Next or app_data==518:
         console_show_end_index=min(console_buffer_last_elem,console_show_end_index+10)
         console_direction_mod=1
-        next_console_time=0.0
+        next_redraw=0.0
     elif app_data==dpg.mvKey_F1:
         about_wrapper()
     elif app_data==dpg.mvKey_F2:
@@ -2257,11 +2240,6 @@ def key_press_callback(sender, app_data):
         save_image()
     elif app_data==dpg.mvKey_C:
         save_csv()
-    #elif app_data==dpg.mvKey_V:
-        #vsync=get_value('vsync')
-    #    vsync=(True,False)[vsync]
-    #    set_value('vsync',vsync)
-    #    vsync_callback(None,vsync)
     elif app_data==dpg.mvKey_H:
         help_callback()
     elif app_data==dpg.mvKey_P:
@@ -2856,7 +2834,6 @@ with window(tag='main',no_title_bar=True,no_scrollbar=True,no_resize=True,no_mov
                             dpg.add_separator()
                             with group(horizontal=True):
                                 with group():
-                                    #add_checkbox(tag='vsync',label='VSync',callback=vsync_callback,default_value=cfg['vsync']); widget_tooltip('When disabled, the graph will be refreshed as fast\nas possible, consuming more CPU power. When enabled,\nrefreshing may lag in some cases.\n\nkey: V')
                                     add_checkbox(tag='debug',label='Debug',callback=debug_callback,default_value=cfg['debug']); widget_tooltip('key: F11')
                                     add_checkbox(tag='decorated',label='Decorate',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decorations.\nUse if you experience problems with\ndragging or resizing the main window.\n(Requires application restart)')
                                     with group(horizontal=True):
@@ -3071,7 +3048,7 @@ def processing():
     peaks_annos_add = peaks_annos.add
 
     global sweeping,fft_window_sum
-    global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
+    global redraw_track_line,frames,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
     global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready,fft_proc_sum_time,fft_peaks_sum_time,input_errors_all
 
     next_sweep_time=0
@@ -3255,18 +3232,15 @@ def output_frame_buffer_callback(sender, app_data):
     except Exception as ofbce:
         cons_err(f'{ofbce=}')
 
-next_console_time=0.0
+next_redraw=0
 def main_loop():
     global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,fft_window_sum
     global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
-    global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_console_time
+    global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_redraw
     global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
     next_sweep_time=0
 
-    frame_time=1.0/TARGET_FPS
-    next_redraw=0
-
-    need_to_redraw=False
+    frame_time=0.9/TARGET_FPS
 
     while is_dearpygui_running():
         now=perf_counter()
@@ -3440,10 +3414,11 @@ def main_loop():
 
         ##################################
 
-        if now>next_console_time:
-            try:
-                next_console_time=now+0.015
+        if exiting:
+            break
 
+        if now>next_redraw:
+            try:
                 if console_direction_mod==2:
                     if console_shift<=0:
                         if console_show_end_index<console_buffer_last_elem:
@@ -3467,10 +3442,6 @@ def main_loop():
             except Exception as console_e:
                 cons_err(f'{console_e=}')
 
-        if exiting:
-            break
-
-        if now>next_redraw or need_to_redraw:
             render_dearpygui_frame()
             next_redraw=now+frame_time
             frames += 1
