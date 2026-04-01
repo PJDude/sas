@@ -1554,7 +1554,7 @@ def check_sample_rates_output(device_id):
             supported.append(str(rate))
             l_warning(f'try_out:{rate}:ok')
         except Exception as try_e:
-            cons_err(f'{rate}:{try_e=}')
+            l_warning(f'try_out:{rate}:{try_e=}')
     return tuple(supported)
 
 device_out_current=None
