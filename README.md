@@ -85,13 +85,15 @@ automatic sweep, which is designed to operate at a controlled, steady pace.
 - Enable debug information and verify that the OUT and IN sample rates
   match the selected devices' output and input sample rates.
   If they do not match, try:
-  - Disabling VSync
   - Increasing the latency and block size of the devices
   - Reducing the number of active FFT processing stages or disabling it entirely
 
 **CPU consumption is high**
 - VSync is disabled by default and the application refreshes the GUI as fast as possible. Enabling VSync will reduce CPU load in most cases, at the cost of a slight increase in latency.
 - The FFT size may be too large. Reducing the FFT size decreases the number of calculations, while enabling FBA (Frequency Bin Aggregation) reduces the number of GUI objects to render.
+
+**Problems with dragging or resizing the main window**
+- Enable the "Decorate" option in Settings and restart the application. This restores the default window decorations managed by the system.
 
 **Any other problems**
 - Try reinitializing the device or the entire audio interface.
