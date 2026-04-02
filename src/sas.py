@@ -1674,8 +1674,8 @@ def click_callback(sender, button_nr):
 
 def release_callback(sender, button_nr):
     if button_nr==0:
-        global is_dragging,is_resizing
-        is_dragging,is_resizing = False,False
+        global dragging,resizing
+        dragging,resizing = False,False
 
         if is_item_hovered("plot"):
             play_stop()
@@ -1733,20 +1733,19 @@ def on_mouse_move_tracks_leave(sender, app_data):
 
     refresh_tracks()
 
-is_dragging,is_resizing = False,False
+dragging,resizing = False,False
 
 def on_mouse_down(sender, app_data):
-    global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
-    if not is_dragging:
-        offset_x, offset_y = get_mouse_pos(local=False)
+    global dragging, resizing, offset_x, offset_y
+    if not dragging:
+        offset_x, offset_y = get_mouse_pos()
 
         vh,vw = get_viewport_height(),get_viewport_width()
-        curr_vp_x, curr_vp_y = get_viewport_pos()
 
-        if offset_y<20:
-            is_dragging = True
+        if offset_y<title_hight:
+            dragging = True
         elif offset_x>vw-30 and offset_y>vh-30:
-            is_resizing = True
+            resizing = True
 
 set_viewport_pos_scheduled=False
 set_viewport_height_scheduled=False
@@ -1755,18 +1754,12 @@ settings_wrapper_scheduled=False
 
 prev_plot_x=0
 def on_mouse_move(sender, app_data):
-    global is_dragging, is_resizing, offset_x, offset_y, curr_vp_x, curr_vp_y
+    global dragging, resizing, set_viewport_pos_scheduled
 
-    #mouse_x, mouse_y = app_data
-    if is_dragging:
-        mouse_x, mouse_y = get_mouse_pos(local=False)
-        curr_vp_x += mouse_x - offset_x
-        curr_vp_y += mouse_y - offset_y
+    if dragging and not decorated and not set_viewport_pos_scheduled:
+        set_viewport_pos_scheduled=True
 
-        global set_viewport_pos_scheduled
-        set_viewport_pos_scheduled=(curr_vp_x, curr_vp_y)
-
-    elif is_resizing:
+    elif resizing:
         global set_viewport_width_scheduled,set_viewport_height_scheduled
         width,height = get_mouse_pos()
         if width>=viewport_width_min:
@@ -3045,7 +3038,7 @@ def processing():
     peaks_annos_add = peaks_annos.add
 
     global sweeping,fft_window_sum
-    global redraw_track_line,frames,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo,current_sample_db
+    global redraw_track_line,frames,track_line_data_y_recorded,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo,current_sample_db
     global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready,fft_proc_sum_time,fft_peaks_sum_time,input_errors_all
 
     next_sweep_time=0
@@ -3087,7 +3080,7 @@ def processing():
 
                     break
 
-            if new_data and not (is_dragging or is_resizing or PAUSE):
+            if new_data and not (dragging or resizing or PAUSE):
                 new_data=False
                 frames_change+=1
 
@@ -3226,24 +3219,34 @@ def output_frame_buffer_callback(sender, app_data):
     except Exception as ofbce:
         cons_err(f'{ofbce=}')
 
+############################################################################################################################
 next_redraw=0
 def main_loop():
     global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,fft_window_sum
-    global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,is_dragging,is_resizing,samples_chunks_fifo
+    global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo
     global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_redraw
     global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
+    global offset_x,offset_y
+
     next_sweep_time=0
 
     frame_time=0.9/TARGET_FPS
 
     while is_dearpygui_running():
         now=perf_counter()
+        #lmb = dpg.is_mouse_button_down(dpg.mvMouseButton_Left)
 
         if set_viewport_pos_scheduled:
+            vp_x, vp_y = get_viewport_pos()
+            mouse_x, mouse_y = get_mouse_pos()
+            x = vp_x + mouse_x - offset_x
+            y = vp_y + mouse_y - offset_y
+
+            set_viewport_pos((x,y))
+            render_dearpygui_frame()
+            set_viewport_pos_scheduled=False
+
             try:
-                set_viewport_pos(set_viewport_pos_scheduled)
-                render_dearpygui_frame()
-                set_viewport_pos_scheduled=False
                 sleep(0.0001)
                 continue
             except Exception as pos_e:
@@ -3326,7 +3329,7 @@ def main_loop():
             except Exception as settings_e:
                 cons_err(f'{settings_e=}')
 
-        if DEBUG and not (is_dragging or is_resizing or PAUSE):
+        if DEBUG and not (dragging or resizing or PAUSE):
             try:
                 if now >= next_fps :
                     part1 = [f"FPS:{frames} UPS:{frames_change}\n",
@@ -3441,6 +3444,8 @@ def main_loop():
             frames += 1
         else:
             sleep(0.0001)
+
+############################################################################################################################
 
 main_loop()
 
