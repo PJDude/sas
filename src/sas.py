@@ -82,8 +82,10 @@ console_buffer_max_len=300
 console_buffer_append_fun=console_buffer.append
 console_buffer_popleft=console_buffer.popleft
 console_visible_lines=16
+console_visible_chars=40
 console_fontsize=13
 console_line_height=console_fontsize-1
+console_char_width=console_fontsize-1
 
 console_shift=console_line_height
 
@@ -1481,7 +1483,7 @@ FFT_ACTUAL_BUCKETS=0
 def common_precalc():
     l_info('common_precalc')
 
-    global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_fps,current_sample_db_time_samples,fft_bin_indices_selected,fft_values_x_bins,data_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
+    global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_debug,current_sample_db_time_samples,fft_bin_indices_selected,fft_values_x_bins,data_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
 
     current_sample_db_time=0.1
     current_sample_db_time_samples=int(float(get_value('in_samplerate'))*current_sample_db_time)
@@ -1532,7 +1534,7 @@ def common_precalc():
     data=np_concatenate([zeros(FFT_SIZE),data])[-FFT_SIZE:]
 
     data_ready=True
-    next_fps = 0
+    next_debug = 0
 
 rates_to_test = (44100,48000,88200,96000,176400,192000,384000)
 def check_sample_rates_input(device_id):
@@ -1748,25 +1750,24 @@ def on_mouse_down(sender, app_data):
             resizing = True
 
 set_viewport_pos_scheduled=False
-set_viewport_height_scheduled=False
-set_viewport_width_scheduled=False
+set_viewport_resize_scheduled=False
 settings_wrapper_scheduled=False
 
 prev_plot_x=0
 def on_mouse_move(sender, app_data):
-    global dragging, resizing, set_viewport_pos_scheduled
+    global dragging, resizing, set_viewport_pos_scheduled,set_viewport_resize_scheduled
 
     if dragging and not decorated and not set_viewport_pos_scheduled:
         set_viewport_pos_scheduled=True
 
     elif resizing:
-        global set_viewport_width_scheduled,set_viewport_height_scheduled
         width,height = get_mouse_pos()
-        if width>=viewport_width_min:
-            set_viewport_width_scheduled=width
+        if width<viewport_width_min:
+            width=viewport_width_min
+        if height<viewport_height_min[cfg['settings']]:
+            height=viewport_height_min[cfg['settings']]
 
-        if height>=viewport_height_min[cfg['settings']]:
-            set_viewport_height_scheduled=height
+        set_viewport_resize_scheduled=(width,height)
 
     elif is_item_hovered("plot"):
         plot_x, plot_y = get_plot_mouse_pos()
@@ -2239,12 +2240,11 @@ def key_press_callback(sender, app_data):
         set_value('peaks',peaks_val)
         peaks_callback()
     elif app_data==dpg.mvKey_Pause:
-        global CAPTURE,CAPTURE_saving,curr_vp_x,curr_vp_y,vw,vh,viewport_rect
+        global CAPTURE,CAPTURE_saving,vw,vh
         if CAPTURE:
             CAPTURE=0
         elif not CAPTURE_saving:
             CAPTURE=int(CAPTURE_TIME*CAPTURE_FPS)
-            viewport_rect = (curr_vp_x, curr_vp_y, curr_vp_x + vw, curr_vp_y + vh)
             cons_info('-')
             Thread(target=capture_loop,daemon=True).start()
 
@@ -2428,9 +2428,9 @@ def peaks_limit_change():
 DEBUG=cfg['debug']
 def debug_callback():
     set_value('debug_text','')
-    global DEBUG,next_fps
+    global DEBUG,next_debug
     cfg['debug']=DEBUG=get_value('debug')
-    next_fps=0
+    next_debug=0
 
     if DEBUG:
         configure_item("fft_avg",show=PEAKS)
@@ -2454,7 +2454,7 @@ def fft_fill_callback():
 
 def help_callback():
     l_info('help_callback')
-    global next_fps
+    global next_debug
 
     vals= [ "--------------------------------------------------------------------------------------------------------",
             "H   - this help                      F   - FFT Toggle                1-8 - toggle track visibility      ",
@@ -2473,7 +2473,7 @@ def help_callback():
     for line in vals:
         cons_const(line)
 
-    next_fps=0
+    next_debug=0
 
 def in_refresh_calllback():
     in_stream_init()
@@ -2508,13 +2508,9 @@ def settings_wrapper():
     l_info(f'settings_wrapper:' + str(cfg['settings']))
 
     if cfg['settings']:
-        h=max(viewport_height_min[1],get_viewport_height()+settings_height)
-        set_viewport_min_height(viewport_height_min[1])
+        settings_wrapper_scheduled=(max(viewport_height_min[1],get_viewport_height()+settings_height),viewport_height_min[1])
     else:
-        h=max(viewport_height_min[0],get_viewport_height()-settings_height)
-        set_viewport_min_height(viewport_height_min[0])
-
-    settings_wrapper_scheduled=h
+        settings_wrapper_scheduled=(max(viewport_height_min[0],get_viewport_height()-settings_height),viewport_height_min[0])
 
 slider_width=10
 yaxis_width=45
@@ -2523,19 +2519,18 @@ plot_upper_margin=16
 
 vw,vh=0,0
 def on_viewport_resize(sender=None, app_data=None):
-    global vw,vh,curr_vp_x, curr_vp_y,settings_height,cfg,console_visible_lines
+    global vw,vh,settings_height,cfg,console_visible_lines,console_visible_chars
 
     vw,vh = get_viewport_client_width(),get_viewport_client_height()
-    curr_vp_x, curr_vp_y = get_viewport_pos()
 
     plot_height = max(plot_min_height, vh - (settings_height if cfg['settings'] else 0) -status_height -title_hight)
-    plot_width = vw-64
 
     set_item_height('slider', plot_height-xaxis_height-plot_upper_margin+5)
     set_item_pos('slider',[5,title_hight+plot_upper_margin+5])
 
+    plot_width = vw-64
     set_item_height('plot', plot_height)
-    set_item_width('plot', vw-64)
+    set_item_width('plot', plot_width)
 
     set_item_pos('debug_text',[slider_width+yaxis_width+20,title_hight+plot_upper_margin])
 
@@ -2553,6 +2548,7 @@ def on_viewport_resize(sender=None, app_data=None):
     set_item_pos('mark_text',[x_offset,y_offset])
 
     console_visible_lines = int(floor((plot_height-xaxis_height-plot_upper_margin)/console_line_height))
+    console_visible_chars = int(floor((plot_width-yaxis_width)/console_char_width))
 
 def exit_press(sender=None, app_data=None):
     global exiting
@@ -2950,7 +2946,7 @@ fft_callback()
 out_dev_changed(None,None,True)
 in_dev_changed(None,None,True)
 
-next_fps = 0
+next_debug = 0
 status_shown=True
 status_hide_time=0
 
@@ -2991,7 +2987,7 @@ def output_frame_buffer_callback_gif(sender, app_data):
         cons_err(f'{ofbce=}')
 
 def capture_loop():
-    global CAPTURE,CAPTURE_saving,CAPTURE_INTERVAL,viewport_rect,capture_frames
+    global CAPTURE,CAPTURE_saving,CAPTURE_INTERVAL,capture_frames
 
     capture_frames={}
 
@@ -3222,8 +3218,8 @@ def output_frame_buffer_callback(sender, app_data):
 ############################################################################################################################
 next_redraw=0
 def main_loop():
-    global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_width_scheduled,set_viewport_height_scheduled,schedule_screenshot,fft_window_sum
-    global redraw_track_line,frames,next_fps,track_line_data_y_recorded,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo
+    global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_resize_scheduled,schedule_screenshot,fft_window_sum
+    global redraw_track_line,frames,next_debug,track_line_data_y_recorded,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo
     global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_redraw
     global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
     global offset_x,offset_y
@@ -3234,45 +3230,31 @@ def main_loop():
 
     while is_dearpygui_running():
         now=perf_counter()
-        #lmb = dpg.is_mouse_button_down(dpg.mvMouseButton_Left)
 
         if set_viewport_pos_scheduled:
-            vp_x, vp_y = get_viewport_pos()
-            mouse_x, mouse_y = get_mouse_pos()
-            x = vp_x + mouse_x - offset_x
-            y = vp_y + mouse_y - offset_y
-
-            set_viewport_pos((x,y))
-            render_dearpygui_frame()
-            set_viewport_pos_scheduled=False
-
             try:
+                vp_x, vp_y = get_viewport_pos()
+                mouse_x, mouse_y = get_mouse_pos()
+                set_viewport_pos((vp_x + mouse_x - offset_x,vp_y + mouse_y - offset_y))
+                render_dearpygui_frame()
+                set_viewport_pos_scheduled=False
                 sleep(0.0001)
                 continue
-            except Exception as pos_e:
-                cons_err(f'{pos_e=}')
+            except Exception as e_pos:
+                cons_err(f'{e_pos=}')
 
-        if set_viewport_width_scheduled:
+        if set_viewport_resize_scheduled:
             try:
-                set_viewport_width(set_viewport_width_scheduled)
+                x_resize,y_resize=set_viewport_resize_scheduled
+                set_viewport_width(x_resize)
+                set_viewport_height(y_resize)
                 on_viewport_resize()
                 render_dearpygui_frame()
-                set_viewport_width_scheduled=False
+                set_viewport_resize_scheduled=False
                 sleep(0.0001)
                 continue
-            except Exception as width_e:
-                cons_err(f'{width_e=}')
-
-        if set_viewport_height_scheduled:
-            try:
-                set_viewport_height(set_viewport_height_scheduled)
-                set_viewport_height_scheduled=False
-                on_viewport_resize()
-                render_dearpygui_frame()
-                sleep(0.0001)
-                continue
-            except Exception as heigth_e:
-                cons_err(f'{heigth_e=}')
+            except Exception as e_res:
+                cons_err(f'{e_res=}')
 
         if schedule_screenshot:
             try:
@@ -3314,24 +3296,30 @@ def main_loop():
 
         if settings_wrapper_scheduled:
             try:
+                height,height_min = settings_wrapper_scheduled
+                render_dearpygui_frame()
                 if cfg['settings']:
-                    set_viewport_height(settings_wrapper_scheduled)
-                    on_viewport_resize()
+                    set_viewport_min_height(height_min)
+                    render_dearpygui_frame()
+                    set_viewport_height(height)
+                    render_dearpygui_frame()
                     show_item('settings_group')
                 else:
                     hide_item('settings_group')
-                    set_viewport_height(settings_wrapper_scheduled)
-                    on_viewport_resize()
+                    render_dearpygui_frame()
+                    set_viewport_min_height(height_min)
+                    render_dearpygui_frame()
+                    set_viewport_height(height)
 
-                settings_wrapper_scheduled=None
                 render_dearpygui_frame()
+                settings_wrapper_scheduled=None
                 continue
             except Exception as settings_e:
                 cons_err(f'{settings_e=}')
 
         if DEBUG and not (dragging or resizing or PAUSE):
             try:
-                if now >= next_fps :
+                if now >= next_debug :
                     part1 = [f"FPS:{frames} UPS:{frames_change}\n",
                             f"             Output       Input",
                             f"samples/s  {samples_chunks_requested_new:8d}    {rec_samples:8d}",
@@ -3377,7 +3365,7 @@ def main_loop():
                     input_callbacks_all = 0
                     input_errors_all=0
 
-                    next_fps = now+1.0
+                    next_debug = now+1.0
             except Exception as debug_e:
                 cons_err(f'{debug_e=}')
 
