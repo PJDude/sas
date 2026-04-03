@@ -2897,7 +2897,7 @@ dpg.set_viewport_large_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas.png")))
 
 dpg.set_viewport_resize_callback(callback=on_viewport_resize)
 
-round_viewport()
+#round_viewport()
 
 ########################################################################
 setup_dearpygui()
