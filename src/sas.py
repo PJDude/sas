@@ -284,7 +284,6 @@ def on_viewport_resize(sender=None, app_data=None):
     console_visible_lines = int(floor((plot_height-xaxis_height-plot_upper_margin)/console_line_height))
     console_visible_chars = int(floor((plot_width-yaxis_width)/console_char_width))
 
-
 BG_SEMI = (128, 128, 128, 220)
 
 LIGHT_BG = (240, 240, 240, 255)
@@ -950,7 +949,7 @@ tracks=8
 
 cfg.setdefault('theme','dark')
 cfg.setdefault('track_buckets',256)
-cfg.setdefault('viewport_pos',[100,100])
+cfg.setdefault('viewport_pos',None)
 cfg.setdefault('settings',False)
 
 cfg.setdefault('decorated',False)
@@ -959,7 +958,7 @@ cfg.setdefault('fft_fill',True)
 cfg.setdefault('pause',False)
 PAUSE=cfg['pause']
 
-cfg.setdefault('debug',True)
+cfg.setdefault('debug',False)
 
 cfg.setdefault('fft',True)
 cfg.setdefault('fft_size',4096)
@@ -1061,17 +1060,19 @@ if windows:
         print(f'{prior_e=}')
 
     def round_viewport():
-
-        hwnd = user32.FindWindowW("GLFW30", None) or user32.GetForegroundWindow()
         try:
-            dwmapi = ctypes.windll.dwmapi
-            val = ctypes.c_int(2)  # DWMWCP_ROUND
-            dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(val), ctypes.sizeof(val))
-        except Exception:
-            w, h, r = dpg.get_viewport_width(), dpg.get_viewport_height(), 12
-            rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, r, r)
-            user32.SetWindowRgn(hwnd, rgn, True)
-
+            hwnd = user32.FindWindowW("GLFW30", None) or user32.GetForegroundWindow()
+            try:
+                dwmapi = ctypes.windll.dwmapi
+                val = ctypes.c_int(2)  # DWMWCP_ROUND
+                dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(val), ctypes.sizeof(val))
+            except Exception as r1e:
+                print(f'{r1e=}')
+                w, h, r = dpg.get_viewport_width(), dpg.get_viewport_height(), 12
+                rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, r, r)
+                user32.SetWindowRgn(hwnd, rgn, True)
+        except Exception as r2e:
+            print(f'{r2e=}')
 else:
     try:
         import subprocess, re
@@ -1296,7 +1297,7 @@ current_bucket=logf_to_bucket_tracks(current_logf)
 
 @catch
 def change_f(fpar):
-    global current_logf,phase_step,two_pi_by_out_samplerate,TRACK_BUCKETS,phase_step_x_phase_i,phase_i
+    global current_logf,phase_step,two_pi_by_out_samplerate,TRACK_BUCKETS,phase_step_x_phase_i,phase_i,current_bucket
 
     if fmin_audio<fpar<fmax_audio:
         current_logf=log10(fpar)
@@ -2494,7 +2495,7 @@ def key_press_callback(sender, app_data):
     else:
         set_value('pause',False)
         pause_callback()
-
+        sweep_abort()
     if app_data==dpg.mvKey_1:
         track_action_callback(None,None,0)
     elif app_data==dpg.mvKey_2:
@@ -2896,6 +2897,8 @@ dpg.set_viewport_large_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas.png")))
 
 dpg.set_viewport_resize_callback(callback=on_viewport_resize)
 
+round_viewport()
+
 ########################################################################
 setup_dearpygui()
 show_viewport()
@@ -2954,6 +2957,9 @@ status_shown=True
 status_hide_time=0
 
 on_viewport_resize()
+
+round_viewport()
+
 frames = 0
 
 if not decorated:
@@ -2969,7 +2975,7 @@ try:
 except:
     configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False)
 
-help_callback()
+cons_info('\n'*console_visible_lines + 'Press H for help\n')
 
 def output_frame_buffer_callback_gif(sender, app_data):
     global capture_frames,capture_frames,CAPTURE
@@ -3176,7 +3182,6 @@ def processing():
                         cons_err(f'{exception_fft=}')
 
                 if playing_state==2 and track_line_data_y_recorded:
-                    # and current_bucket<TRACK_BUCKETS
                     track_line_data_y_recorded[current_bucket]*=TRACKS_TDA_FACTOR
                     track_line_data_y_recorded[current_bucket]+=current_sample_db*TRACKS_TDA_FACTOR_1m
                     redraw_track_line=True
@@ -3207,7 +3212,6 @@ def processing():
         if do_sleep:
             sleep(0.00001)
             do_sleep=False
-
 
 Thread(target=processing,daemon=True).start()
 
@@ -3433,7 +3437,7 @@ def main_loop():
                     if sweeping_i<sweep_steps:
                         f=10**(logf_min_audio+sweeping_i*logf_sweep_step)
                         change_f(f)
-                        cons_opt(f'Sweeping ({f:.0f} Hz), Click on the graph to abort ...')
+                        cons_opt(f'Sweeping:{f:.0f}Hz, hit Esc or click on the graph to abort ...')
 
                         next_sweep_time=now+sweeping_delay
                     else:
@@ -3456,9 +3460,10 @@ def main_loop():
                             console_shift+=console_line_height
 
                 delete_item('draw_layer', children_only=True)
+                line_x_pos=330 if DEBUG else slider_width+yaxis_width+20
                 for l,(text,code) in enumerate(list(islice(console_buffer,max(0,console_show_end_index-console_visible_lines),console_show_end_index+1))):
                     for (mx,my,center) in text_aura:
-                        draw_text(pos=(330 + mx,title_hight + plot_upper_margin + l*console_line_height + console_shift + my),text=text,color=console_color_tab[code][center],parent='draw_layer',size=console_fontsize)\
+                        draw_text(pos=(line_x_pos + mx,title_hight + plot_upper_margin + l*console_line_height + console_shift + my),text=text,color=console_color_tab[code][center],parent='draw_layer',size=console_fontsize)\
 
                 lines_to_show=console_buffer_len-console_show_end_index
 
