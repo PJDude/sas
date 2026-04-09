@@ -42,12 +42,12 @@ import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,add_draw_layer,add_slider_float,setup_dearpygui
-from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text
+from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text,move_item
 
 from time import strftime,time,localtime,perf_counter,sleep
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8,inf as np_inf
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8,inf as np_inf,multiply
 from numpy.lib.stride_tricks import sliding_window_view
 np_fft_rfft=np_fft.rfft
 
@@ -124,7 +124,6 @@ NO_SCROLL_CODES=(ERR,WARN,OPT)
 
 lock_frequency=False
 two_pi_by_out_samplerate=1
-phase_i=[0,]
 f_current=0
 
 two_pi = pi+pi
@@ -747,7 +746,7 @@ def build_gui():
 
                                     with group(width=-1):
                                         add_combo(tag='out_api',default_value='',callback=out_api_callback,width=c1width,user_data=True)
-                                        add_checkbox(tag='out_wasapi_exclusive',label='WASAPI Exclusive',callback=out_wasapi_exclusive_callback,default_value=cfg['out_wasapi_exclusive'],user_data=True); widget_tooltip('Exclusive mode allows to deliver audio\ndata directly to hardware bypassing software mixing')
+                                        add_checkbox(tag='out_wasapi_exclusive',label='WASAPI Exclusive',callback=out_wasapi_exclusive_callback,default_value=cfg['out_wasapi_exclusive'],user_data=True,enabled=windows); widget_tooltip('Exclusive mode allows to deliver audio\ndata directly to hardware bypassing software mixing\n\n(Windows only)')
 
                                         add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest,user_data=True)
                                         add_combo(tag='out_channel',default_value=cfg['out_channel'],callback=out_channel_changed,user_data=True)
@@ -994,11 +993,11 @@ cfg.setdefault("out_channel","1")
 cfg.setdefault("in_samplerate",'44100')
 cfg.setdefault("out_samplerate",'44100')
 
-cfg.setdefault("in_latency",'high')
-cfg.setdefault("out_latency",'low')
+cfg.setdefault("in_latency",'default')
+cfg.setdefault("out_latency",'default')
 
-cfg.setdefault("in_blocksize",'256')
-cfg.setdefault("out_blocksize",'1024')
+cfg.setdefault("in_blocksize",'default')
+cfg.setdefault("out_blocksize",'default')
 
 cfg.setdefault("allow_all_devices",False)
 cfg.setdefault("out_wasapi_exclusive",False)
@@ -1009,8 +1008,8 @@ latency_values=('high','low','default')
 FFT_items=('512','1024','2048','4096','8192','16384','32768','65536','131072','262144','524288','1048576','2097152')
 FBA_items=('512','1024','2048','4096')
 
-out_blocksize_values=(1024,512,256,128,64)
-in_blocksize_values=(512,256,128,64,0)
+out_blocksize_values=(1024,512,256,128,64,'default')
+in_blocksize_values=(512,256,128,64,'default')
 
 track_line_data_y={}
 
@@ -1021,6 +1020,8 @@ logging.basicConfig(
             logging.FileHandler(log_file, encoding='utf-8')
     ]
 )
+
+TARGET_FPS=60
 
 if windows:
     from os import startfile
@@ -1118,8 +1119,6 @@ playing_state=0
 '''
 
 sweeping=False
-
-TARGET_FPS=60
 
 def catch(func):
     def wrapper(*args,**kwargs):
@@ -1319,28 +1318,26 @@ output_errors_count=0
 samples_chunks_requested_new=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,phase_step,two_pi,out_channel_buffer_mod_index,phase_i,DEBUG,volume_ramp,phase_step_x_phase_i,output_callbacks_count,output_errors_count,samples_chunks_requested_new
+    global phase,playing_state,two_pi,out_channel_buffer_mod_index,phase_step_x_phase_i,output_callbacks_count,output_errors_count,samples_chunks_requested_new
+
+    np_sin((phase + phase_step_x_phase_i[0:frames]) % two_pi,out=outdata[0:frames, out_channel_buffer_mod_index])
+
+    if playing_state==1:
+        multiply(outdata[:, out_channel_buffer_mod_index], arange(0, 1.0, 1.0/frames, dtype=float32),out=outdata[:, out_channel_buffer_mod_index])
+        playing_state=2
+    elif playing_state==-1:
+        multiply(outdata[:, out_channel_buffer_mod_index],arange(1.0,0, -1.0/frames, dtype=float32),out=outdata[:, out_channel_buffer_mod_index])
+        playing_state=0
+    elif playing_state==0:
+        outdata[:, out_channel_buffer_mod_index] *= 0
+
+    phase = (phase + phase_step_x_phase_i[frames]) % two_pi
+    output_callbacks_count+=1
+    samples_chunks_requested_new+=frames
 
     if status:
         cons_err(f'Output callback Error:{status}')
         output_errors_count+=1
-
-    output_callbacks_count+=1
-    samples_chunks_requested_new+=len(outdata)
-
-    if playing_state:
-        phase_arr=(phase + phase_step_x_phase_i) % two_pi
-        outdata[phase_i, out_channel_buffer_mod_index] = np_sin(phase_arr)
-        phase = phase_arr[-1]+phase_step
-
-        if playing_state==1:
-            playing_state=2
-            outdata[:, out_channel_buffer_mod_index] *= volume_ramp
-        elif playing_state==-1:
-            playing_state=0
-            outdata[:, out_channel_buffer_mod_index] *= volume_ramp[::-1]
-    else:
-        outdata.fill(0)
 
 def sweep_abort():
     global sweeping
@@ -1563,20 +1560,23 @@ def initial_set_devices():
 
 out_channel_buffer_mod_index=0
 
+out_blocksize_max=65536
+phase_i = arange(out_blocksize_max)
+phase_step_x_phase_i = 0 * phase_i
+
 def out_blocksize_changed(sender=None, out_blocksize_str=None,user_data=False):
     l_info(f'out_blocksize_changed:{sender},{out_blocksize_str},{user_data}')
     play_stop()
     out_stream_stop()
 
-    global volume_ramp,phase_i
-    out_blocksize=int(out_blocksize_str)
-    cons_opt(f'Output blocksize:{out_blocksize}')
+    cfg['out_blocksize']=out_blocksize_str
+    global out_blocksize_max
+    try:
+        out_blocksize=int(out_blocksize_str)
+    except:
+        out_blocksize=0
 
-    #volume_ramp = tuple([(i+1.0)/out_blocksize for i in range(out_blocksize)])
-    volume_ramp = arange(1, out_blocksize + 1, dtype=float32) / out_blocksize
-    phase_i = arange(out_blocksize)
-
-    cfg['out_blocksize']=get_value('out_blocksize')
+    cons_opt(f'Output blocksize:{out_blocksize}/{out_blocksize_max}')
 
     if user_data:
         out_stream_init()
@@ -1592,10 +1592,10 @@ def out_latency_changed(sender=None, app_data=None,user_data=False):
     if user_data:
         out_stream_init()
 
-def in_blocksize_changed(sender=None, app_data=None,user_data=False):
-    l_info(f'in_blocksize_changed:{sender},{app_data},{user_data}')
+def in_blocksize_changed(sender=None, in_blocksize_str=None,user_data=False):
+    l_info(f'in_blocksize_changed:{sender},{in_blocksize_str},{user_data}')
 
-    val=cfg['in_blocksize']=get_value('in_blocksize')
+    val=cfg['in_blocksize']=in_blocksize_str
     cons_opt(f'Output blocksize:{val}')
 
     if user_data:
@@ -1685,7 +1685,10 @@ def out_stream_init():
     device=int(device_out_current['index'])
     samplerate=int(get_value('out_samplerate'))
     latency=latency_for_stream(get_value('out_latency'))
-    blocksize=int(get_value('out_blocksize'))
+    try:
+        blocksize=int(get_value('out_blocksize'))
+    except:
+        blocksize=0
 
     api=cfg['out_api']
 
@@ -1740,7 +1743,11 @@ def in_stream_init():
 
     samplerate=int(get_value('in_samplerate'))
     latency=latency_for_stream(get_value('in_latency'))
-    blocksize=int(get_value('in_blocksize'))
+    try:
+        blocksize=int(get_value('in_blocksize'))
+    except:
+        blocksize=0
+
     channels=int(get_value('in_channel'))
 
     in_channel_buffer_mod_index=0
@@ -1828,25 +1835,28 @@ def track_action_callback(sender=None,app_data=None,track=None):
     play_stop()
     status_set_frequency()
 
+    move_item(f"track{track}",parent="y_axis")
     if Ctrl:
         if int(cfg['recorded'])==track:
             cfg['show_track'][track]=True
             cfg['recorded']=-1
             track_line_data_y_recorded=[]
-            dpg.move_item(f"track{track}",parent="y_axis")
+            cons_info(f'Track {track} recording disabled.')
         else:
             cfg['show_track'][track]=True
             cfg['recorded']=track
             track_line_data_y_recorded=track_line_data_y[track]
-            dpg.move_item(f"track{track}",parent="y_axis")
+            cons_info(f'Track {track} recording enabled.')
     else:
         cfg['show_track'][track]=not cfg['show_track'][track]
 
-        dpg.move_item(f"track{track}",parent="y_axis")
         if not cfg['show_track'][track]:
+            cons_info(f'Track {track} hidden.')
             if cfg['recorded']==track:
                 cfg['recorded']=-1
                 track_line_data_y_recorded=[]
+        else:
+            cons_info(f'Track {track} shown.')
 
     refresh_tracks()
 
@@ -2758,12 +2768,21 @@ def fft_smooth_callback():
     val_str=off_on[val]
     cons_opt(f'FFT Smoothing:{val_str}')
 
+def smooth_window_calc():
+    global FFT_SMOOTH_WINDOW
+    FFT_SMOOTH_WINDOW=hanning(1+2*FFT_SMOOTH_FACTOR)
+    FFT_SMOOTH_WINDOW /= FFT_SMOOTH_WINDOW.sum()
+
 FFT_SMOOTH_FACTOR=cfg['fft_smooth_factor']
+smooth_window_calc()
+
 def fft_smooth_factor_change():
     global FFT_SMOOTH_FACTOR
     if cfg['fft_smooth']:
         val=cfg['fft_smooth_factor']=FFT_SMOOTH_FACTOR=get_value('fft_smooth_factor')
         cons_opt(f'FFT Smoothing factor:{val}')
+
+        smooth_window_calc()
     else:
         set_value('fft_smooth_factor',cfg['fft_smooth_factor'])
 
@@ -3037,11 +3056,10 @@ processing_inside=1.0
 processing_outside=1.0
 
 def processing():
-    peaks_annos=set()
-    peaks_annos_clear = peaks_annos.clear
-    peaks_annos_add = peaks_annos.add
+    peaks_annos={}
+    peaks_count_max=15
 
-    global sweeping,fft_window_sum,processing_inside,processing_outside,fft_values_y_prev,FFT_TDA_FACTOR,FFT_TDA_FACTOR_1m
+    global sweeping,processing_inside,processing_outside,fft_values_y_prev,FFT_TDA_FACTOR,FFT_TDA_FACTOR_1m,FFT_SMOOTH_WINDOW
     global redraw_track_line,frames,track_line_data_y_recorded,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo,current_sample_db
     global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready,fft_proc_sum_time,fft_peaks_sum_time,input_errors_all,np_fft_rfft
 
@@ -3101,9 +3119,24 @@ def processing():
 
                 current_sample_db = 10 * log10( np_mean(np_square(data[-current_sample_db_time_samples:])) + 1e-12)
 
-                for tag in peaks_annos:
-                    delete_item(tag)
-                peaks_annos_clear()
+                new_dict={}
+                for fint,(i,v) in peaks_annos.items():
+                    tag=f'p{fint}'
+
+                    im1=i-1
+                    if im1>0:
+                        new_dict[fint]=(im1,v)
+
+                        try:
+                            delete_item(tag)
+                            col=10
+                            add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(col, col, col, 100*im1/peaks_count_max), offset=(16,-10))
+                        except Exception as ae:
+                            print(ae)
+                    else :
+                        delete_item(tag)
+
+                peaks_annos=new_dict
 
                 if FFT and data_ready:
                     try:
@@ -3124,8 +3157,7 @@ def processing():
                             fft_values_x = fft_values_x_bins
 
                             if FFT_SMOOTH:
-                                for i_smooth in range(FFT_SMOOTH_FACTOR):
-                                    fft_values_y = np_convolve(np_pad(fft_values_y,1,'reflect'), smooth_window, mode='valid')
+                                fft_values_y = np_convolve(np_pad(fft_values_y,FFT_SMOOTH_FACTOR,'reflect'), FFT_SMOOTH_WINDOW, mode='valid')
                         else:
                             fft_values_x = fft_values_x_all
 
@@ -3145,6 +3177,8 @@ def processing():
 
                             csum_fast = np_cumsum(np_pad(fft_values_y,dist_fast_half,'reflect'))
                             fft_values_y_avg = window_sum_fast = (csum_fast[dist_fast:] - csum_fast[:-dist_fast]) / dist_fast
+                            if DEBUG:
+                                set_value("fft_avg", [fft_values_x, fft_values_y_avg])
 
                             diffs=fft_values_y-fft_values_y_avg
 
@@ -3154,19 +3188,11 @@ def processing():
 
                             maxs=diffs_padded_windows[:, margin] == diffs_padded_windows.max(axis=1)
 
-                            if DEBUG:
-                                set_value("fft_avg", [fft_values_x, fft_values_y_avg])
-
-                            for i,(d,f,m,v) in enumerate(sorted(zip(diffs,fft_values_x,maxs,fft_values_y),reverse=True,key=lambda x: x[0])):
-                                if i>PEAKS_LIMIT:
-                                    break
-
-                                fint=int(f)
-
+                            for d,f,m,v in sorted(zip(diffs,fft_values_x,maxs,fft_values_y),reverse=True,key=lambda x: x[0])[:PEAKS_LIMIT]:
                                 if m:
-                                    tag=f'p{fint}'
-                                    add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(100, 100, 100, 130), offset=(16,-10))
-                                    peaks_annos_add(tag)
+                                    fint=int(f)
+                                    curr_i,curr_v=peaks_annos.get(fint,(0,v))
+                                    peaks_annos[fint]=(min(peaks_count_max,curr_i+2),(v+curr_v*(peaks_count_max-1))/peaks_count_max)
 
                         t4=perf_counter()
                         fft_peaks_sum_time+=t4-t3
@@ -3242,7 +3268,7 @@ def output_frame_buffer_callback(sender, app_data):
 ############################################################################################################################
 next_redraw=0
 def main_loop():
-    global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_resize_scheduled,schedule_screenshot,fft_window_sum
+    global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_resize_scheduled,schedule_screenshot
     global redraw_track_line,frames,next_debug,track_line_data_y_recorded,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo
     global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_redraw
     global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
@@ -3396,7 +3422,9 @@ def main_loop():
                                 f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}" if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
                                 ] if FFT else []
 
-                    set_value('debug_text','\n'.join(part1 + part_fft))
+                    list_sum=part1 + part_fft
+                    set_value('debug_text','\n'.join(list_sum))
+                    l_info(' '.join(list_sum).replace('\n',' ').replace('  ',' ').replace('  ',' ').replace('  ',' '))
 
                     samples_chunks_requested_new=0
                     output_callbacks_count=0
