@@ -47,7 +47,7 @@ from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_vi
 from time import strftime,time,localtime,perf_counter,sleep
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8,inf as np_inf,multiply
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8,inf as np_inf,multiply,float64,pi
 from numpy.lib.stride_tricks import sliding_window_view
 np_fft_rfft=np_fft.rfft
 
@@ -57,7 +57,7 @@ from threading import Thread
 from collections import deque
 from itertools import islice
 
-from math import pi, log10, ceil, floor
+from math import log10, ceil, floor
 from PIL import Image
 Image_fromarray=Image.fromarray
 
@@ -123,12 +123,12 @@ CODES=(INFO,WARN,ERR,CONST,OPT)
 NO_SCROLL_CODES=(ERR,WARN,OPT)
 
 lock_frequency=False
-two_pi_by_out_samplerate=1
+two_pi_by_out_samplerate=float64(0.0)
 f_current=0
 
 two_pi = pi+pi
 
-phase = 0.0
+phase = float64(0.0)
 
 fmin,fini,fmax=14,442,30000
 fmin_audio,fmax_audio=20,20000
@@ -213,7 +213,7 @@ def c_mess(text,code=INFO):
     func=l_func[code]
     for subline in text.split('\n'):
         res=console_buffer_append(subline,code)
-        if res:
+        if res and subline:
             func(subline)
 
 def cons_opt(text):
@@ -329,6 +329,14 @@ with theme() as black_text:
     with theme_component(dpg.mvAll):
         dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
 
+with dpg.theme() as theme_black_text:
+    with dpg.theme_component(dpg.mvAll):
+        dpg.add_theme_color(dpg.mvPlotCol_InlayText,DARK_TEXT,category=dpg.mvThemeCat_Plots)
+
+with dpg.theme() as theme_white_text:
+    with dpg.theme_component(dpg.mvAll):
+        dpg.add_theme_color(dpg.mvPlotCol_InlayText,LIGHT_TEXT,category=dpg.mvThemeCat_Plots)
+
 with theme() as theme_light:
     with theme_component(dpg.mvAll):
         dpg.add_theme_color(dpg.mvThemeCol_WindowBg, LIGHT_BG)
@@ -373,6 +381,7 @@ with theme() as theme_light:
 
     with theme_component(dpg.mvPlot):
         dpg.add_theme_color(dpg.mvPlotCol_PlotBg, LIGHT_BG)
+        dpg.add_theme_color(dpg.mvPlotCol_InlayText,LIGHT_TEXT,category=dpg.mvThemeCat_Plots)
 
     #with theme_component(dpg.mvShadeSeries):
     #    dpg.add_theme_color(dpg.mvPlotCol_Fill,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
@@ -432,6 +441,7 @@ with theme() as theme_dark:
         dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 2, category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 2, category=dpg.mvThemeCat_Core)
 
+
     with theme_component(dpg.mvChildWindow):
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3)
 
@@ -440,6 +450,7 @@ with theme() as theme_dark:
         dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
+        dpg.add_theme_color(dpg.mvPlotCol_InlayText,DARK_TEXT,category=dpg.mvThemeCat_Plots)
 
     with theme_component(dpg.mvShadeSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Fill,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
@@ -795,8 +806,8 @@ def build_gui():
                                     add_checkbox(tag='fft_fba',label='FBA',callback=fft_fba_callback,default_value=cfg['fft_fba']); widget_tooltip(FFT_buckets_tooltip)
                                     add_combo(tag='fft_fba_size',items=FBA_items,default_value=cfg['fft_fba_size'],callback=fft_fba_size_callback,user_data=True,width=c2width); widget_tooltip(FFT_buckets_tooltip)
                                 with table_row():
-                                    add_checkbox(tag='fft_smooth',label='Smth',callback=fft_smooth_callback,default_value=cfg['fft_smooth']); widget_tooltip('Smoothing\n\nkey: F6 / Shift+F6 (+Ctrl Toggle)')
-                                    dpg.add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_change,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5)
+                                    add_checkbox(tag='fft_smooth',label='Smth',callback=fft_smooth_callback,default_value=cfg['fft_smooth']); FFT_smoothing_tooltip='Smoothing\n\nkey: F6 / Shift+F6 (+Ctrl Toggle)'; widget_tooltip(FFT_smoothing_tooltip)
+                                    dpg.add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_callback,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5); widget_tooltip(FFT_smoothing_tooltip)
                                 with table_row():
                                     add_checkbox(tag='fft_tda',label='TDA',callback=fft_tda_callback,default_value=cfg['fft_tda']); FFT_tda_tooltip='Time Domain Averaging\n\nkey: F7 / Shift+F7 (+Ctrl Toggle)'; widget_tooltip(FFT_tda_tooltip)
                                     add_slider_float(tag='fft_tda_factor',callback=fft_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['fft_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tda_tooltip)
@@ -852,7 +863,7 @@ def build_gui():
                                             add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\n\nkey:D")
                                         add_spacer(width=100)
                                     with group():
-                                        add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=cfg['pause']); widget_tooltip('key: Space')
+                                        add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=False); widget_tooltip('key: Space')
 
                                         add_checkbox(tag='fft_fill',label='FFT Fill',callback=fft_fill_callback,default_value=cfg['fft_fill']); widget_tooltip("Filled graph\n\nkey:G")
                                         add_spacer(width=100)
@@ -954,8 +965,7 @@ cfg.setdefault('settings',False)
 cfg.setdefault('decorated',False)
 cfg.setdefault('fft_fill',True)
 
-cfg.setdefault('pause',False)
-PAUSE=cfg['pause']
+PAUSE=False
 
 cfg.setdefault('debug',False)
 
@@ -1290,7 +1300,7 @@ scale_factor_logf_to_bucket_tracks=1
 def logf_to_bucket_tracks(logf):
     return int(round(scale_factor_logf_to_bucket_tracks * (logf - logf_min_audio)))
 
-phase_step=1.0
+phase_step=float64(1.0)
 
 current_bucket=logf_to_bucket_tracks(current_logf)
 
@@ -1310,15 +1320,15 @@ def change_f(fpar):
         set_value('cursor_f_txt', (fpar, -3))
         configure_item('cursor_f_txt',label=f'{round(fpar)}Hz')
 
-        phase_step = two_pi_by_out_samplerate * fpar
+        phase_step = two_pi_by_out_samplerate * float64(fpar)
         phase_step_x_phase_i = phase_step * phase_i
 
-output_callbacks_count=0
-output_errors_count=0
-samples_chunks_requested_new=0
+out_callbacks=0
+out_errors=0
+out_samples=0
 
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,two_pi,out_channel_buffer_mod_index,phase_step_x_phase_i,output_callbacks_count,output_errors_count,samples_chunks_requested_new
+    global phase,playing_state,two_pi,out_channel_buffer_mod_index,phase_step_x_phase_i,out_callbacks,out_errors,out_samples
 
     np_sin((phase + phase_step_x_phase_i[0:frames]) % two_pi,out=outdata[0:frames, out_channel_buffer_mod_index])
 
@@ -1332,12 +1342,12 @@ def audio_output_callback(outdata, frames, time, status):
         outdata[:, out_channel_buffer_mod_index] *= 0
 
     phase = (phase + phase_step_x_phase_i[frames]) % two_pi
-    output_callbacks_count+=1
-    samples_chunks_requested_new+=frames
+    out_callbacks+=1
+    out_samples+=frames
 
     if status:
         cons_err(f'Output callback Error:{status}')
-        output_errors_count+=1
+        out_errors+=1
 
 def sweep_abort():
     global sweeping
@@ -1350,7 +1360,7 @@ sweeping_i=0
 def sweep_callback(sender=None, app_data=None):
     l_info(f'sweep_callback:{sender},{app_data}')
 
-    global sweeping,lock_frequency,sweeping_i,track_line_data_y_recorded
+    global sweeping,lock_frequency,sweeping_i,track_line_data_y_recorded,PAUSE
     lock_frequency=False
 
     if not track_line_data_y_recorded:
@@ -1361,6 +1371,8 @@ def sweep_callback(sender=None, app_data=None):
     sweeping=(True,False)[sweeping]
 
     if sweeping:
+        PAUSE=False
+        set_value('pause',False)
         configure_item('sweeping',texture_tag=ico["play_on"])
         change_f(fmin_audio)
         play_start()
@@ -1561,8 +1573,8 @@ def initial_set_devices():
 out_channel_buffer_mod_index=0
 
 out_blocksize_max=65536
-phase_i = arange(out_blocksize_max)
-phase_step_x_phase_i = 0 * phase_i
+phase_i = arange(out_blocksize_max,dtype=float64)
+phase_step_x_phase_i = float64(0) * phase_i
 
 def out_blocksize_changed(sender=None, out_blocksize_str=None,user_data=False):
     l_info(f'out_blocksize_changed:{sender},{out_blocksize_str},{user_data}')
@@ -1570,7 +1582,7 @@ def out_blocksize_changed(sender=None, out_blocksize_str=None,user_data=False):
     out_stream_stop()
 
     cfg['out_blocksize']=out_blocksize_str
-    global out_blocksize_max
+
     try:
         out_blocksize=int(out_blocksize_str)
     except:
@@ -1631,7 +1643,7 @@ def out_samplerate_changed(sender=None, app_data=None,user_data=False):
     cons_opt(f'Output samplerate:{val}')
 
     global two_pi_by_out_samplerate
-    two_pi_by_out_samplerate = two_pi/float(get_value("out_samplerate"))
+    two_pi_by_out_samplerate = two_pi/float64(get_value("out_samplerate"))
 
     if user_data:
         common_precalc()
@@ -1782,7 +1794,7 @@ def show_info(message):
 def about_wrapper():
     text1= f'Simple Audio Sweeper {VER_TIMESTAMP}\nAuthor: Piotr Jochymek\n\n{HOMEPAGE}\n\nPJ.soft.dev.x@gmail.com\n'
     text2='\n' + distro_info + '\n'
-    show_info('\n' + text1+text2 + '\nPress H for help\n')
+    show_info('\n' + text1+text2 + '\nPress H for help. Press Backspace to clear the console.\n')
 
 def normalize_text(text):
     res=[]
@@ -2194,11 +2206,14 @@ def common_precalc():
 
     global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_debug,current_sample_db_time_samples,fft_bin_indices_selected,fft_values_x_bins,data_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
 
-    current_sample_db_time=0.1
-    current_sample_db_time_samples=int(float(get_value('in_samplerate'))*current_sample_db_time)
+    samplerate=get_value('in_samplerate')
 
-    in_samplerate_by_fft_size = float(get_value('in_samplerate')) / FFT_SIZE
+    current_sample_db_time=0.1
+    current_sample_db_time_samples=int(float(samplerate)*current_sample_db_time)
+
+    in_samplerate_by_fft_size = float(samplerate) / FFT_SIZE
     fft_duration= 1.0/in_samplerate_by_fft_size
+    l_info(f'{samplerate=},{fft_duration=}')
 
     dummy_data=[200]*FFT_POINTS
     fft_values_x_all=[0]*FFT_POINTS
@@ -2498,14 +2513,8 @@ def key_press_callback(sender, app_data):
     Ctrl = is_key_down(mvKey_LControl)
 
     if app_data==dpg.mvKey_Spacebar:
-        pause_val=get_value('pause')
-        pause_val=(True,False)[pause_val]
-        set_value('pause',pause_val)
+        set_value('pause',(True,False)[get_value('pause')])
         pause_callback()
-    else:
-        set_value('pause',False)
-        pause_callback()
-        sweep_abort()
     if app_data==dpg.mvKey_1:
         track_action_callback(None,None,0)
     elif app_data==dpg.mvKey_2:
@@ -2592,6 +2601,7 @@ def key_press_callback(sender, app_data):
             items=list(range(minv,maxv+1))
             configure_item('fft_smooth_factor',default_value=items[(items.index(get_value('fft_smooth_factor'))+(1,-1)[Shift]) % len(items)])
         fft_smooth_callback()
+        fft_smooth_factor_callback()
     elif app_data==dpg.mvKey_F7:
         fft_tda=get_value('fft_tda')
         if Ctrl:
@@ -2679,8 +2689,6 @@ def theme_light_callback():
     bind_item_theme('mark_text_8',white_text)
     bind_item_theme('mark_text',black_text)
 
-    #[code][center]
-
     res=[]
     #INFO=0
     res.append( (LIGHT_BG_CONS,(0,50,0,255)) )
@@ -2725,8 +2733,6 @@ def theme_dark_callback():
     bind_item_theme('mark_text_7',black_text)
     bind_item_theme('mark_text_8',black_text)
     bind_item_theme('mark_text',white_text)
-
-    #[code][center]
 
     res=[]
     #INFO=0
@@ -2776,7 +2782,7 @@ def smooth_window_calc():
 FFT_SMOOTH_FACTOR=cfg['fft_smooth_factor']
 smooth_window_calc()
 
-def fft_smooth_factor_change():
+def fft_smooth_factor_callback():
     global FFT_SMOOTH_FACTOR
     if cfg['fft_smooth']:
         val=cfg['fft_smooth_factor']=FFT_SMOOTH_FACTOR=get_value('fft_smooth_factor')
@@ -2813,12 +2819,13 @@ def debug_callback():
 
     if DEBUG:
         configure_item("fft_avg",show=PEAKS)
+        l_info(f'DEB:\tframes/changes\tmain_ratio/proc_ratio\tfft_calc_mean:fft_proc_mean:fft_peaks_mean\tout_samples:in_samples\tout_callbacks:in_callbacks\tout_errors:in_errors\tstream_out.cpu_load:stream_in.cpu_load\tstream_out.latency:stream_in.latency')
     else:
         configure_item("fft_avg",show=False)
 
 def pause_callback():
     global PAUSE
-    cfg['pause']=PAUSE=get_value('pause')
+    PAUSE=get_value('pause')
 
 def decorated_callback():
     cfg['decorated']=get_value('decorated')
@@ -2846,7 +2853,7 @@ def help_callback():
             "Space  - pause refreshing                                                    console scroll             ",
             "S / C  - save file (png/csv)                                                                            ",
             "Pause  - frames capture (gif)                                                                           ",
-            "Backspace - clean the console                                                                           ",
+            "Backspace - clear the console                                                                           ",
             "--------------------------------------------------------------------------------------------------------"]
 
     for line in vals:
@@ -2979,8 +2986,6 @@ on_viewport_resize()
 
 round_viewport()
 
-frames = 0
-
 if not decorated:
     try:
         dec_width, dec_height = get_item_rect_size("decoration")
@@ -2994,10 +2999,10 @@ try:
 except:
     configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False)
 
-cons_info('\n'*console_visible_lines + 'Press H for help\n')
+cons_info('\n'*console_visible_lines + 'Press H for help. Press Backspace to clear the console.\n')
 
 def output_frame_buffer_callback_gif(sender, app_data):
-    global capture_frames,capture_frames,CAPTURE
+    global capture_frames,CAPTURE
     try:
         w,h = app_data.get_width(),app_data.get_height()
         x, y = get_item_pos('plot')
@@ -3043,14 +3048,15 @@ def capture_loop():
         CAPTURE_saving=False
         cons_info('')
 
-frames_change=0
+frames=0
+changes=0
 fft_calcs=0
 
 fft_calc_sum_time=0.0
 fft_proc_sum_time=0.0
 fft_peaks_sum_time=0.0
 
-input_errors_all=0
+in_errors=0
 
 processing_inside=1.0
 processing_outside=1.0
@@ -3061,11 +3067,11 @@ def processing():
 
     global sweeping,processing_inside,processing_outside,fft_values_y_prev,FFT_TDA_FACTOR,FFT_TDA_FACTOR_1m,FFT_SMOOTH_WINDOW
     global redraw_track_line,frames,track_line_data_y_recorded,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo,current_sample_db
-    global exiting,PEAKS,frames_change,fft_calcs,fft_calc_sum_time,rec_samples,input_callbacks_all,current_sample_db_time_samples,data,data_ready,fft_proc_sum_time,fft_peaks_sum_time,input_errors_all,np_fft_rfft
+    global exiting,PEAKS,changes,fft_calcs,fft_calc_sum_time,in_samples,in_callbacks,current_sample_db_time_samples,data,data_ready,fft_proc_sum_time,fft_peaks_sum_time,in_errors,np_fft_rfft
 
     next_sweep_time=0
-    input_callbacks_all=0
-    rec_samples=0
+    in_callbacks=0
+    in_samples=0
 
     new_data=False
 
@@ -3092,7 +3098,7 @@ def processing():
 
                     if status:
                         cons_err(f'Input callback Error:{status}')
-                        input_errors_all+=1
+                        in_errors+=1
 
                     data_new_chunk_len=len(data_new_chunk)
                     if data_new_chunk_len>data_len:
@@ -3101,8 +3107,8 @@ def processing():
                         data = np_roll(data,-data_new_chunk_len)
                         data[-data_new_chunk_len:]=data_new_chunk
 
-                    input_callbacks_all+=1
-                    rec_samples+=data_new_chunk_len
+                    in_callbacks+=1
+                    in_samples+=data_new_chunk_len
                     new_data=True
                 except IndexError:
                     break
@@ -3115,9 +3121,9 @@ def processing():
 
             if new_data and not (dragging or resizing or PAUSE):
                 new_data=False
-                frames_change+=1
+                changes+=1
 
-                current_sample_db = 10 * log10( np_mean(np_square(data[-current_sample_db_time_samples:])) + 1e-12)
+                current_sample_db = float64(10.0) * np_log10( np_mean(np_square(data[-current_sample_db_time_samples:])) + 1e-12)
 
                 new_dict={}
                 for fint,(i,v) in peaks_annos.items():
@@ -3131,6 +3137,7 @@ def processing():
                             delete_item(tag)
                             col=10
                             add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(col, col, col, 100*im1/peaks_count_max), offset=(16,-10))
+                            #dpg.bind_item_theme(tag, theme_dark)
                         except Exception as ae:
                             print(ae)
                     else :
@@ -3141,7 +3148,7 @@ def processing():
                 if FFT and data_ready:
                     try:
                         t1=perf_counter()
-                        fft_values_y=20*np_log10( np_abs( np_fft_rfft(data[-FFT_SIZE:]*fft_window)) / FFT_SIZE + 1e-12 )
+                        fft_values_y=float64(20.0)*np_log10( np_abs( np_fft_rfft(data[-FFT_SIZE:]*fft_window)) / FFT_SIZE + 1e-12 )
                         fft_calcs+=1
 
                         t2=perf_counter()
@@ -3194,8 +3201,8 @@ def processing():
                                     curr_i,curr_v=peaks_annos.get(fint,(0,v))
                                     peaks_annos[fint]=(min(peaks_count_max,curr_i+2),(v+curr_v*(peaks_count_max-1))/peaks_count_max)
 
-                        t4=perf_counter()
-                        fft_peaks_sum_time+=t4-t3
+                            t4=perf_counter()
+                            fft_peaks_sum_time+=t4-t3
 
                         if FFT_FILL:
                             set_value("fft_line_shade", [fft_values_x, fft_values_y,[dbmin]*len(fft_values_y)])
@@ -3268,10 +3275,10 @@ def output_frame_buffer_callback(sender, app_data):
 ############################################################################################################################
 next_redraw=0
 def main_loop():
-    global sweeping,output_callbacks_count,samples_chunks_requested_new,set_viewport_pos_scheduled,set_viewport_resize_scheduled,schedule_screenshot
+    global sweeping,out_callbacks,out_samples,set_viewport_pos_scheduled,set_viewport_resize_scheduled,schedule_screenshot
     global redraw_track_line,frames,next_debug,track_line_data_y_recorded,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo
-    global CAPTURE,frames_change,settings_wrapper_scheduled,rec_samples,input_callbacks_all,cfg,playing_state,lock_frequency,next_redraw
-    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,output_errors_count,input_errors_all,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
+    global CAPTURE,changes,settings_wrapper_scheduled,in_samples,in_callbacks,cfg,playing_state,lock_frequency,next_redraw
+    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,out_errors,in_errors,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
     global offset_x,offset_y,processing_inside,processing_outside
 
     next_sweep_time=0
@@ -3378,20 +3385,20 @@ def main_loop():
                 if now >= next_debug :
 
                     try:
-                        processing_ratio=processing_inside/(processing_inside+processing_outside)
+                        proc_ratio=processing_inside/(processing_inside+processing_outside)
                     except:
-                        processing_ratio="Nan"
+                        proc_ratio="Nan"
 
                     try:
-                        main_loop_ratio=main_loop_inside/(main_loop_inside+main_loop_outside)
+                        main_ratio=main_loop_inside/(main_loop_inside+main_loop_outside)
                     except:
-                        main_loop_ratio="Nan"
+                        main_ratio="Nan"
 
-                    part1 = [f"FPS:{frames}/{frames_change}  sat:{main_loop_ratio:.5f}/{processing_ratio:.5f}\n",
+                    part1 = [f"FPS:{frames}/{changes}  sat:{main_ratio:.5f}/{proc_ratio:.5f}\n",
                             f"             Output       Input",
-                            f"samples/s  {samples_chunks_requested_new:8d}    {rec_samples:8d}",
-                            f"blocks/s   {output_callbacks_count:8d}    {input_callbacks_all:8d}",
-                            f"errors/s   {output_errors_count:8d}    {input_errors_all:8d}",
+                            f"samples/s  {out_samples:8d}    {in_samples:8d}",
+                            f"blocks/s   {out_callbacks:8d}    {in_callbacks:8d}",
+                            f"errors/s   {out_errors:8d}    {in_errors:8d}",
                             " ",
                             f"CPU        {stream_out.cpu_load if stream_out else 0:.6f}    {stream_in.cpu_load if stream_in else 0:.6f}",
                             f"latency[s] {stream_out.latency if stream_out else 0:.6f}    {stream_in.latency if stream_in else 0:.6f}",
@@ -3424,17 +3431,18 @@ def main_loop():
 
                     list_sum=part1 + part_fft
                     set_value('debug_text','\n'.join(list_sum))
-                    l_info(' '.join(list_sum).replace('\n',' ').replace('  ',' ').replace('  ',' ').replace('  ',' '))
 
-                    samples_chunks_requested_new=0
-                    output_callbacks_count=0
-                    output_errors_count=0
+                    l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t{fft_calc_mean:.5f}:{fft_proc_mean:.5f}:{fft_peaks_mean:.5f}\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out.cpu_load:.6f}:{stream_in.cpu_load:.6f}\t{stream_out.latency:.6f}:{stream_in.latency:.6f}')
+
+                    out_samples=0
+                    out_callbacks=0
+                    out_errors=0
 
                     frames = 0
-                    frames_change = 0
-                    rec_samples = 0
-                    input_callbacks_all = 0
-                    input_errors_all=0
+                    changes = 0
+                    in_samples = 0
+                    in_callbacks = 0
+                    in_errors=0
 
                     main_loop_inside=0
                     main_loop_outside=0
@@ -3461,16 +3469,17 @@ def main_loop():
         if sweeping:
             try:
                 if now>next_sweep_time:
-                    sweeping_i+=1
-                    if sweeping_i<sweep_steps:
-                        f=10**(logf_min_audio+sweeping_i*logf_sweep_step)
-                        change_f(f)
-                        cons_opt(f'Sweeping:{f:.0f}Hz, hit Esc or click on the graph to abort ...')
+                    if not PAUSE:
+                        sweeping_i+=1
+                        if sweeping_i<sweep_steps:
+                            f=10**(logf_min_audio+sweeping_i*logf_sweep_step)
+                            change_f(f)
+                            cons_opt(f'Sweeping:{f:.0f}Hz, hit Esc or click on the graph to abort ...')
 
-                        next_sweep_time=now+sweeping_delay
-                    else:
-                        sweeping=False
-                        play_stop()
+                            next_sweep_time=now+sweeping_delay
+                        else:
+                            sweeping=False
+                            play_stop()
             except Exception as sweep_e:
                 cons_err(f'{sweep_e=}')
 
