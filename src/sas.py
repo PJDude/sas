@@ -41,13 +41,13 @@
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
-from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,add_draw_layer,add_slider_float,setup_dearpygui
+from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,add_draw_layer,add_slider_float,add_slider_int,setup_dearpygui
 from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text,move_item
 
 from time import strftime,time,localtime,perf_counter,sleep
 from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8,inf as np_inf,multiply,float64,pi
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, linspace, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8,inf as np_inf,multiply,float64,pi
 from numpy.lib.stride_tricks import sliding_window_view
 np_fft_rfft=np_fft.rfft
 
@@ -726,12 +726,14 @@ def build_gui():
                                     with table(header_row=False, resizable=False, policy=mvTable_SizingStretchProp):
                                         add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
                                         add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
-                                        add_table_column(width_fixed=True, init_width_or_weight=80)
+                                        add_table_column(width_fixed=True, init_width_or_weight=40)
+                                        add_table_column(width_fixed=True, init_width_or_weight=240,width=240)
 
                                         with table_row():
                                             add_image_button(ico["refresh"],tag='out_refresh',width=16,callback=out_refresh_calllback); widget_tooltip('Re-Initialize Output Stream')
                                             dpg.add_image(ico["out_off"],tag='out_status',width=16); widget_tooltip('Output Stream status')
                                             add_text(default_value='Output')
+                                            add_slider_int(tag='amplitude',callback=amplitude_callback,max_value=100,min_value=0,default_value=cfg['amplitude'],format="%d",track_offset=0.5,width=150); widget_tooltip('Amplitude')
 
                                     with table(tag='in_tab1',header_row=False, resizable=False, policy=mvTable_SizingStretchProp):
                                         add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
@@ -757,7 +759,7 @@ def build_gui():
 
                                     with group(width=-1):
                                         add_combo(tag='out_api',default_value='',callback=out_api_callback,width=c1width,user_data=True)
-                                        add_checkbox(tag='out_wasapi_exclusive',label='WASAPI Exclusive',callback=out_wasapi_exclusive_callback,default_value=cfg['out_wasapi_exclusive'],user_data=True,enabled=windows); widget_tooltip('Exclusive mode allows to deliver audio\ndata directly to hardware bypassing software mixing\n\n(Windows only)')
+                                        add_checkbox(tag='out_wasapi_exclusive',label='WASAPI Exclusive Mode',callback=out_wasapi_exclusive_callback,default_value=cfg['out_wasapi_exclusive'],user_data=True,enabled=windows); widget_tooltip('WASAPI Exclusive Mode\n\nExclusive mode allows to deliver audio\ndata directly to hardware bypassing software mixing\n\n(Windows only)')
 
                                         add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest,user_data=True)
                                         add_combo(tag='out_channel',default_value=cfg['out_channel'],callback=out_channel_changed,user_data=True)
@@ -807,7 +809,7 @@ def build_gui():
                                     add_combo(tag='fft_fba_size',items=FBA_items,default_value=cfg['fft_fba_size'],callback=fft_fba_size_callback,user_data=True,width=c2width); widget_tooltip(FFT_buckets_tooltip)
                                 with table_row():
                                     add_checkbox(tag='fft_smooth',label='Smth',callback=fft_smooth_callback,default_value=cfg['fft_smooth']); FFT_smoothing_tooltip='Smoothing\n\nkey: F6 / Shift+F6 (+Ctrl Toggle)'; widget_tooltip(FFT_smoothing_tooltip)
-                                    dpg.add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_callback,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5); widget_tooltip(FFT_smoothing_tooltip)
+                                    add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_callback,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5); widget_tooltip(FFT_smoothing_tooltip)
                                 with table_row():
                                     add_checkbox(tag='fft_tda',label='TDA',callback=fft_tda_callback,default_value=cfg['fft_tda']); FFT_tda_tooltip='Time Domain Averaging\n\nkey: F7 / Shift+F7 (+Ctrl Toggle)'; widget_tooltip(FFT_tda_tooltip)
                                     add_slider_float(tag='fft_tda_factor',callback=fft_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['fft_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tda_tooltip)
@@ -817,15 +819,15 @@ def build_gui():
 
                                 with table_row():
                                     add_text(default_value='Avarage')
-                                    dpg.add_slider_int(tag='peaks_avg_factor',callback=peaks_avg_factor_change,max_value=100,min_value=1,default_value=cfg['peaks_avg_factor'],width=130,track_offset=0.5); widget_tooltip('Reference average - relative length factor')
+                                    add_slider_int(tag='peaks_avg_factor',callback=peaks_avg_factor_change,max_value=100,min_value=1,default_value=cfg['peaks_avg_factor'],width=130,track_offset=0.5); widget_tooltip('Reference average - relative length factor')
 
                                 with table_row():
                                     add_text(default_value='Distance')
-                                    dpg.add_slider_int(tag='peaks_dist_factor',callback=peaks_distance_change,max_value=100,min_value=1,default_value=cfg['peaks_dist_factor'],width=130,track_offset=0.5); widget_tooltip('relative distance of neighbours')
+                                    add_slider_int(tag='peaks_dist_factor',callback=peaks_distance_change,max_value=100,min_value=1,default_value=cfg['peaks_dist_factor'],width=130,track_offset=0.5); widget_tooltip('relative distance of neighbours')
 
                                 with table_row():
                                     add_text(default_value='Limit')
-                                    dpg.add_slider_int(tag='peaks_limit',callback=peaks_limit_change,max_value=32,min_value=1,default_value=cfg['peaks_limit'],width=130,track_offset=0.5); widget_tooltip('Absolute limit of peaks shown')
+                                    add_slider_int(tag='peaks_limit',callback=peaks_limit_change,max_value=32,min_value=1,default_value=cfg['peaks_limit'],width=130,track_offset=0.5); widget_tooltip('Absolute limit of peaks shown')
 
                     with group():
                         with child_window(border=True,autosize_y=False,autosize_x=False,width=210,no_scrollbar=True,height=71):
@@ -1012,6 +1014,8 @@ cfg.setdefault("out_blocksize",'default')
 cfg.setdefault("allow_all_devices",False)
 cfg.setdefault("out_wasapi_exclusive",False)
 cfg.setdefault("in_wasapi_exclusive",False)
+#cfg.setdefault("dithering_off",True)
+cfg.setdefault("amplitude",30)
 
 latency_values=('high','low','default')
 
@@ -1304,6 +1308,16 @@ phase_step=float64(1.0)
 
 current_bucket=logf_to_bucket_tracks(current_logf)
 
+def amplitude_callback(sender=None, app_data=None,user_data=False):
+    global AMPLITUDE_LOG
+    val=cfg['amplitude']=get_value('amplitude')
+    AMPLITUDE_LOG=aplitude_log_calc(val)
+
+def aplitude_log_calc(val):
+    return (10.0**(val*0.01) - 1.0)/9.0
+
+AMPLITUDE_LOG=aplitude_log_calc(30)
+
 @catch
 def change_f(fpar):
     global current_logf,phase_step,two_pi_by_out_samplerate,TRACK_BUCKETS,phase_step_x_phase_i,phase_i,current_bucket
@@ -1327,19 +1341,23 @@ out_callbacks=0
 out_errors=0
 out_samples=0
 
+AMPLITUDE_LOG_PREV=AMPLITUDE_LOG
 def audio_output_callback(outdata, frames, time, status):
-    global phase,playing_state,two_pi,out_channel_buffer_mod_index,phase_step_x_phase_i,out_callbacks,out_errors,out_samples
+    global phase,playing_state,two_pi,out_channel_buffer_mod_index,phase_step_x_phase_i,out_callbacks,out_errors,out_samples,AMPLITUDE_LOG,AMPLITUDE_LOG_PREV
 
-    np_sin((phase + phase_step_x_phase_i[0:frames]) % two_pi,out=outdata[0:frames, out_channel_buffer_mod_index])
+    np_sin((phase + phase_step_x_phase_i[0:frames]) % two_pi, dtype=float32,out=outdata[:, out_channel_buffer_mod_index])
 
     if playing_state==1:
-        multiply(outdata[:, out_channel_buffer_mod_index], arange(0, 1.0, 1.0/frames, dtype=float32),out=outdata[:, out_channel_buffer_mod_index])
+        multiply(outdata[:, out_channel_buffer_mod_index],linspace(0.0, AMPLITUDE_LOG, frames, dtype=float32),out=outdata[:, out_channel_buffer_mod_index])
         playing_state=2
     elif playing_state==-1:
-        multiply(outdata[:, out_channel_buffer_mod_index],arange(1.0,0, -1.0/frames, dtype=float32),out=outdata[:, out_channel_buffer_mod_index])
+        multiply(outdata[:, out_channel_buffer_mod_index],linspace(AMPLITUDE_LOG,0.0, frames, dtype=float32),out=outdata[:, out_channel_buffer_mod_index])
         playing_state=0
     elif playing_state==0:
-        outdata[:, out_channel_buffer_mod_index] *= 0
+        multiply(outdata[:, out_channel_buffer_mod_index],linspace(0,0, frames, dtype=float32),out=outdata[:, out_channel_buffer_mod_index])
+    else :
+        multiply(outdata[:, out_channel_buffer_mod_index],linspace(AMPLITUDE_LOG_PREV,AMPLITUDE_LOG, frames, dtype=float32),out=outdata[:, out_channel_buffer_mod_index] )
+        AMPLITUDE_LOG_PREV=AMPLITUDE_LOG
 
     phase = (phase + phase_step_x_phase_i[frames]) % two_pi
     out_callbacks+=1
@@ -1697,6 +1715,8 @@ def out_stream_init():
     device=int(device_out_current['index'])
     samplerate=int(get_value('out_samplerate'))
     latency=latency_for_stream(get_value('out_latency'))
+    #dithering_off=get_value('dithering_off')
+
     try:
         blocksize=int(get_value('out_blocksize'))
     except:
@@ -1706,17 +1726,22 @@ def out_stream_init():
 
     cons_const('')
     dev_name=cfg["out_dev"]
-    cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n  {extra_settings=}')
+    if extra_settings:
+        cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n {extra_settings=}')
+    else:
+        cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n')
 
     try:
         stream_out = OutputStream(callback=audio_output_callback, extra_settings=extra_settings,
             device=device,
+            dtype='float32',
             samplerate=samplerate,
             latency=latency,
             blocksize=blocksize,
             channels=channels,
             dither_off=True
         )
+
         cons_const('init done.\nStarting output stream...')
         stream_out.start()
         configure_item('out_status',texture_tag=ico['out_on'])
@@ -1921,6 +1946,10 @@ def out_dev_config_items():
     except Exception as odcn_e:
         cons_err(f'{odcn_e=}')
         return []
+
+#def dithering_off_callback(sender=None, app_data=None,user_data=False):
+#    cfg['dithering_off']=get_value('dithering_off')
+#    out_dev_changed(None,None,user_data)
 
 def out_wasapi_exclusive_callback(sender=None, app_data=None,user_data=False):
     cfg['out_wasapi_exclusive']=get_value('out_wasapi_exclusive')
@@ -2454,7 +2483,7 @@ dragging,resizing = False,False
 def on_mouse_down(sender, app_data):
     global dragging, resizing, offset_x, offset_y
     if not dragging:
-        offset_x, offset_y = get_mouse_pos()
+        offset_x, offset_y = get_mouse_pos(local=False)
 
         vh,vw = get_viewport_height(),get_viewport_width()
 
@@ -3160,6 +3189,7 @@ def processing():
                         if FFT_FBA:
 
                             fft_values_means_in_buckets = bincount(fft_bin_indices, weights=fft_values_y)[1:] / fft_bin_counts[1:]
+
                             fft_values_y=np_array([fft_values_means_in_buckets[i] for i in fft_bin_indices_selected[:-1]])
                             fft_values_x = fft_values_x_bins
 
