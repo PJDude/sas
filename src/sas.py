@@ -39,19 +39,19 @@
 ######################################################################################
 
 import dearpygui.dearpygui as dpg
-from dearpygui.dearpygui import create_context,file_dialog,add_file_extension,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_clicked_handler,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
-from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,add_radio_button,mvMouseButton_Left,popup
+from dearpygui.dearpygui import create_context,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
+from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,mvTooltip
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,add_draw_layer,add_slider_float,add_slider_int,setup_dearpygui
-from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_rect_min,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text,move_item
+from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text,move_item
 
 from time import strftime,time,localtime,perf_counter,sleep
-from gc import disable as gc_disable,enable as gc_enable,collect as gc_collect, freeze as gc_freeze
+from gc import collect as gc_collect, freeze as gc_freeze
 
-from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, linspace, sin as np_sin,zeros, append as np_append,digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve,sqrt as np_sqrt, argsort as np_argsort, where as np_where,roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8,inf as np_inf,multiply,float64,pi
+from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hamming,blackman,bartlett, abs as np_abs,fft as np_fft,log10 as np_log10,__version__ as numpy_version, concatenate as np_concatenate,sum as np_sum, arange, linspace, sin as np_sin,zeros, digitize,bincount,isnan,array as np_array, pad as np_pad, convolve as np_convolve, roll as np_roll, cumsum as np_cumsum,clip,frombuffer,uint8,inf as np_inf,multiply,float64,pi
 from numpy.lib.stride_tricks import sliding_window_view
 np_fft_rfft=np_fft.rfft
 
-from sounddevice import InputStream,OutputStream,query_devices,default as sd_default,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings,_initialize,_terminate
+from sounddevice import InputStream,OutputStream,query_devices,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings,_initialize,_terminate
 from threading import Thread
 
 from collections import deque
@@ -66,10 +66,10 @@ from json import dumps,loads
 
 import os
 from os import name as os_name, system, sep, environ
-from os.path import join as path_join, normpath,dirname,abspath
+from os.path import join as path_join,dirname,abspath
 
 import sys
-from sys import exit as sys_exit,argv
+from sys import exit as sys_exit
 
 from images import image
 Image_open=Image.open
@@ -171,7 +171,7 @@ plot_upper_margin=16
 
 vw,vh=0,0
 
-text_aura=tuple([(mx,my,True if mx==0 and my==0 else False) for mx in (-1,1,0) for my in (-1,1,0)])
+text_aura=tuple([(mx,my,bool(mx==0 and my==0)) for mx in (-1,1,0) for my in (-1,1,0)])
 
 exiting=False
 
@@ -244,7 +244,7 @@ def widget_tooltip(message,widget=None):
     if dpg.does_item_exist(tag):
         delete_item(tag)
 
-    with dpg.tooltip(widget, delay=0.3, tag=tag):
+    with tooltip(widget, delay=0.3, tag=tag):
         add_text(message)
 
 def slide_change(sender):
@@ -283,20 +283,73 @@ def on_viewport_resize(sender=None, app_data=None):
     console_visible_lines = int(floor((plot_height-xaxis_height-plot_upper_margin)/console_line_height))
     console_visible_chars = int(floor((plot_width-yaxis_width)/console_char_width))
 
-BG_SEMI = (128, 128, 128, 220)
-
-LIGHT_BG = (240, 240, 240, 255)
 LIGHT_BG_CONS = (240, 240, 240, 128)
-LIGHT_CHILD_BG = (255, 255, 255, 255)
-LIGHT_BORDER = (200, 200, 200, 255)
-LIGHT_FRAME = (230, 230, 230, 255)
-LIGHT_FRAME_HOVER = (200, 200, 255, 255)
-LIGHT_FRAME_ACTIVE = (180, 180, 255, 255)
-LIGHT_TEXT = (0, 0, 0, 255)
-LIGHT_BUTTON = LIGHT_BG #(210, 210, 210, 255)
-LIGHT_BUTTON_HOVER = (180, 180, 255, 255)
-LIGHT_BUTTON_ACTIVE = (150, 150, 255, 255)
-LIGHT_ACCENT = (150, 150, 150, 255)  # check, slider grab, etc.
+
+if False:
+    LIGHT_BG = (240, 240, 240, 255)
+    LIGHT_BG_CONS = (240, 240, 240, 128)
+    LIGHT_CHILD_BG = (255, 255, 255, 255)
+    LIGHT_BORDER = (200, 200, 200, 255)
+    LIGHT_FRAME = (230, 230, 230, 255)
+    LIGHT_FRAME_HOVER = (200, 200, 255, 255)
+    LIGHT_FRAME_ACTIVE = (180, 180, 255, 255)
+    LIGHT_TEXT = (0, 0, 0, 255)
+    LIGHT_BUTTON = LIGHT_BG
+    LIGHT_BUTTON_HOVER = (180, 180, 255, 255)
+    LIGHT_BUTTON_ACTIVE = (150, 150, 255, 255)
+    LIGHT_ACCENT = (150, 150, 150, 255)
+
+    LIGHT_BG = (235, 235, 235, 255)
+    LIGHT_BG_LIGHTER = (255, 255, 255, 200)
+    LIGHT_CHILD_BG = (245, 245, 248, 255)
+    LIGHT_BORDER = (200, 200, 200, 255)
+    LIGHT_FRAME = (220, 220, 225, 255)
+    LIGHT_FRAME_HOVER = (180, 200, 235, 255)
+    LIGHT_FRAME_ACTIVE = (160, 180, 230, 255)
+    LIGHT_TEXT = (30, 30, 30, 255)
+    LIGHT_BUTTON = LIGHT_BG
+    LIGHT_BUTTON_HOVER = (190, 210, 240, 255)
+    LIGHT_BUTTON_ACTIVE = (170, 190, 230, 255)
+    LIGHT_ACCENT = (120, 120, 120, 255)
+
+    LIGHT_BG = (248, 249, 252, 255)
+    LIGHT_BG_LIGHTER = (255, 255, 255, 220)
+    LIGHT_CHILD_BG = (240, 244, 250, 255)
+    LIGHT_BORDER = (210, 220, 235, 255)
+    LIGHT_FRAME = (230, 235, 245, 255)
+    LIGHT_FRAME_HOVER = (200, 220, 255, 255)
+    LIGHT_FRAME_ACTIVE = (180, 205, 245, 255)
+    LIGHT_TEXT = (25, 30, 40, 255)
+    LIGHT_BUTTON = (240, 244, 250, 255)
+    LIGHT_BUTTON_HOVER = (210, 230, 255, 255)
+    LIGHT_BUTTON_ACTIVE = (190, 215, 245, 255)
+    LIGHT_ACCENT = (100, 130, 200, 255)
+
+    LIGHT_BG = (255, 255, 255, 255)
+    LIGHT_BG_LIGHTER = (255, 255, 255, 255)
+    LIGHT_CHILD_BG = (245, 245, 245, 255)
+    LIGHT_BORDER = (180, 180, 180, 255)
+    LIGHT_FRAME = (230, 230, 230, 255)
+    LIGHT_FRAME_HOVER = (200, 220, 255, 255)
+    LIGHT_FRAME_ACTIVE = (170, 200, 255, 255)
+    LIGHT_TEXT = (0, 0, 0, 255)
+    LIGHT_BUTTON = (240, 240, 240, 255)
+    LIGHT_BUTTON_HOVER = (210, 225, 255, 255)
+    LIGHT_BUTTON_ACTIVE = (180, 210, 255, 255)
+    LIGHT_ACCENT = (80, 120, 200, 255)
+
+LIGHT_BG = (250, 248, 240, 255)
+LIGHT_BG_LIGHTER = (255, 253, 245, 220)
+LIGHT_CHILD_BG = (245, 242, 232, 255)
+LIGHT_BORDER = (210, 200, 180, 255)
+LIGHT_FRAME = (235, 230, 220, 255)
+LIGHT_FRAME_HOVER = (240, 220, 180, 255)
+LIGHT_FRAME_ACTIVE = (235, 210, 160, 255)
+LIGHT_TEXT = (40, 35, 25, 255)
+LIGHT_BUTTON = (245, 240, 230, 255)
+LIGHT_BUTTON_HOVER = (240, 220, 180, 255)
+LIGHT_BUTTON_ACTIVE = (230, 200, 150, 255)
+LIGHT_ACCENT = (180, 140, 90, 255)
 
 DARK_BG = (60, 60, 60, 255)
 DARK_BG_LIGHTER = (40, 40, 40, 128)
@@ -306,20 +359,13 @@ DARK_FRAME = (70, 70, 75, 255)
 DARK_FRAME_HOVER = (100, 100, 150, 255)
 DARK_FRAME_ACTIVE = (120, 120, 200, 255)
 DARK_TEXT = (255, 255, 255, 255)
-DARK_BUTTON = DARK_BG #(90, 90, 100, 255)
+DARK_BUTTON = DARK_BG
 DARK_BUTTON_HOVER = (120, 120, 180, 255)
 DARK_BUTTON_ACTIVE = (150, 150, 200, 255)
-#DARK_ACCENT = (150, 150, 200, 255)  # check, slider grab, etc.
-DARK_ACCENT = (150, 150, 150, 255)  # check, slider grab, etc.
+DARK_ACCENT = (150, 150, 150, 255)
 
-#LIGHT_TOOLTIP_BG = (210, 210, 0, 255)
 LIGHT_TOOLTIP_BG = (246, 246, 185, 255)
-#DARK_TOOLTIP_BG = (160, 160, 0, 255)
 DARK_TOOLTIP_BG = (236, 236, 175, 200)
-
-#with theme() as semi_bg_theme:
-#    with theme_component(dpg.mvAll):
-#        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, BG_SEMI)
 
 with theme() as white_text:
     with theme_component(dpg.mvAll):
@@ -383,6 +429,10 @@ with theme() as theme_light:
         dpg.add_theme_color(dpg.mvPlotCol_PlotBg, LIGHT_BG)
         dpg.add_theme_color(dpg.mvPlotCol_InlayText,LIGHT_TEXT,category=dpg.mvThemeCat_Plots)
 
+    with theme_component(dpg.mvShadeSeries):
+        dpg.add_theme_color(dpg.mvPlotCol_Fill,(150, 100, 100, 80),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(150, 100, 100, 80),category=dpg.mvThemeCat_Plots)
+
     #with theme_component(dpg.mvShadeSeries):
     #    dpg.add_theme_color(dpg.mvPlotCol_Fill,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
     #    dpg.add_theme_color(dpg.mvPlotCol_Line,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
@@ -395,7 +445,7 @@ with theme() as theme_light:
         #dpg.add_theme_color(dpg.mvThemeCol_SeparatorActive, (0, 0, 255, 255))
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0)
 
-    with theme_component(dpg.mvTooltip):
+    with theme_component(mvTooltip):
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
         dpg.add_theme_color(dpg.mvThemeCol_PopupBg,LIGHT_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
         dpg.add_theme_color(dpg.mvThemeCol_Border,LIGHT_TOOLTIP_BG, category=dpg.mvThemeCat_Core)
@@ -405,8 +455,6 @@ with theme() as theme_light:
 
 with theme() as theme_dark:
     with theme_component(dpg.mvAll):
-        #dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
-        #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
         dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
         dpg.add_theme_color(dpg.mvThemeCol_ChildBg, DARK_BG)
         dpg.add_theme_color(dpg.mvThemeCol_PopupBg, DARK_CHILD_BG)
@@ -446,7 +494,6 @@ with theme() as theme_dark:
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3)
 
     with theme_component(dpg.mvPlot):
-        #dpg.add_theme_color(dpg.mvPlotCol_PlotAreaBg, DARK_BG_LIGHTER)
         dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
         #dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
@@ -456,7 +503,7 @@ with theme() as theme_dark:
         dpg.add_theme_color(dpg.mvPlotCol_Fill,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_color(dpg.mvPlotCol_Line,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
 
-    with theme_component(dpg.mvTooltip):
+    with theme_component(mvTooltip):
         dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
         dpg.add_theme_color(dpg.mvThemeCol_PopupBg,LIGHT_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
         dpg.add_theme_color(dpg.mvThemeCol_Border,LIGHT_TOOLTIP_BG, category=dpg.mvThemeCat_Core)
@@ -464,35 +511,11 @@ with theme() as theme_dark:
         dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize,2,category=dpg.mvThemeCat_Core)
         dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,4)
 
-#with theme() as text_ok:
- #   with theme_component(dpg.mvText):
- #       dpg.add_theme_color(dpg.mvThemeCol_Text, (220, 220, 220))
-
-#with theme() as text_alert:
-#    with theme_component(dpg.mvText):
-#        dpg.add_theme_color(dpg.mvThemeCol_Text, (255, 90, 90))
-
-#with theme() as thick_line_theme:
-#    with theme_component(dpg.mvLineSeries):
-#        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,2.0,category=dpg.mvThemeCat_Plots)
-
-#with theme() as thin_line_theme:
-#    with theme_component(dpg.mvLineSeries):
-#        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
 with theme() as red_cursor_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 60, 60, 255),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-#with theme() as sel_track_core_theme:
-#    with theme_component(dpg.mvLineSeries):
-#        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 200, 100, 255),category=dpg.mvThemeCat_Plots)
-#        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
-#with theme() as sel_track_bg_theme:
-#    with theme_component(dpg.mvLineSeries):
-#        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 200, 10, 128),category=dpg.mvThemeCat_Plots)
-#        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,3.0,category=dpg.mvThemeCat_Plots)
 with theme() as track_bg_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Line,(128, 128, 128, 128),category=dpg.mvThemeCat_Plots)
@@ -511,12 +534,12 @@ with theme() as track_theme_bg_light:
 
 with theme() as fft_line_theme_light:
     with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(0, 0, 0, 130),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(0, 0, 0, 80),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
     with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Fill,(20, 20, 20, 30),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(0, 0, 0, 130),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Fill,(200, 200, 200, 80),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(200, 200, 200, 80),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
 
@@ -544,9 +567,8 @@ with theme() as fft_line_theme_dark:
 
     with theme_component(dpg.mvShadeSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Fill,(200, 200, 200, 30),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 130),category=dpg.mvThemeCat_Plots)
+        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 30),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
 
 with theme() as fft_line2_theme_dark:
     with theme_component(dpg.mvLineSeries):
@@ -706,7 +728,7 @@ def build_gui():
                                 add_table_column(width_fixed=True, init_width_or_weight=120)
 
                                 with table_row():
-                                    add_image_button(ico["refresh"],tag='sd_refresh',width=16,callback=sd_refresh_calllback); widget_tooltip('Re-Initialize SoundDevice module')
+                                    add_image_button(ico["refresh"],tag='sd_reinit',width=16,callback=sd_reinit_callback); widget_tooltip('Re-Initialize SoundDevice module')
                                     add_text(default_value='AUDIO INTERFACE')
 
                             dpg.add_separator()
@@ -730,7 +752,7 @@ def build_gui():
                                         add_table_column(width_fixed=True, init_width_or_weight=240,width=240)
 
                                         with table_row():
-                                            add_image_button(ico["refresh"],tag='out_refresh',width=16,callback=out_refresh_calllback); widget_tooltip('Re-Initialize Output Stream')
+                                            add_image_button(ico["refresh"],tag='out_reinit',width=16,callback=out_reinit_callback); widget_tooltip('Re-Initialize Output Stream')
                                             dpg.add_image(ico["out_off"],tag='out_status',width=16); widget_tooltip('Output Stream status')
                                             add_text(default_value='Output')
                                             add_slider_int(tag='amplitude',callback=amplitude_callback,max_value=100,min_value=0,default_value=cfg['amplitude'],format="%d",track_offset=0.5,width=150); widget_tooltip('Amplitude')
@@ -740,7 +762,7 @@ def build_gui():
                                         add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
                                         add_table_column(width_fixed=True, init_width_or_weight=80)
                                         with table_row():
-                                            add_image_button(ico["refresh"],tag='in_refresh',width=16,callback=in_refresh_calllback); widget_tooltip('Re-Initialize Input Stream')
+                                            add_image_button(ico["refresh"],tag='in_reinit',width=16,callback=in_reinit_callback); widget_tooltip('Re-Initialize Input Stream')
                                             dpg.add_image(ico["in_off"],tag='in_status',width=16); widget_tooltip('Input Stream status')
                                             add_text(default_value='Input')
 
@@ -894,9 +916,9 @@ def build_gui():
         add_text(tag='mark_text_6',default_value=title,show=False)
         add_text(tag='mark_text_7',default_value=title,show=False)
         add_text(tag='mark_text_8',default_value=title,show=False)
-        add_text(tag='mark_text',default_value=title,show=False);
+        add_text(tag='mark_text',default_value=title,show=False)
 
-        with dpg.handler_registry():
+        with handler_registry():
             add_mouse_click_handler(callback=click_callback)
             add_mouse_release_handler(callback=release_callback)
             add_mouse_wheel_handler(callback=wheel_callback)
@@ -913,7 +935,7 @@ else:
 if getattr(sys, 'frozen', False):
     EXECUTABLE_DIR_REAL = os.path.dirname(sys.executable)
 else:
-    EXECUTABLE_DIR_REAL = os.path.dirname(os.path.abspath(__file__))
+    EXECUTABLE_DIR_REAL = os.path.dirname(abspath(__file__))
 
 print(f'{EXECUTABLE_DIR=}')
 print(f'{EXECUTABLE_DIR_REAL=}')
@@ -1423,7 +1445,6 @@ def play_stop():
     lock_frequency=False
 
     bind_item_theme("cursor_f",green_line_theme)
-    #playing_state=0
 
     sweep_abort()
 
@@ -1596,8 +1617,8 @@ phase_step_x_phase_i = float64(0) * phase_i
 
 def out_blocksize_changed(sender=None, out_blocksize_str=None,user_data=False):
     l_info(f'out_blocksize_changed:{sender},{out_blocksize_str},{user_data}')
+
     play_stop()
-    out_stream_stop()
 
     cfg['out_blocksize']=out_blocksize_str
 
@@ -1611,17 +1632,6 @@ def out_blocksize_changed(sender=None, out_blocksize_str=None,user_data=False):
     if user_data:
         out_stream_init()
 
-def out_latency_changed(sender=None, app_data=None,user_data=False):
-    l_info(f'out_latency_changed:{sender},{app_data},{user_data}')
-    play_stop()
-    out_stream_stop()
-
-    val=cfg['out_latency']=get_value('out_latency')
-    cons_opt(f'Output latency:{val}')
-
-    if user_data:
-        out_stream_init()
-
 def in_blocksize_changed(sender=None, in_blocksize_str=None,user_data=False):
     l_info(f'in_blocksize_changed:{sender},{in_blocksize_str},{user_data}')
 
@@ -1631,31 +1641,53 @@ def in_blocksize_changed(sender=None, in_blocksize_str=None,user_data=False):
     if user_data:
         in_stream_init()
 
+def out_latency_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'out_latency_changed:{sender},{app_data},{user_data}')
+
+    play_stop()
+
+    val=cfg['out_latency']=get_value('out_latency')
+    cons_opt(f'Output latency:{val}')
+
+
+    if user_data:
+        out_stream_init()
+
 def in_latency_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_latency_changed:{sender},{app_data},{user_data}')
 
     val=cfg['in_latency']=get_value('in_latency')
     cons_opt(f'Input latency:{val}')
+
     if user_data:
         in_stream_init()
 
 def out_channel_changed(sender=None, app_data=None,user_data=False):
     l_info(f'out_channel_changed:{sender},{app_data},{user_data}')
 
+    play_stop()
+
     val=cfg['out_channel']=get_value('out_channel')
     cons_opt(f'Output channell:{val}')
 
-    play_stop()
-    out_stream_stop()
-
     if user_data:
         out_stream_init()
+
+in_channel_buffer_mod_index=0
+
+def in_channel_changed(sender=None, app_data=None,user_data=False):
+    l_info(f'in_channel_changed:{sender},{app_data},{user_data}')
+
+    val=cfg['in_channel']=get_value('in_channel')
+    cons_opt(f'Input channell:{val}')
+
+    if user_data:
+        in_stream_init()
 
 def out_samplerate_changed(sender=None, app_data=None,user_data=False):
     l_info(f'out_samplerate_changed:{sender},{app_data},{user_data}')
 
     play_stop()
-    out_stream_stop()
 
     val=cfg['out_samplerate']=get_value('out_samplerate')
     cons_opt(f'Output samplerate:{val}')
@@ -1671,9 +1703,6 @@ def out_samplerate_changed(sender=None, app_data=None,user_data=False):
 def in_samplerate_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_samplerate_changed:{sender},{app_data},{user_data}')
 
-    play_stop()
-    stream_in.stop()
-
     val=cfg['in_samplerate']=get_value('in_samplerate')
     cons_opt(f'Input samplerate:{val}')
 
@@ -1685,6 +1714,13 @@ def out_stream_stop():
     if stream_out:
         stream_out.stop()
         cons_info('OutputStream stop.')
+        sleep(0.2)
+
+def in_stream_stop():
+    if stream_in:
+        stream_in.stop()
+        cons_info('InputStream stop.')
+        sleep(0.2)
 
 def latency_for_stream(latency):
     if latency=='default':
@@ -1696,9 +1732,12 @@ def out_stream_init():
     configure_item('out_status',texture_tag=ico['out_off'])
     global stream_out,device_out_current,out_channel_buffer_mod_index
 
+    out_stream_stop()
+
     if stream_out:
-        stream_out.stop()
         stream_out.close()
+        cons_info('OutputStream closed.')
+        sleep(0.1)
 
     if cfg['out_wasapi_exclusive'] and cfg['out_api'] == 'Windows WASAPI':
         extra_settings=WasapiSettings(exclusive=True)
@@ -1726,10 +1765,8 @@ def out_stream_init():
 
     cons_const('')
     dev_name=cfg["out_dev"]
-    if extra_settings:
-        cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n {extra_settings=}')
-    else:
-        cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n')
+
+    cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}')
 
     try:
         stream_out = OutputStream(callback=audio_output_callback, extra_settings=extra_settings,
@@ -1738,9 +1775,9 @@ def out_stream_init():
             samplerate=samplerate,
             latency=latency,
             blocksize=blocksize,
-            channels=channels,
-            dither_off=True
+            channels=channels
         )
+        #dither_off=True
 
         cons_const('init done.\nStarting output stream...')
         stream_out.start()
@@ -1748,27 +1785,15 @@ def out_stream_init():
     except Exception as e:
         cons_err(f'OutputStream init error:{e}')
 
-in_channel_buffer_mod_index=0
-
-def in_channel_changed(sender=None, app_data=None,user_data=False):
-    l_info(f'in_channel_changed:{sender},{app_data},{user_data}')
-
-    val=cfg['in_channel']=get_value('in_channel')
-    cons_opt(f'Input channell:{val}')
-
-    if stream_in:
-        stream_in.stop()
-
-    if user_data:
-        in_stream_init()
-
 def in_stream_init():
     configure_item('in_status',texture_tag=ico['in_off'])
     global stream_in,device_in_current,in_channel_buffer_mod_index
 
+    in_stream_stop()
     if stream_in:
-        stream_in.stop()
         stream_in.close()
+        cons_info('InputStream closed.')
+        sleep(0.1)
 
     if cfg['in_wasapi_exclusive'] and cfg['in_api'] == 'Windows WASAPI':
         extra_settings=WasapiSettings(exclusive=True)
@@ -1793,7 +1818,7 @@ def in_stream_init():
 
     cons_const('')
     dev_name=cfg["in_dev"]
-    cons_const(f'InputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}\n  {extra_settings=}')
+    cons_const(f'InputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}')
 
     try:
         stream_in = InputStream(callback=audio_input_callback, extra_settings=extra_settings,
@@ -1801,9 +1826,9 @@ def in_stream_init():
             samplerate=samplerate,
             latency=latency,
             blocksize=blocksize,
-            channels=channels,
-            dither_off=True
+            channels=channels
         )
+        #dither_off=True
         cons_const('init done.\nStarting input stream...')
         stream_in.start()
         configure_item('in_status',texture_tag=ico['in_on'])
@@ -2890,13 +2915,13 @@ def help_callback():
 
     next_debug=0
 
-def in_refresh_calllback():
+def in_reinit_callback():
     in_stream_init()
 
-def out_refresh_calllback():
+def out_reinit_callback():
     out_stream_init()
 
-def sd_refresh_calllback():
+def sd_reinit_callback():
     cons_info('Terminating...')
 
     try:
@@ -2909,6 +2934,8 @@ def sd_refresh_calllback():
         _initialize()
     except Exception as i_e:
         cons_err(f'error:{i_e}')
+
+    refresh_devices()
 
     in_stream_init()
     out_stream_init()
@@ -3571,8 +3598,9 @@ out_stream_stop()
 
 exiting=True
 
+in_stream_stop()
+
 if stream_in:
-    stream_in.stop()
     stream_in.close()
 
 with open(cfg_file, "w", encoding="utf-8") as f:
