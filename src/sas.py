@@ -173,7 +173,7 @@ plot_upper_margin=16
 
 vw,vh=0,0
 
-text_aura=tuple([(mx,my,bool(mx==0 and my==0)) for mx in (-1,1,0) for my in (-1,1,0)])
+theme_text_aura=tuple([(mx,my,bool(mx==0 and my==0)) for mx in (-1,1,0) for my in (-1,1,0)])
 
 exiting=False
 
@@ -285,324 +285,211 @@ def on_viewport_resize(sender=None, app_data=None):
     console_visible_lines = int(floor((plot_height-xaxis_height-plot_upper_margin)/console_line_height))
     console_visible_chars = int(floor((plot_width-yaxis_width)/console_char_width))
 
-LIGHT_BG_CONS = (240, 240, 240, 128)
+COLORS={0:{},1:{}}
 
-if False:
-    LIGHT_BG = (240, 240, 240, 255)
-    LIGHT_BG_CONS = (240, 240, 240, 128)
-    LIGHT_CHILD_BG = (255, 255, 255, 255)
-    LIGHT_BORDER = (200, 200, 200, 255)
-    LIGHT_FRAME = (230, 230, 230, 255)
-    LIGHT_FRAME_HOVER = (200, 200, 255, 255)
-    LIGHT_FRAME_ACTIVE = (180, 180, 255, 255)
-    LIGHT_TEXT = (0, 0, 0, 255)
-    LIGHT_BUTTON = LIGHT_BG
-    LIGHT_BUTTON_HOVER = (180, 180, 255, 255)
-    LIGHT_BUTTON_ACTIVE = (150, 150, 255, 255)
-    LIGHT_ACCENT = (150, 150, 150, 255)
+COLORS[0]['BG'] = (250, 248, 240, 255)
+COLORS[0]['BG_LIGHTER'] = (255, 253, 245, 220)
+COLORS[0]['CHILD_BG'] = (245, 242, 232, 255)
+COLORS[0]['BORDER'] = (210, 200, 180, 255)
+COLORS[0]['FRAME'] = (235, 230, 220, 255)
+COLORS[0]['FRAME_HOVER'] = (240, 220, 180, 255)
+COLORS[0]['FRAME_ACTIVE'] = (235, 210, 160, 255)
 
-    LIGHT_BG = (235, 235, 235, 255)
-    LIGHT_BG_LIGHTER = (255, 255, 255, 200)
-    LIGHT_CHILD_BG = (245, 245, 248, 255)
-    LIGHT_BORDER = (200, 200, 200, 255)
-    LIGHT_FRAME = (220, 220, 225, 255)
-    LIGHT_FRAME_HOVER = (180, 200, 235, 255)
-    LIGHT_FRAME_ACTIVE = (160, 180, 230, 255)
-    LIGHT_TEXT = (30, 30, 30, 255)
-    LIGHT_BUTTON = LIGHT_BG
-    LIGHT_BUTTON_HOVER = (190, 210, 240, 255)
-    LIGHT_BUTTON_ACTIVE = (170, 190, 230, 255)
-    LIGHT_ACCENT = (120, 120, 120, 255)
+COLORS[0]['TEXT'] = (40, 35, 25, 255)
+COLORS[0]['TEXT_AURA'] = (255,255,255, 255)
+COLORS[0]['TEXT_PEAKS'] = (40, 35, 25, 150)
+COLORS[0]['BUTTON'] = (245, 240, 230, 255)
+COLORS[0]['BUTTON_HOVER'] = (240, 220, 180, 255)
+COLORS[0]['BUTTON_ACTIVE'] = (230, 200, 150, 255)
+COLORS[0]['ACCENT'] = (180, 140, 90, 255)
 
-    LIGHT_BG = (248, 249, 252, 255)
-    LIGHT_BG_LIGHTER = (255, 255, 255, 220)
-    LIGHT_CHILD_BG = (240, 244, 250, 255)
-    LIGHT_BORDER = (210, 220, 235, 255)
-    LIGHT_FRAME = (230, 235, 245, 255)
-    LIGHT_FRAME_HOVER = (200, 220, 255, 255)
-    LIGHT_FRAME_ACTIVE = (180, 205, 245, 255)
-    LIGHT_TEXT = (25, 30, 40, 255)
-    LIGHT_BUTTON = (240, 244, 250, 255)
-    LIGHT_BUTTON_HOVER = (210, 230, 255, 255)
-    LIGHT_BUTTON_ACTIVE = (190, 215, 245, 255)
-    LIGHT_ACCENT = (100, 130, 200, 255)
+COLORS[0]['TOOLTIP_BG'] = (246, 246, 185, 255)
+COLORS[0]['TOOLTIP_TEXT'] = (40, 35, 25, 255)
 
-    LIGHT_BG = (255, 255, 255, 255)
-    LIGHT_BG_LIGHTER = (255, 255, 255, 255)
-    LIGHT_CHILD_BG = (245, 245, 245, 255)
-    LIGHT_BORDER = (180, 180, 180, 255)
-    LIGHT_FRAME = (230, 230, 230, 255)
-    LIGHT_FRAME_HOVER = (200, 220, 255, 255)
-    LIGHT_FRAME_ACTIVE = (170, 200, 255, 255)
-    LIGHT_TEXT = (0, 0, 0, 255)
-    LIGHT_BUTTON = (240, 240, 240, 255)
-    LIGHT_BUTTON_HOVER = (210, 225, 255, 255)
-    LIGHT_BUTTON_ACTIVE = (180, 210, 255, 255)
-    LIGHT_ACCENT = (80, 120, 200, 255)
+COLORS[0]['TRACK_CORE'] = (128, 128, 128, 128)
+COLORS[0]['TRACK_BG'] = (128, 128, 128, 128)
+COLORS[0]['TRACK_RECORDED_CORE'] = (255, 110, 40, 255)
+COLORS[0]['TRACK_RECORDED_BG'] = (255,200,200,40)
+COLORS[0]['FFT_LINE'] = (0, 0, 0, 80)
+COLORS[0]['FFT_LINE_AVG'] = (0, 0, 0, 40)
+COLORS[0]['FFT_LINE2'] = (245, 245, 245, 100)
+COLORS[0]['FFT_FILL'] = (170, 170, 150, 50)
+COLORS[0]['FFT_FILL_LINE'] = (180, 180, 180, 150)
 
-LIGHT_BG = (250, 248, 240, 255)
-LIGHT_BG_LIGHTER = (255, 253, 245, 220)
-LIGHT_CHILD_BG = (245, 242, 232, 255)
-LIGHT_BORDER = (210, 200, 180, 255)
-LIGHT_FRAME = (235, 230, 220, 255)
-LIGHT_FRAME_HOVER = (240, 220, 180, 255)
-LIGHT_FRAME_ACTIVE = (235, 210, 160, 255)
-LIGHT_TEXT = (40, 35, 25, 255)
-LIGHT_BUTTON = (245, 240, 230, 255)
-LIGHT_BUTTON_HOVER = (240, 220, 180, 255)
-LIGHT_BUTTON_ACTIVE = (230, 200, 150, 255)
-LIGHT_ACCENT = (180, 140, 90, 255)
+COLORS[0]['BG_CONS'] = (255, 255, 255, 50)
+COLORS[0]['CONS_INFO'] = (0,40,0,255)
+COLORS[0]['CONS_WARN'] = (0,40,0,255)
+COLORS[0]['CONS_ERR'] = (255,20,20,255)
+COLORS[0]['CONS_CONST'] = (0,40,0,255)
+COLORS[0]['CONS_OPT'] = (0,40,0,255)
 
-DARK_BG = (60, 60, 60, 255)
-DARK_BG_LIGHTER = (40, 40, 40, 128)
-DARK_CHILD_BG = (60, 60, 65, 255)
-DARK_BORDER = (90, 90, 90, 255)
-DARK_FRAME = (70, 70, 75, 255)
-DARK_FRAME_HOVER = (100, 100, 150, 255)
-DARK_FRAME_ACTIVE = (120, 120, 200, 255)
-DARK_TEXT = (255, 255, 255, 255)
-DARK_BUTTON = DARK_BG
-DARK_BUTTON_HOVER = (120, 120, 180, 255)
-DARK_BUTTON_ACTIVE = (150, 150, 200, 255)
-DARK_ACCENT = (150, 150, 150, 255)
+COLORS[1]['BG'] = (60, 60, 60, 255)
+COLORS[1]['BG_LIGHTER'] = (40, 40, 40, 128)
+COLORS[1]['CHILD_BG'] = (60, 60, 65, 255)
+COLORS[1]['BORDER'] = (90, 90, 90, 255)
+COLORS[1]['FRAME'] = (70, 70, 75, 255)
+COLORS[1]['FRAME_HOVER'] = (100, 100, 150, 255)
+COLORS[1]['FRAME_ACTIVE'] = (120, 120, 200, 255)
 
-LIGHT_TOOLTIP_BG = (246, 246, 185, 255)
-DARK_TOOLTIP_BG = (236, 236, 175, 200)
+COLORS[1]['TEXT'] = (255, 255, 255, 255)
+COLORS[1]['TEXT_AURA'] = (0,0,0, 255)
+COLORS[1]['TEXT_PEAKS'] = (255,255,255, 150)
+COLORS[1]['BUTTON'] = COLORS[1]['BG']
+COLORS[1]['BUTTON_HOVER'] = (120, 120, 180, 255)
+COLORS[1]['BUTTON_ACTIVE'] = (150, 150, 200, 255)
+COLORS[1]['ACCENT'] = (150, 150, 150, 255)
 
-with theme() as white_text:
-    with theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvThemeCol_Text, DARK_TEXT)
+COLORS[1]['TOOLTIP_BG'] = (246, 246, 185, 255)
+COLORS[1]['TOOLTIP_TEXT'] = (40, 35, 25, 255)
 
-with theme() as black_text:
-    with theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
+COLORS[1]['TRACK_CORE'] = (128, 128, 128, 128)
+COLORS[1]['TRACK_BG'] = (128, 128, 128, 128)
+COLORS[1]['TRACK_RECORDED_CORE'] = (255, 160, 100, 255)
+COLORS[1]['TRACK_RECORDED_BG'] = (200,100, 0, 20)
+COLORS[1]['FFT_LINE'] = (255, 255, 255, 130)
+COLORS[1]['FFT_LINE_AVG'] = (255, 255, 255, 40)
+COLORS[1]['FFT_LINE2'] = (10, 10, 10, 100)
+COLORS[1]['FFT_FILL'] = (200, 200, 200, 30)
+COLORS[1]['FFT_FILL_LINE'] = (200, 200, 200, 100)
 
-with dpg.theme() as theme_black_text:
-    with dpg.theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvPlotCol_InlayText,DARK_TEXT,category=dpg.mvThemeCat_Plots)
+COLORS[1]['BG_CONS'] = (60, 60, 60, 255)
+COLORS[1]['CONS_INFO'] = (200,235,200,255)
+COLORS[1]['CONS_WARN'] = (200,235,235,255)
+COLORS[1]['CONS_ERR'] = (255,170,170,255)
+COLORS[1]['CONS_CONST'] = (200,235,200,255)
+COLORS[1]['CONS_OPT'] = (200,235,200,255)
 
-with dpg.theme() as theme_white_text:
-    with dpg.theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvPlotCol_InlayText,LIGHT_TEXT,category=dpg.mvThemeCat_Plots)
+TI=1
 
-with theme() as theme_light:
-    with theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, LIGHT_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, LIGHT_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_PopupBg, LIGHT_CHILD_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_Border, LIGHT_BORDER)
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, LIGHT_FRAME)
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, LIGHT_FRAME_HOVER)
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, LIGHT_FRAME_ACTIVE)
-        dpg.add_theme_color(dpg.mvThemeCol_Separator, LIGHT_BORDER)
+themes_indexes=(0,1)
+themes={}
 
-        dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
-        dpg.add_theme_color(dpg.mvThemeCol_Button, LIGHT_BUTTON)
-        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, LIGHT_BUTTON_HOVER)
-        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, LIGHT_BUTTON_ACTIVE)
+for ti in themes_indexes:
+    themes[ti]={}
 
-        dpg.add_theme_color(dpg.mvThemeCol_CheckMark, LIGHT_ACCENT)
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, LIGHT_ACCENT)
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, LIGHT_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_Header, LIGHT_FRAME)
-        dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, LIGHT_FRAME_HOVER)
-        dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, LIGHT_FRAME_ACTIVE)
+    with theme() as theme_temp:
+        themes[ti]['text_main']=theme_temp
+        with theme_component(dpg.mvAll):
+            dpg.add_theme_color(dpg.mvThemeCol_Text, COLORS[ti]['TEXT'])
+        with theme_component(dpg.mvPlot):
+            #dpg.add_theme_color(dpg.mvPlotCol_PlotBg, COLORS[ti]['BG_LIGHTER'])
+            dpg.add_theme_color(dpg.mvPlotCol_InlayText,COLORS[ti]['TEXT'],category=dpg.mvThemeCat_Plots)
 
-        #dpg.add_theme_color(dpg.mvThemeCol_Tab, LIGHT_FRAME)
-        #dpg.add_theme_color(dpg.mvThemeCol_TabHovered, LIGHT_FRAME_HOVER)
-        #dpg.add_theme_color(dpg.mvThemeCol_TabActive, LIGHT_FRAME_ACTIVE)
-        #dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused, LIGHT_FRAME)
-        #dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive, LIGHT_FRAME_HOVER)
+    with theme() as theme_temp:
+        themes[ti]['text_aura']=theme_temp
+        with theme_component(dpg.mvAll):
+            dpg.add_theme_color(dpg.mvThemeCol_Text, COLORS[ti]['TEXT_AURA'])
 
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
-        #dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
-        #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 2, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 2, category=dpg.mvThemeCat_Core)
+    with theme() as theme_temp:
+        themes[ti]['track_core']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['TRACK_CORE'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
-    #with theme_component(dpg.mvTable):
-    #    dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0)
-    with theme_component(dpg.mvChildWindow):
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3)
+    with theme() as theme_temp:
+        themes[ti]['track_bg']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['TRACK_BG'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,3.0,category=dpg.mvThemeCat_Plots)
 
-    with theme_component(dpg.mvPlot):
-        dpg.add_theme_color(dpg.mvPlotCol_PlotBg, LIGHT_BG)
-        dpg.add_theme_color(dpg.mvPlotCol_InlayText,LIGHT_TEXT,category=dpg.mvThemeCat_Plots)
+    with theme() as theme_temp:
+        themes[ti]['track_recorded_core']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['TRACK_RECORDED_CORE'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
-    with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Fill,(150, 100, 100, 80),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(150, 100, 100, 80),category=dpg.mvThemeCat_Plots)
+    with theme() as theme_temp:
+        themes[ti]['track_recorded_bg']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['TRACK_RECORDED_BG'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
 
-    #with theme_component(dpg.mvShadeSeries):
-    #    dpg.add_theme_color(dpg.mvPlotCol_Fill,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
-    #    dpg.add_theme_color(dpg.mvPlotCol_Line,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
+    with theme() as theme_temp:
+        themes[ti]['fft_line']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['FFT_LINE'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
-    with theme_component(dpg.mvTable):
-        #dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, (50,50,60,255))
-        #dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt, (40,40,45,255))
-        #dpg.add_theme_color(dpg.mvThemeCol_Separator, (255, 0, 0, 255))
-        #dpg.add_theme_color(dpg.mvThemeCol_SeparatorHovered, (0, 255, 0, 255))
-        #dpg.add_theme_color(dpg.mvThemeCol_SeparatorActive, (0, 0, 255, 255))
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0)
+    with theme() as theme_temp:
+        themes[ti]['fft_line_fill']=theme_temp
+        with theme_component(dpg.mvShadeSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Fill,COLORS[ti]['FFT_FILL'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
-    with theme_component(mvTooltip):
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_PopupBg,LIGHT_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_Border,LIGHT_TOOLTIP_BG, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
-        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize,2,category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,4)
+    with theme() as theme_temp:
+        themes[ti]['fft_line_with_fill']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['FFT_FILL_LINE'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
-with theme() as theme_dark:
-    with theme_component(dpg.mvAll):
-        dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_ChildBg, DARK_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_PopupBg, DARK_CHILD_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_Border, DARK_BORDER)
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, DARK_FRAME)
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, DARK_FRAME_HOVER)
-        dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, DARK_FRAME_ACTIVE)
+    with theme() as theme_temp:
+        themes[ti]['fft_line2']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['FFT_LINE2'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
 
-        dpg.add_theme_color(dpg.mvThemeCol_Text, DARK_TEXT)
-        dpg.add_theme_color(dpg.mvThemeCol_Button, DARK_BUTTON)
-        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, DARK_BUTTON_HOVER)
-        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, DARK_BUTTON_ACTIVE)
+    with theme() as theme_temp:
+        themes[ti]['main']=theme_temp
+        with theme_component(dpg.mvAll):
+            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, COLORS[ti]['BG'])
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, COLORS[ti]['BG'])
+            dpg.add_theme_color(dpg.mvThemeCol_PopupBg, COLORS[ti]['CHILD_BG'])
+            dpg.add_theme_color(dpg.mvThemeCol_Border, COLORS[ti]['BORDER'])
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, COLORS[ti]['FRAME'])
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, COLORS[ti]['FRAME_HOVER'])
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, COLORS[ti]['FRAME_ACTIVE'])
 
-        dpg.add_theme_color(dpg.mvThemeCol_CheckMark, DARK_ACCENT)
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, DARK_ACCENT)
-        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, DARK_BG)
-        dpg.add_theme_color(dpg.mvThemeCol_Header, DARK_FRAME)
-        dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, DARK_FRAME_HOVER)
-        dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, DARK_FRAME_ACTIVE)
+            dpg.add_theme_color(dpg.mvThemeCol_Text, COLORS[ti]['TEXT'])
+            dpg.add_theme_color(dpg.mvThemeCol_Button, COLORS[ti]['BUTTON'])
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, COLORS[ti]['BUTTON_HOVER'])
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, COLORS[ti]['BUTTON_ACTIVE'])
 
-        dpg.add_theme_color(dpg.mvThemeCol_Tab, DARK_FRAME)
-        dpg.add_theme_color(dpg.mvThemeCol_TabHovered, DARK_FRAME_HOVER)
-        dpg.add_theme_color(dpg.mvThemeCol_TabActive, DARK_FRAME_ACTIVE)
-        dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused, DARK_FRAME)
-        dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive, DARK_FRAME_HOVER)
+            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, COLORS[ti]['ACCENT'])
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, COLORS[ti]['ACCENT'])
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, COLORS[ti]['BG'])
+            dpg.add_theme_color(dpg.mvThemeCol_Header, COLORS[ti]['FRAME'])
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, COLORS[ti]['FRAME_HOVER'])
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, COLORS[ti]['FRAME_ACTIVE'])
 
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
-        #4dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
-        #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 2, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 2, category=dpg.mvThemeCat_Core)
+            dpg.add_theme_color(dpg.mvThemeCol_Tab, COLORS[ti]['FRAME'])
+            dpg.add_theme_color(dpg.mvThemeCol_TabHovered, COLORS[ti]['FRAME_HOVER'])
+            dpg.add_theme_color(dpg.mvThemeCol_TabActive, COLORS[ti]['FRAME_ACTIVE'])
+            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused, COLORS[ti]['FRAME'])
+            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive, COLORS[ti]['FRAME_HOVER'])
 
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 0, 0, category=dpg.mvThemeCat_Core)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 0, 0, category=dpg.mvThemeCat_Core)
+            #4dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 2, 2, category=dpg.mvThemeCat_Core)
+            #dpg.add_theme_style(dpg.mvStyleVar_CellPadding, 0, 0, category=dpg.mvThemeCat_Core)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 2, category=dpg.mvThemeCat_Core)
+            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 2, category=dpg.mvThemeCat_Core)
 
-    with theme_component(dpg.mvChildWindow):
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3)
+        with theme_component(dpg.mvChildWindow):
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3)
 
-    with theme_component(dpg.mvPlot):
-        dpg.add_theme_color(dpg.mvPlotCol_PlotBg, DARK_BG_LIGHTER)
-        #dpg.add_theme_color(dpg.mvPlotCol_FrameBg, DARK_BG_LIGHTER)
-        #dpg.add_theme_color(dpg.mvThemeCol_WindowBg, DARK_BG)
-        dpg.add_theme_color(dpg.mvPlotCol_InlayText,DARK_TEXT,category=dpg.mvThemeCat_Plots)
+        with theme_component(dpg.mvPlot):
+            dpg.add_theme_color(dpg.mvPlotCol_PlotBg, COLORS[ti]['BG_LIGHTER'])
+            dpg.add_theme_color(dpg.mvPlotCol_InlayText,COLORS[ti]['TEXT_PEAKS'],category=dpg.mvThemeCat_Plots)
 
-    with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Fill,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(100, 150, 255, 80),category=dpg.mvThemeCat_Plots)
+        with theme_component(mvTooltip):
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
+            dpg.add_theme_color(dpg.mvThemeCol_PopupBg,COLORS[ti]['TOOLTIP_BG'],category=dpg.mvThemeCat_Core)
+            dpg.add_theme_color(dpg.mvThemeCol_Border,COLORS[ti]['TOOLTIP_BG'], category=dpg.mvThemeCat_Core)
+            dpg.add_theme_color(dpg.mvThemeCol_Text, COLORS[ti]['TOOLTIP_TEXT'])
+            dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize,2,category=dpg.mvThemeCat_Core)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,4)
 
-    with theme_component(mvTooltip):
-        dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 3, 3, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_PopupBg,LIGHT_TOOLTIP_BG,category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_Border,LIGHT_TOOLTIP_BG, category=dpg.mvThemeCat_Core)
-        dpg.add_theme_color(dpg.mvThemeCol_Text, LIGHT_TEXT)
-        dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize,2,category=dpg.mvThemeCat_Core)
-        dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,4)
+    with theme() as theme_temp:
+        themes[ti]['fft_avg_line_theme']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['FFT_LINE_AVG'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
 
 with theme() as red_cursor_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 60, 60, 255),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as track_bg_theme:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(128, 128, 128, 128),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,3.0,category=dpg.mvThemeCat_Plots)
-
-########################
-with theme() as track_theme_light:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 0, 255),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as track_theme_bg_light:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(190, 250, 250, 100),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,5.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as fft_line_theme_light:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(0, 0, 0, 80),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-    with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Fill,(200, 200, 200, 80),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(200, 200, 200, 80),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-
-with theme() as fft_line2_theme_light:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(245, 245, 245, 100),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,5.0,category=dpg.mvThemeCat_Plots)
-########################
-
-########################
-with theme() as track_theme_dark:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 130),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as track_theme_bg_dark:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(60, 10, 10, 100),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as fft_line_theme_dark:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 130),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-    with theme_component(dpg.mvShadeSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Fill,(200, 200, 200, 30),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 255, 255, 30),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as fft_line2_theme_dark:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(10, 10, 10, 100),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,5.0,category=dpg.mvThemeCat_Plots)
-########################
-
-with theme() as track_core_theme:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(128, 128, 128, 128),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as track_recorded_core_theme_dark:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 160, 100, 255),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as track_recorded_bg_theme_dark:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(100,0, 0, 60),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as track_recorded_core_theme_light:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(255, 110, 40, 255),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
-
-with theme() as track_recorded_bg_theme_light:
-    with theme_component(dpg.mvLineSeries):
-        dpg.add_theme_color(dpg.mvPlotCol_Line,(200,100, 0, 20),category=dpg.mvThemeCat_Plots)
-        dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
-########################
 
 with theme() as green_line_theme:
     with theme_component(dpg.mvLineSeries):
@@ -613,6 +500,7 @@ with theme() as grid_line_theme:
     with theme_component(dpg.mvLineSeries):
         dpg.add_theme_color(dpg.mvPlotCol_Line,(128, 128, 128, 128),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
+
 
 ###################################################
 def build_gui():
@@ -666,8 +554,8 @@ def build_gui():
                         xticks = (('',10),("20Hz",20),('',30),('',40),('',50),('',60),('',70),('',80),('',90), ("100Hz",100),
                             ('',200),('',300),('',400),('',500),('',600),('',700),('',800),('',900),("1kHz",1000),
                             ("",2000),("",3000),("",4000),("",5000),("",6000),("",7000),("",8000),("",9000),("10kHz",10000),("20kHz",20000))
-                        add_plot_annotation(tag='cursor_f_txt',label='',parent='y_axis',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
-                        add_plot_annotation(tag='cursor_db_txt',label='',parent='y_axis',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
+                        add_plot_annotation(tag='cursor_f_txt',label='',default_value=(10, -5), color=(0, 0, 0, 0), offset=(5,0))
+                        add_plot_annotation(tag='cursor_db_txt',label='',default_value=(100, -30), color=(0, 0, 0, 0), offset=(0,0))
 
                         with dpg.plot_axis(dpg.mvXAxis, tag='x_axis',no_highlight=True) as xaxis:
                             configure_item(dpg.last_item(),scale=dpg.mvPlotScale_Log10)
@@ -885,8 +773,8 @@ def build_gui():
                                         add_checkbox(tag='decorated',label='Decorate',callback=decorated_callback,default_value=cfg['decorated']); widget_tooltip('Restore default window decorations.\nUse if you experience problems with\ndragging or resizing the main window.\n(Requires application restart)')
                                         with group(horizontal=True):
                                             add_text(default_value='Theme:')
-                                            add_image_button(ico["light"],callback=theme_light_callback,width=16); widget_tooltip("Light theme\n\nkey:L")
-                                            add_image_button(ico["dark"],callback=theme_dark_callback,width=16); widget_tooltip("Dark theme\n\nkey:D")
+                                            add_image_button(ico["light"],callback=lambda : theme_callback(0),width=16); widget_tooltip("Light theme\n\nkey:L")
+                                            add_image_button(ico["dark"],callback=lambda : theme_callback(1),width=16); widget_tooltip("Dark theme\n\nkey:D")
                                         add_spacer(width=100)
                                     with group():
                                         add_checkbox(tag='pause',label='Pause',callback=pause_callback,default_value=False); widget_tooltip('key: Space')
@@ -983,7 +871,7 @@ except Exception as e:
 
 tracks=8
 
-cfg.setdefault('theme','dark')
+cfg.setdefault('theme',1)
 cfg.setdefault('track_buckets',256)
 cfg.setdefault('viewport_pos',None)
 cfg.setdefault('settings',False)
@@ -2030,20 +1918,17 @@ def refresh_tracks():
         if track==int(cfg['recorded']):
             configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_sel"])
 
-            if DARK_THEME:
-                bind_item_theme(f"track{track}_bg",track_recorded_bg_theme_dark)
-                bind_item_theme(f"track{track}",track_recorded_core_theme_dark)
-            else:
-                bind_item_theme(f"track{track}_bg",track_recorded_bg_theme_light)
-                bind_item_theme(f"track{track}",track_recorded_core_theme_light)
+            bind_item_theme(f"track{track}_bg",themes[TI]['track_recorded_bg'])
+            bind_item_theme(f"track{track}",themes[TI]['track_recorded_core'])
 
             configure_item(f"track{track}_bg",show=True)
             configure_item(f"track{track}",show=True)
+
         elif cfg['show_track'][track]:
             configure_item(f'showcheck{track}',texture_tag=ico[f"{track+1}_on"])
 
-            bind_item_theme(f"track{track}_bg",track_bg_theme)
-            bind_item_theme(f"track{track}",track_core_theme)
+            bind_item_theme(f"track{track}_bg",themes[TI]['track_bg'])
+            bind_item_theme(f"track{track}",themes[TI]['track_core'])
 
             configure_item(f"track{track}_bg",show=True)
             configure_item(f"track{track}",show=True)
@@ -2052,6 +1937,10 @@ def refresh_tracks():
 
             configure_item(f"track{track}_bg",show=False)
             configure_item(f"track{track}",show=False)
+
+    track=int(cfg['recorded'])
+    if track!=-1:
+        move_item(f"track{track}",parent="y_axis")
 
     redraw_recorded_track_line=True
 
@@ -2694,9 +2583,9 @@ def key_press_callback(sender, app_data):
         set_value('debug',(True,False)[get_value('debug')])
         debug_callback()
     elif app_data==dpg.mvKey_L:
-        theme_light_callback()
+        theme_callback(0)
     elif app_data==dpg.mvKey_D:
-        theme_dark_callback()
+        theme_callback(1)
     elif app_data==dpg.mvKey_S:
         save_image()
     elif app_data==dpg.mvKey_C:
@@ -2727,92 +2616,56 @@ def key_press_callback(sender, app_data):
         #print(app_data)
         pass
 
-def theme_light_callback():
-    l_info('theme_light_callback')
-    dpg.bind_theme(theme_light)
+def theme_callback(ti):
+    global TI
+    TI=ti
 
-    bind_item_theme("fft_line2",fft_line2_theme_light)
-    bind_item_theme("fft_line",fft_line_theme_light)
+    l_info(f'theme_callback:{TI}')
+    dpg.bind_theme(themes[TI]['main'])
 
-    bind_item_theme("fft_line_shade",fft_line_theme_light)
+    bind_item_theme("fft_line_shade",themes[TI]['fft_line_fill'])
+    bind_item_theme("fft_line2",themes[TI]['fft_line2'])
+    bind_item_theme("fft_line",themes[TI]['fft_line_with_fill' if FFT_FILL else 'fft_line'])
 
-    for track in range(tracks):
-        bind_item_theme(f"track{track}_bg",track_theme_bg_light)
-        bind_item_theme(f"track{track}",track_theme_light)
-
-    configure_item('plotbg',texture_tag=ico['bg'])
-    if not decorated:
-        configure_item('exit_button',texture_tag=ico['exit_light'])
-
-    cfg['theme']='light'
-    refresh_tracks()
-
-    bind_item_theme('mark_text_1',white_text)
-    bind_item_theme('mark_text_2',white_text)
-    bind_item_theme('mark_text_3',white_text)
-    bind_item_theme('mark_text_4',white_text)
-    bind_item_theme('mark_text_5',white_text)
-    bind_item_theme('mark_text_6',white_text)
-    bind_item_theme('mark_text_7',white_text)
-    bind_item_theme('mark_text_8',white_text)
-    bind_item_theme('mark_text',black_text)
-
-    res=[]
-    #INFO=0
-    res.append( (LIGHT_BG_CONS,(0,50,0,255)) )
-    #WARN=1
-    res.append( (LIGHT_BG_CONS,(200,235,235,255)) )
-    #ERR=2
-    res.append( ((100,20,20,100),(255,170,170,255)) )
-    #CONST=3
-    res.append( (LIGHT_BG_CONS,(0,50,0,255)) )
-    #OPT=4
-    res.append( (LIGHT_BG_CONS,(0,50,0,255)) )
-
-    global console_color_tab
-    console_color_tab=tuple(res)
-
-def theme_dark_callback():
-    l_info('theme_dark_callback')
-    dpg.bind_theme(theme_dark)
-
-    bind_item_theme("fft_line2",fft_line2_theme_dark)
-    bind_item_theme("fft_line",fft_line_theme_dark)
-
-    bind_item_theme("fft_line_shade",fft_line_theme_dark)
+    bind_item_theme('fft_avg',themes[TI]['fft_avg_line_theme'])
 
     for track in range(tracks):
-        bind_item_theme(f"track{track}_bg",track_theme_bg_dark)
-        bind_item_theme(f"track{track}",track_theme_dark)
+        bind_item_theme(f"track{track}_bg",themes[TI]['track_bg'])
+        bind_item_theme(f"track{track}",themes[TI]['track_core'])
 
-    configure_item('plotbg',texture_tag=ico['bg_dark'])
+    configure_item('plotbg',texture_tag=ico['bg' if ti==0 else 'bg_dark'])
+
     if not decorated:
-        configure_item('exit_button',texture_tag=ico['exit_dark'])
+        configure_item('exit_button',texture_tag=ico['exit_light' if ti==0 else 'exit_dark'])
 
-    cfg['theme']='dark'
+    bind_item_theme('cursor_db_txt',themes[TI]['text_main'])
+    bind_item_theme('cursor_f_txt',themes[TI]['text_main'])
+
+    cfg['theme']=ti
     refresh_tracks()
 
-    bind_item_theme('mark_text_1',black_text)
-    bind_item_theme('mark_text_2',black_text)
-    bind_item_theme('mark_text_3',black_text)
-    bind_item_theme('mark_text_4',black_text)
-    bind_item_theme('mark_text_5',black_text)
-    bind_item_theme('mark_text_6',black_text)
-    bind_item_theme('mark_text_7',black_text)
-    bind_item_theme('mark_text_8',black_text)
-    bind_item_theme('mark_text',white_text)
+    bind_item_theme('mark_text_1',themes[TI]['text_aura'])
+    bind_item_theme('mark_text_2',themes[TI]['text_aura'])
+    bind_item_theme('mark_text_3',themes[TI]['text_aura'])
+    bind_item_theme('mark_text_4',themes[TI]['text_aura'])
+    bind_item_theme('mark_text_5',themes[TI]['text_aura'])
+    bind_item_theme('mark_text_6',themes[TI]['text_aura'])
+    bind_item_theme('mark_text_7',themes[TI]['text_aura'])
+    bind_item_theme('mark_text_8',themes[TI]['text_aura'])
+    bind_item_theme('mark_text',themes[TI]['text_main'])
 
     res=[]
+    res_append=res.append
     #INFO=0
-    res.append( (DARK_BG,(200,235,200,255)) )
+    res_append( (COLORS[TI]['BG_CONS'],COLORS[TI]['CONS_INFO']) )
     #WARN=1
-    res.append( (DARK_BG,(200,235,235,255)) )
+    res_append( (COLORS[TI]['BG_CONS'],COLORS[TI]['CONS_WARN']) )
     #ERR=2
-    res.append( ((100,20,20,100),(255,170,170,255)) )
+    res_append( (COLORS[TI]['BG_CONS'],COLORS[TI]['CONS_ERR']) )
     #CONST=3
-    res.append( (DARK_BG,(200,235,200,255)) )
+    res_append( (COLORS[TI]['BG_CONS'],COLORS[TI]['CONS_CONST']) )
     #OPT=4
-    res.append( (DARK_BG,(200,235,200,255)) )
+    res_append( (COLORS[TI]['BG_CONS'],COLORS[TI]['CONS_OPT']) )
 
     global console_color_tab
     console_color_tab=tuple(res)
@@ -2905,6 +2758,8 @@ def fft_fill_callback():
     configure_item('fft_line_shade',show=FFT_FILL and FFT)
     configure_item('fft_line2',show=not FFT_FILL and FFT)
     configure_item('fft_line',show=FFT)
+
+    theme_callback(TI)
 
 def help_callback():
     l_info('help_callback')
@@ -3001,15 +2856,15 @@ show_viewport()
 render_dearpygui_frame()
 ########################################################################
 
-DARK_THEME=True
+THEME_INDEX=1
 try:
-    if cfg['theme']=='dark':
-        theme_dark_callback()
+    if cfg['theme']==1:
+        theme_callback(1)
     else:
-        theme_light_callback()
-        DARK_THEME=False
+        theme_callback(0)
+        THEME_INDEX=0
 except:
-    theme_dark_callback()
+    theme_callback(1)
 
 try:
     distro_info=Path(path_join(EXECUTABLE_DIR,'distro.info.txt')).read_text(encoding='utf-8')
@@ -3207,7 +3062,7 @@ def processing():
                         try:
                             delete_item(tag)
                             col=10
-                            add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint,v), color=(col, col, col, 100*im1/peaks_count_max), offset=(16,-10))
+                            add_plot_annotation(tag=tag,label=f'{fint}Hz',parent='plot',default_value=(fint,v),  offset=(10,-10), color=(0,0,0,0))
                         except Exception as ae:
                             print(ae)
                     else :
@@ -3348,7 +3203,7 @@ def main_loop():
     global sweeping,out_callbacks,out_samples,set_viewport_pos_scheduled,set_viewport_resize_scheduled,schedule_screenshot
     global frames,next_debug,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo
     global CAPTURE,changes,settings_wrapper_scheduled,in_samples,in_callbacks,cfg,playing_state,lock_frequency,next_redraw
-    global console_shift,console_buffer,console_show_end_index,console_buffer_len,text_aura,fft_calc_sum_time,fft_calcs,console_color_tab,out_errors,in_errors,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
+    global console_shift,console_buffer,console_show_end_index,console_buffer_len,themes,fft_calc_sum_time,fft_calcs,console_color_tab,out_errors,in_errors,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
     global offset_x,offset_y,processing_inside,processing_outside
 
     next_sweep_time=0
@@ -3568,7 +3423,7 @@ def main_loop():
                 delete_item('draw_layer', children_only=True)
                 line_x_pos=330 if DEBUG else slider_width+yaxis_width+20
                 for l,(text,code) in enumerate(list(islice(console_buffer,max(0,console_show_end_index-console_visible_lines),console_show_end_index+1))):
-                    for (mx,my,center) in text_aura:
+                    for (mx,my,center) in theme_text_aura:
                         draw_text(pos=(line_x_pos + mx,title_hight + plot_upper_margin + l*console_line_height + console_shift + my),text=text,color=console_color_tab[code][center],parent='draw_layer',size=console_fontsize)\
 
                 lines_to_show=console_buffer_len-console_show_end_index
