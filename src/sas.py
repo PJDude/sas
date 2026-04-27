@@ -310,6 +310,8 @@ COLORS[0]['TRACK_CORE'] = (128, 128, 128, 128)
 COLORS[0]['TRACK_BG'] = (128, 128, 128, 128)
 COLORS[0]['TRACK_RECORDED_CORE'] = (255, 110, 40, 255)
 COLORS[0]['TRACK_RECORDED_BG'] = (255,200,200,40)
+COLORS[0]['TRACK_HOVER_CORE'] = (50, 200, 200, 255)
+COLORS[0]['TRACK_HOVER_BG'] = (0,200,100,100)
 COLORS[0]['FFT_LINE'] = (0, 0, 0, 80)
 COLORS[0]['FFT_LINE_AVG'] = (0, 0, 0, 40)
 COLORS[0]['FFT_LINE2'] = (245, 245, 245, 100)
@@ -346,6 +348,8 @@ COLORS[1]['TRACK_CORE'] = (128, 128, 128, 128)
 COLORS[1]['TRACK_BG'] = (128, 128, 128, 128)
 COLORS[1]['TRACK_RECORDED_CORE'] = (255, 160, 100, 255)
 COLORS[1]['TRACK_RECORDED_BG'] = (200,100, 0, 20)
+COLORS[1]['TRACK_HOVER_CORE'] = (50, 200, 200, 255)
+COLORS[1]['TRACK_HOVER_BG'] = (0,200, 100, 100)
 COLORS[1]['FFT_LINE'] = (255, 255, 255, 130)
 COLORS[1]['FFT_LINE_AVG'] = (255, 255, 255, 40)
 COLORS[1]['FFT_LINE2'] = (10, 10, 10, 100)
@@ -372,7 +376,6 @@ for ti in themes_indexes:
         with theme_component(dpg.mvAll):
             dpg.add_theme_color(dpg.mvThemeCol_Text, COLORS[ti]['TEXT'])
         with theme_component(dpg.mvPlot):
-            #dpg.add_theme_color(dpg.mvPlotCol_PlotBg, COLORS[ti]['BG_LIGHTER'])
             dpg.add_theme_color(dpg.mvPlotCol_InlayText,COLORS[ti]['TEXT'],category=dpg.mvThemeCat_Plots)
 
     with theme() as theme_temp:
@@ -403,6 +406,18 @@ for ti in themes_indexes:
         with theme_component(dpg.mvLineSeries):
             dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['TRACK_RECORDED_BG'],category=dpg.mvThemeCat_Plots)
             dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,4.0,category=dpg.mvThemeCat_Plots)
+
+    with theme() as theme_temp:
+        themes[ti]['track_hover_core']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['TRACK_HOVER_CORE'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.5,category=dpg.mvThemeCat_Plots)
+
+    with theme() as theme_temp:
+        themes[ti]['track_hover_bg']=theme_temp
+        with theme_component(dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Line,COLORS[ti]['TRACK_HOVER_BG'],category=dpg.mvThemeCat_Plots)
+            dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,3.0,category=dpg.mvThemeCat_Plots)
 
     with theme() as theme_temp:
         themes[ti]['fft_line']=theme_temp
@@ -2401,6 +2416,9 @@ def on_mouse_move_tracks_enter(sender, app_data):
     configure_item(f"track{track}_bg",show=True)
     configure_item(f"track{track}",show=True)
 
+    bind_item_theme(f"track{track}_bg",themes[TI]['track_hover_bg'])
+    bind_item_theme(f"track{track}",themes[TI]['track_hover_core'])
+
 def on_mouse_move_tracks_leave(sender, app_data):
     button_alias=app_data
     track=int(button_alias[-1])
@@ -3045,7 +3063,8 @@ def processing():
 
                     break
 
-            if new_data and not (dragging or resizing or PAUSE):
+            if new_data and not PAUSE:
+                #dragging or resizing
                 new_data=False
                 changes+=1
 
@@ -3225,8 +3244,8 @@ def main_loop():
                 set_viewport_pos((vp_x + mouse_x - offset_x,vp_y + mouse_y - offset_y))
                 render_dearpygui_frame()
                 set_viewport_pos_scheduled=False
-                sleep(0.0001)
-                continue
+                #sleep(0.0001)
+                #continue
             except Exception as e_pos:
                 cons_err(f'{e_pos=}')
 
@@ -3238,8 +3257,8 @@ def main_loop():
                 on_viewport_resize()
                 render_dearpygui_frame()
                 set_viewport_resize_scheduled=False
-                sleep(0.0001)
-                continue
+                #sleep(0.0001)
+                #continue
             except Exception as e_res:
                 cons_err(f'{e_res=}')
 
