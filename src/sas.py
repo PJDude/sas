@@ -87,15 +87,16 @@ if windows:
 console_buffer=deque()
 console_buffer_len=0
 console_buffer_last_elem=-1
-console_buffer_max_len=300
+console_buffer_max_len=1024
 
 console_buffer_append_fun=console_buffer.append
 console_buffer_popleft=console_buffer.popleft
 console_visible_lines=16
 console_visible_chars=40
+console_visible_chars_m3=console_visible_chars-3
 console_fontsize=13
 console_line_height=console_fontsize-1
-console_char_width=console_fontsize-1
+console_char_width=7
 
 console_shift=console_line_height
 
@@ -169,7 +170,7 @@ create_context()
 slider_width=10
 yaxis_width=45
 xaxis_height=32
-plot_upper_margin=16
+plot_upper_margin=18
 
 vw,vh=0,0
 
@@ -254,7 +255,7 @@ def slide_change(sender):
     set_axis_limits("y_axis", dbmin_display*val/100, dbmax_display)
 
 def on_viewport_resize(sender=None, app_data=None):
-    global vw,vh,settings_height,cfg,console_visible_lines,console_visible_chars
+    global vw,vh,settings_height,cfg,console_visible_lines,console_visible_chars,console_visible_chars_m3
 
     vw,vh = get_viewport_client_width(),get_viewport_client_height()
 
@@ -283,7 +284,8 @@ def on_viewport_resize(sender=None, app_data=None):
     set_item_pos('mark_text',[x_offset,y_offset])
 
     console_visible_lines = int(floor((plot_height-xaxis_height-plot_upper_margin)/console_line_height))
-    console_visible_chars = int(floor((plot_width-yaxis_width)/console_char_width))
+    console_visible_chars = int(floor((plot_width-yaxis_width)/console_char_width))-2 - (36 if DEBUG else 0)
+    console_visible_chars_m3=console_visible_chars-3
 
 COLORS={0:{},1:{}}
 
@@ -320,7 +322,7 @@ COLORS[0]['FFT_FILL_LINE'] = (180, 180, 180, 150)
 
 COLORS[0]['BG_CONS'] = (255, 255, 255, 50)
 COLORS[0]['CONS_INFO'] = (0,40,0,255)
-COLORS[0]['CONS_WARN'] = (0,40,0,255)
+COLORS[0]['CONS_WARN'] = (139,69,19,255)
 COLORS[0]['CONS_ERR'] = (255,20,20,255)
 COLORS[0]['CONS_CONST'] = (0,40,0,255)
 COLORS[0]['CONS_OPT'] = (0,40,0,255)
@@ -358,7 +360,7 @@ COLORS[1]['FFT_FILL_LINE'] = (200, 200, 200, 100)
 
 COLORS[1]['BG_CONS'] = (60, 60, 60, 255)
 COLORS[1]['CONS_INFO'] = (200,235,200,255)
-COLORS[1]['CONS_WARN'] = (200,235,235,255)
+COLORS[1]['CONS_WARN'] = (255,215,0,255)
 COLORS[1]['CONS_ERR'] = (255,170,170,255)
 COLORS[1]['CONS_CONST'] = (200,235,200,255)
 COLORS[1]['CONS_OPT'] = (200,235,200,255)
@@ -2176,7 +2178,7 @@ FFT_ACTUAL_BUCKETS=0
 def common_precalc():
     l_info('common_precalc')
 
-    global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_debug,current_sample_db_time_samples,fft_bin_indices_selected,fft_values_x_bins,precalc_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
+    global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_check,current_sample_db_time_samples,fft_bin_indices_selected,fft_values_x_bins,precalc_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
 
     samplerate=get_value('in_samplerate')
 
@@ -2230,7 +2232,7 @@ def common_precalc():
     data=np_concatenate([zeros(FFT_SIZE),data])[-FFT_SIZE:]
 
     precalc_ready=True
-    next_debug = 0
+    next_check = 0
 
 rates_to_test = (44100,48000,88200,96000,176400,192000,384000)
 def check_sample_rates_input(device_id):
@@ -2298,7 +2300,8 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
     out_latency_changed(None,cfg['out_latency'])
     out_blocksize_changed(None,cfg['out_blocksize'])
 
-    out_stream_init()
+    if user_data:
+        out_stream_init()
 
 device_in_current=None
 def in_dev_changed(sender=None, app_data=None,user_data=False):
@@ -2342,7 +2345,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
     if user_data:
         common_precalc()
 
-    in_stream_init()
+        in_stream_init()
 
 def click_callback(sender, button_nr):
     if is_item_hovered("plot"):
@@ -2752,9 +2755,9 @@ def peaks_limit_change():
 DEBUG=cfg['debug']
 def debug_callback():
     set_value('debug_text','')
-    global DEBUG,next_debug
+    global DEBUG,next_check
     cfg['debug']=DEBUG=get_value('debug')
-    next_debug=0
+    next_check=0
 
     if DEBUG:
         configure_item("fft_avg",show=PEAKS)
@@ -2762,9 +2765,13 @@ def debug_callback():
     else:
         configure_item("fft_avg",show=False)
 
+    on_viewport_resize()
+
 def pause_callback():
     global PAUSE
     PAUSE=get_value('pause')
+    if not PAUSE:
+        cons_info('Resumed.')
 
 def decorated_callback():
     cfg['decorated']=get_value('decorated')
@@ -2781,7 +2788,7 @@ def fft_fill_callback():
 
 def help_callback():
     l_info('help_callback')
-    global next_debug
+    global next_check
 
     vals= [ "--------------------------------------------------------------------------------------------------------",
             "H   - this help                      F   - FFT Toggle                1-8 - toggle track visibility      ",
@@ -2800,7 +2807,7 @@ def help_callback():
     for line in vals:
         cons_const(line)
 
-    next_debug=0
+    next_check=0
 
 def in_reinit_callback():
     in_stream_init()
@@ -2921,7 +2928,7 @@ fft_callback()
 out_dev_changed(None,None,True)
 in_dev_changed(None,None,True)
 
-next_debug = 0
+next_check = 0
 status_shown=True
 status_hide_time=0
 
@@ -3014,8 +3021,8 @@ def processing():
     global exiting,PEAKS,changes,fft_calcs,fft_calc_sum_time,in_samples,in_callbacks,current_sample_db_time_samples,data,precalc_ready,fft_proc_sum_time,fft_peaks_sum_time,in_errors,np_fft_rfft
 
     next_sweep_time=0
-    in_callbacks=0
-    in_samples=0
+    in_callbacks=-1
+    in_samples=-1
 
     new_data=False
 
@@ -3220,7 +3227,7 @@ def output_frame_buffer_callback(sender, app_data):
 next_redraw=0
 def main_loop():
     global sweeping,out_callbacks,out_samples,set_viewport_pos_scheduled,set_viewport_resize_scheduled,schedule_screenshot
-    global frames,next_debug,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo
+    global frames,next_check,sweeping_i,logf_sweep_step,dragging,resizing,samples_chunks_fifo
     global CAPTURE,changes,settings_wrapper_scheduled,in_samples,in_callbacks,cfg,playing_state,lock_frequency,next_redraw
     global console_shift,console_buffer,console_show_end_index,console_buffer_len,themes,fft_calc_sum_time,fft_calcs,console_color_tab,out_errors,in_errors,console_direction_mod,fft_proc_sum_time,fft_peaks_sum_time
     global offset_x,offset_y,processing_inside,processing_outside
@@ -3323,10 +3330,11 @@ def main_loop():
             except Exception as settings_e:
                 cons_err(f'{settings_e=}')
 
-        if DEBUG and not (dragging or resizing or PAUSE):
-            try:
-                if now >= next_debug :
+        if now >= next_check :
+            next_check = now+1.0
 
+            if DEBUG and not (dragging or resizing or PAUSE):
+                try:
                     try:
                         proc_ratio=processing_inside/(processing_inside+processing_outside)
                     except:
@@ -3337,15 +3345,19 @@ def main_loop():
                     except:
                         main_ratio="Nan"
 
+                    stream_out_cpu_load = stream_out.cpu_load if stream_out else 0
+                    stream_in_cpu_load = stream_in.cpu_load if stream_in else 0
+
+                    stream_out_latency = stream_out.latency if stream_out else 0
+                    stream_in_latency = stream_in.latency if stream_in else 0
                     part1 = [f"FPS:{frames}/{changes}  sat:{main_ratio:.5f}/{proc_ratio:.5f}\n",
                             f"             Output       Input",
                             f"samples/s  {out_samples:8d}    {in_samples:8d}",
                             f"blocks/s   {out_callbacks:8d}    {in_callbacks:8d}",
                             f"errors/s   {out_errors:8d}    {in_errors:8d}",
                             " ",
-                            f"CPU        {stream_out.cpu_load if stream_out else 0:.6f}    {stream_in.cpu_load if stream_in else 0:.6f}",
-                            f"latency[s] {stream_out.latency if stream_out else 0:.6f}    {stream_in.latency if stream_in else 0:.6f}",
-                            #f"type        {stream_out.dtype if stream_out else '':6s}     {stream_in.dtype if stream_in else '':8s}\n",
+                            f"CPU        {stream_out_cpu_load:.6f}    {stream_in_cpu_load:.6f}",
+                            f"latency[s] {stream_out_latency:.6f}    {stream_in_latency:.6f}",
                             " ",
                             " "]
 
@@ -3363,7 +3375,7 @@ def main_loop():
                     fft_peaks_sum_time=0
                     fft_calcs=0
 
-                    part_fft = [f"FFT Window: {round(fft_duration,3)}s ({fft_window_name})",
+                    part_fft = [f"FFT Window: {round(fft_duration,3)}s",
                                 f"FFT Calcs: {fft_calc_mean:.5f}s / {fft_calc_in_sec:5d}/s",
                                 f"FFT Procs: {fft_proc_mean:.5f}s / {fft_proc_in_sec:5d}/s",
                                 f"FFT Peaks: {fft_peaks_mean:.5f}s / {fft_peaks_in_sec:5d}/s",
@@ -3375,27 +3387,37 @@ def main_loop():
                     list_sum=part1 + part_fft
                     set_value('debug_text','\n'.join(list_sum))
 
-                    l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t{fft_calc_mean:.5f}:{fft_proc_mean:.5f}:{fft_peaks_mean:.5f}\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out.cpu_load:.6f}:{stream_in.cpu_load:.6f}\t{stream_out.latency:.6f}:{stream_in.latency:.6f}')
+                    l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t{fft_calc_mean:.5f}:{fft_proc_mean:.5f}:{fft_peaks_mean:.5f}\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out_cpu_load:.6f}:{stream_in_cpu_load:.6f}\t{stream_out_latency:.6f}:{stream_in_latency:.6f}')
 
-                    out_samples=0
-                    out_callbacks=0
-                    out_errors=0
+                except Exception as debug_e:
+                    cons_err(f'{debug_e=}')
 
-                    frames = 0
-                    changes = 0
-                    in_samples = 0
-                    in_callbacks = 0
-                    in_errors=0
+            if not stream_in and not stream_out:
+                cons_err('Output stream not initialized / Input stream not initialized !')
+            elif not stream_in:
+                cons_err('Input stream not initialized !')
+            elif not stream_out:
+                cons_warn('Output stream not initialized !')
+            elif in_callbacks==0 and in_samples==0:
+                cons_err('No Input signal !')
+            elif PAUSE:
+                cons_warn('Paused.')
 
-                    main_loop_inside=0
-                    main_loop_outside=0
+            out_samples=0
+            out_callbacks=0
+            out_errors=0
 
-                    processing_inside=0
-                    processing_outside=0
+            frames = 0
+            changes = 0
+            in_samples = 0
+            in_callbacks = 0
+            in_errors=0
 
-                    next_debug = now+1.0
-            except Exception as debug_e:
-                cons_err(f'{debug_e=}')
+            main_loop_inside=0
+            main_loop_outside=0
+
+            processing_inside=0
+            processing_outside=0
 
         if windows:
             try:
@@ -3441,9 +3463,12 @@ def main_loop():
 
                 delete_item('draw_layer', children_only=True)
                 line_x_pos=330 if DEBUG else slider_width+yaxis_width+20
+
                 for l,(text,code) in enumerate(list(islice(console_buffer,max(0,console_show_end_index-console_visible_lines),console_show_end_index+1))):
+                    text_trimmed=text if len(text)<console_visible_chars else text[0:console_visible_chars_m3] + '...'
+
                     for (mx,my,center) in theme_text_aura:
-                        draw_text(pos=(line_x_pos + mx,title_hight + plot_upper_margin + l*console_line_height + console_shift + my),text=text,color=console_color_tab[code][center],parent='draw_layer',size=console_fontsize)\
+                        draw_text(pos=(line_x_pos + mx,title_hight + plot_upper_margin + l*console_line_height + console_shift + my),text=text_trimmed,color=console_color_tab[code][center],parent='draw_layer',size=console_fontsize)
 
                 lines_to_show=console_buffer_len-console_show_end_index
 
