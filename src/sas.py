@@ -51,7 +51,6 @@ from numpy import mean as np_mean,square as np_square,float32,ones,hanning,hammi
 from numpy.lib.stride_tricks import sliding_window_view
 np_fft_rfft=np_fft.rfft
 
-from sounddevice import InputStream,OutputStream,query_devices,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings,_initialize,_terminate
 from threading import Thread
 
 from collections import deque
@@ -82,7 +81,17 @@ from io import BytesIO
 windows = bool(os_name=='nt')
 
 if windows:
+    import ctypes
+
+    # disable sys error dialogs
+    SEM_FAILCRITICALERRORS  = 0x0001
+    SEM_NOGPFAULTERRORBOX   = 0x0002
+    SEM_NOOPENFILEERRORBOX  = 0x8000
+    ctypes.windll.kernel32.SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX)
+
     from sounddevice import WasapiSettings
+
+from sounddevice import InputStream,OutputStream,query_devices,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings,_initialize,_terminate
 
 console_buffer=deque()
 console_buffer_len=0
@@ -1405,6 +1414,18 @@ def refresh_devices():
     global default_in_dev,default_out_dev,apis,api_name2api,devices
 
     try:
+        apis = query_hostapis()
+    except Exception as e:
+        l_error(f'query_hostapis error:{e}')
+        apis=[]
+
+    try:
+        devices=query_devices()
+    except Exception as e:
+        cons_err(f'query_devices error:{d_e1}')
+        devices=[]
+
+    try:
         default_in_dev=query_devices(kind='input')
     except Exception as e:
         l_error(f'query_devices input error:{e}')
@@ -1416,19 +1437,13 @@ def refresh_devices():
 
     l_info(' ')
     l_info('APIS:')
-    apis = query_hostapis()
+
     for i,api in enumerate(apis):
         l_info(f'  api:{i}:')
         for key,val in api.items():
             l_info(f'    :{key}:{val}:')
 
     api_name2api={ api['name']:api for api in apis if api['devices'] }
-
-    try:
-        devices=query_devices()
-    except Exception as d_e1:
-        cons_err(f'd_e1:{d_e1}')
-        devices=[]
 
     try:
         l_info(' ')
