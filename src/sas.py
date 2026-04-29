@@ -1301,7 +1301,7 @@ def audio_output_callback(outdata, frames, time, status):
     AMPLITUDE_FACTOR=AMPLITUDE_FACTOR_NEW
 
     if status:
-        cons_err(f'Output callback Error:{status}')
+        cons_err(f'Output callback Error:{status},{frames=}')
         out_errors+=1
 
 def sweep_abort():
