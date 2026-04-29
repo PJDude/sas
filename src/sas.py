@@ -1404,8 +1404,15 @@ def refresh_devices():
     cons_info('Refresh Devices')
     global default_in_dev,default_out_dev,apis,api_name2api,devices
 
-    default_in_dev=query_devices(kind='input')
-    default_out_dev=query_devices(kind='output')
+    try:
+        default_in_dev=query_devices(kind='input')
+    except Exception as e:
+        l_error(f'query_devices input error:{e}')
+
+    try:
+        default_out_dev=query_devices(kind='output')
+    except Exception as e:
+        l_error(f'query_devices output error:{e}')
 
     l_info(' ')
     l_info('APIS:')
@@ -1421,6 +1428,7 @@ def refresh_devices():
         devices=query_devices()
     except Exception as d_e1:
         cons_err(f'd_e1:{d_e1}')
+        devices=[]
 
     try:
         l_info(' ')
