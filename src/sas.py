@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 ####################################################################################
 #
@@ -91,7 +91,7 @@ console_buffer_max_len=1024
 
 console_buffer_append_fun=console_buffer.append
 console_buffer_popleft=console_buffer.popleft
-console_visible_lines=16
+console_visible_lines=20
 console_visible_chars=40
 console_visible_chars_m3=console_visible_chars-3
 console_fontsize=13
@@ -2958,6 +2958,7 @@ try:
 except:
     configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False)
 
+on_viewport_resize()
 cons_info('\n'*console_visible_lines + 'Press H for help. Press Backspace to clear the console.\n')
 
 def output_frame_buffer_callback_gif(sender, app_data):
@@ -3248,9 +3249,6 @@ def main_loop():
     main_loop_outside=0
     main_loop_inside=0
 
-    on_viewport_resize()
-    render_dearpygui_frame()
-
     dl_tag='draw_layer'
 
     while is_dearpygui_running():
@@ -3470,18 +3468,18 @@ def main_loop():
 
             x0p1=x0+1
             y0p1=y0+1
-            x1p1=x1-1
+            x1m1=x1-1
             y1m1=y1-1
 
             # left / up
-            draw_line((x0p1,y0p1),(x1p1,y0p1), color=INNER_SHADOW, thickness=2, parent=dl_tag)
+            draw_line((x0p1,y0p1),(x1m1,y0p1), color=INNER_SHADOW, thickness=2, parent=dl_tag)
             draw_line((x0p1,y0p1),(x0p1,y1m1), color=INNER_SHADOW, thickness=2, parent=dl_tag)
             draw_line((x0,y0),(x1,y0),color=OUTER_SHADOW, thickness=1, parent=dl_tag)
             draw_line((x0,y0),(x0,y1),color=OUTER_SHADOW, thickness=1, parent=dl_tag)
 
             # right / down
-            draw_line((x0p1,y1m1),(x1p1,y1m1),color=INNER_HIGHLIGHT, thickness=2, parent=dl_tag)
-            draw_line((x1p1,y0p1),(x1p1,y1m1),color=INNER_HIGHLIGHT, thickness=2, parent=dl_tag)
+            draw_line((x0p1,y1m1),(x1m1,y1m1),color=INNER_HIGHLIGHT, thickness=2, parent=dl_tag)
+            draw_line((x1m1,y0p1),(x1m1,y1m1),color=INNER_HIGHLIGHT, thickness=2, parent=dl_tag)
             draw_line((x0,y1),(x1,y1),color=OUTER_HIGHLIGHT, thickness=1, parent=dl_tag)
             draw_line((x1,y0),(x1,y1),color=OUTER_HIGHLIGHT, thickness=1, parent=dl_tag)
 
