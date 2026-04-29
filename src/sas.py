@@ -53,6 +53,8 @@ np_fft_rfft=np_fft.rfft
 
 from threading import Thread
 
+from sounddevice import InputStream,OutputStream,query_devices,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings,_initialize,_terminate
+
 from collections import deque
 from itertools import islice
 
@@ -81,17 +83,7 @@ from io import BytesIO
 windows = bool(os_name=='nt')
 
 if windows:
-    import ctypes
-
-    # disable sys error dialogs
-    SEM_FAILCRITICALERRORS  = 0x0001
-    SEM_NOGPFAULTERRORBOX   = 0x0002
-    SEM_NOOPENFILEERRORBOX  = 0x8000
-    ctypes.windll.kernel32.SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX)
-
     from sounddevice import WasapiSettings
-
-from sounddevice import InputStream,OutputStream,query_devices,query_hostapis,__version__ as sounddevice_version,get_portaudio_version,check_input_settings,check_output_settings,_initialize,_terminate
 
 console_buffer=deque()
 console_buffer_len=0
@@ -1422,18 +1414,22 @@ def refresh_devices():
     try:
         devices=query_devices()
     except Exception as e:
-        cons_err(f'query_devices error:{d_e1}')
+        cons_err(f'query_devices error:{e}')
         devices=[]
 
-    try:
-        default_in_dev=query_devices(kind='input')
-    except Exception as e:
-        l_error(f'query_devices input error:{e}')
+    any_inputs=any([ dev['name'] for dev in devices if dev['max_input_channels'] > 0])
+    if any_inputs:
+        try:
+            default_in_dev=query_devices(kind='input')
+        except Exception as e:
+            l_error(f'query_devices input error:{e}')
 
-    try:
-        default_out_dev=query_devices(kind='output')
-    except Exception as e:
-        l_error(f'query_devices output error:{e}')
+    any_outputs=any([ dev['name'] for dev in devices if dev['max_output_channels'] > 0])
+    if any_outputs:
+        try:
+            default_out_dev=query_devices(kind='output')
+        except Exception as e:
+            l_error(f'query_devices output error:{e}')
 
     l_info(' ')
     l_info('APIS:')
@@ -1882,7 +1878,8 @@ def in_dev_config_items():
         if get_value('allow_all_devices'):
             in_values=[ dev['name'] for dev in devices]
         else:
-            in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0 and dev['index']]
+            in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0]
+            # and dev['index']
 
         tooltip_str='\n'.join([ ('*' if name==default_input_device_name else '-') + ' ' + name for name in in_values])
 
@@ -1906,7 +1903,8 @@ def out_dev_config_items():
 
         default_output_device_name=query_devices(api['default_output_device'])
 
-        out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0 and dev['index']]
+        out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0]
+        # and dev['index']
 
         tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
         widget_tooltip(f"Available (API:{api_name}):\n\n{tooltip_str}","out_dev")
