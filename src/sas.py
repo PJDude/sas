@@ -42,7 +42,7 @@ import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
 from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,mvTooltip
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,add_draw_layer,add_slider_float,add_slider_int,setup_dearpygui
-from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text,move_item
+from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text,move_item,draw_line,get_item_rect_min,get_item_rect_max
 
 from time import strftime,time,localtime,perf_counter,sleep
 from gc import collect as gc_collect, freeze as gc_freeze
@@ -141,9 +141,9 @@ logf_min_audio,logf_max_audio=log10(fmin_audio),log10(fmax_audio)
 current_f=fini
 current_logf=logf_ini
 
+dbmin_sample=-121.0
 dbmin=-122.0
-dbmin_display=-123.0
-dbinit=dbmin
+dbmin_display=-122.0
 dbmax_display=dbmax=0.0
 
 dbrange=dbmax-dbmin
@@ -289,76 +289,86 @@ def on_viewport_resize(sender=None, app_data=None):
 
 COLORS={0:{},1:{}}
 
-COLORS[0]['BG'] = (250, 248, 240, 255)
-COLORS[0]['BG_LIGHTER'] = (255, 253, 245, 220)
-COLORS[0]['CHILD_BG'] = (245, 242, 232, 255)
-COLORS[0]['BORDER'] = (210, 200, 180, 255)
-COLORS[0]['FRAME'] = (235, 230, 220, 255)
-COLORS[0]['FRAME_HOVER'] = (240, 220, 180, 255)
-COLORS[0]['FRAME_ACTIVE'] = (235, 210, 160, 255)
+COLORS[0]['BG'] = (250,248,240,255)
+COLORS[0]['BG_LIGHTER'] = (255,253,245,220)
+COLORS[0]['CHILD_BG'] = (245,242,232,255)
+COLORS[0]['BORDER'] = (210,200,180,255)
+COLORS[0]['FRAME'] = (235,230,220,255)
+COLORS[0]['FRAME_HOVER'] = (240,220,180,255)
+COLORS[0]['FRAME_ACTIVE'] = (235,210,160,255)
 
-COLORS[0]['TEXT'] = (40, 35, 25, 255)
-COLORS[0]['TEXT_AURA'] = (255,255,255, 255)
-COLORS[0]['TEXT_PEAKS'] = (40, 35, 25, 150)
-COLORS[0]['BUTTON'] = (245, 240, 230, 255)
-COLORS[0]['BUTTON_HOVER'] = (240, 220, 180, 255)
-COLORS[0]['BUTTON_ACTIVE'] = (230, 200, 150, 255)
-COLORS[0]['ACCENT'] = (180, 140, 90, 255)
+COLORS[0]['INNER_SHADOW']    = (230,228,220,255)
+COLORS[0]['OUTER_SHADOW']    = (240,238,230,255)
+COLORS[0]['INNER_HIGHLIGHT'] = (255,255,255,255)
+COLORS[0]['OUTER_HIGHLIGHT'] = (250,250,250,255)
 
-COLORS[0]['TOOLTIP_BG'] = (246, 246, 185, 255)
-COLORS[0]['TOOLTIP_TEXT'] = (40, 35, 25, 255)
+COLORS[0]['TEXT'] = (40,35,25,255)
+COLORS[0]['TEXT_AURA'] = (255,255,255,255)
+COLORS[0]['TEXT_PEAKS'] = (40,35,25,150)
+COLORS[0]['BUTTON'] = (245,240,230,255)
+COLORS[0]['BUTTON_HOVER'] = (240,220,180,255)
+COLORS[0]['BUTTON_ACTIVE'] = (230,200,150,255)
+COLORS[0]['ACCENT'] = (180,140,90,255)
 
-COLORS[0]['TRACK_CORE'] = (128, 128, 128, 128)
-COLORS[0]['TRACK_BG'] = (128, 128, 128, 128)
-COLORS[0]['TRACK_RECORDED_CORE'] = (255, 110, 40, 255)
+COLORS[0]['TOOLTIP_BG'] = (246,246,185,255)
+COLORS[0]['TOOLTIP_TEXT'] = (40,35,25,255)
+
+COLORS[0]['TRACK_CORE'] = (128,128,128,128)
+COLORS[0]['TRACK_BG'] = (128,128,128,128)
+COLORS[0]['TRACK_RECORDED_CORE'] = (255,110,40,255)
 COLORS[0]['TRACK_RECORDED_BG'] = (255,200,200,40)
-COLORS[0]['TRACK_HOVER_CORE'] = (50, 200, 200, 255)
+COLORS[0]['TRACK_HOVER_CORE'] = (50,200,200,255)
 COLORS[0]['TRACK_HOVER_BG'] = (0,200,100,100)
-COLORS[0]['FFT_LINE'] = (0, 0, 0, 80)
-COLORS[0]['FFT_LINE_AVG'] = (0, 0, 0, 40)
-COLORS[0]['FFT_LINE2'] = (245, 245, 245, 100)
-COLORS[0]['FFT_FILL'] = (170, 170, 150, 50)
-COLORS[0]['FFT_FILL_LINE'] = (180, 180, 180, 150)
+COLORS[0]['FFT_LINE'] = (0,0,0,80)
+COLORS[0]['FFT_LINE_AVG'] = (0,0,0,40)
+COLORS[0]['FFT_LINE2'] = (245,245,245,100)
+COLORS[0]['FFT_FILL'] = (170,170,150,50)
+COLORS[0]['FFT_FILL_LINE'] = (180,180,180,150)
 
-COLORS[0]['BG_CONS'] = (255, 255, 255, 50)
+COLORS[0]['BG_CONS'] = (255,255,255,50)
 COLORS[0]['CONS_INFO'] = (0,40,0,255)
 COLORS[0]['CONS_WARN'] = (139,69,19,255)
 COLORS[0]['CONS_ERR'] = (255,20,20,255)
 COLORS[0]['CONS_CONST'] = (0,40,0,255)
 COLORS[0]['CONS_OPT'] = (0,40,0,255)
 
-COLORS[1]['BG'] = (60, 60, 60, 255)
-COLORS[1]['BG_LIGHTER'] = (40, 40, 40, 128)
-COLORS[1]['CHILD_BG'] = (60, 60, 65, 255)
-COLORS[1]['BORDER'] = (90, 90, 90, 255)
-COLORS[1]['FRAME'] = (70, 70, 75, 255)
-COLORS[1]['FRAME_HOVER'] = (100, 100, 150, 255)
-COLORS[1]['FRAME_ACTIVE'] = (120, 120, 200, 255)
+COLORS[1]['BG'] = (60,60,60,255)
+COLORS[1]['BG_LIGHTER'] = (40,40,40,128)
+COLORS[1]['CHILD_BG'] = (60,60,65,255)
+COLORS[1]['BORDER'] = (90,90,90,255)
+COLORS[1]['FRAME'] = (70,70,75,255)
+COLORS[1]['FRAME_HOVER'] = (100,100,150,255)
+COLORS[1]['FRAME_ACTIVE'] = (120,120,200,255)
 
-COLORS[1]['TEXT'] = (255, 255, 255, 255)
-COLORS[1]['TEXT_AURA'] = (0,0,0, 255)
-COLORS[1]['TEXT_PEAKS'] = (255,255,255, 150)
+COLORS[1]['INNER_SHADOW']    = (40,40,40,255)
+COLORS[1]['OUTER_SHADOW']    = (50,50,50,255)
+COLORS[1]['INNER_HIGHLIGHT'] = (95,95,95,255)
+COLORS[1]['OUTER_HIGHLIGHT'] = (75,75,75,255)
+
+COLORS[1]['TEXT'] = (255,255,255,255)
+COLORS[1]['TEXT_AURA'] = (0,0,0,255)
+COLORS[1]['TEXT_PEAKS'] = (255,255,255,150)
 COLORS[1]['BUTTON'] = COLORS[1]['BG']
-COLORS[1]['BUTTON_HOVER'] = (120, 120, 180, 255)
-COLORS[1]['BUTTON_ACTIVE'] = (150, 150, 200, 255)
-COLORS[1]['ACCENT'] = (150, 150, 150, 255)
+COLORS[1]['BUTTON_HOVER'] = (120,120,180,255)
+COLORS[1]['BUTTON_ACTIVE'] = (150,150,200,255)
+COLORS[1]['ACCENT'] = (150,150,150,255)
 
-COLORS[1]['TOOLTIP_BG'] = (246, 246, 185, 255)
-COLORS[1]['TOOLTIP_TEXT'] = (40, 35, 25, 255)
+COLORS[1]['TOOLTIP_BG'] = (246,246,185,255)
+COLORS[1]['TOOLTIP_TEXT'] = (40,35,25,255)
 
-COLORS[1]['TRACK_CORE'] = (128, 128, 128, 128)
-COLORS[1]['TRACK_BG'] = (128, 128, 128, 128)
-COLORS[1]['TRACK_RECORDED_CORE'] = (255, 160, 100, 255)
-COLORS[1]['TRACK_RECORDED_BG'] = (200,100, 0, 20)
-COLORS[1]['TRACK_HOVER_CORE'] = (50, 200, 200, 255)
-COLORS[1]['TRACK_HOVER_BG'] = (0,200, 100, 100)
-COLORS[1]['FFT_LINE'] = (255, 255, 255, 130)
-COLORS[1]['FFT_LINE_AVG'] = (255, 255, 255, 40)
-COLORS[1]['FFT_LINE2'] = (10, 10, 10, 100)
-COLORS[1]['FFT_FILL'] = (200, 200, 200, 30)
-COLORS[1]['FFT_FILL_LINE'] = (200, 200, 200, 100)
+COLORS[1]['TRACK_CORE'] = (128,128,128,128)
+COLORS[1]['TRACK_BG'] = (128,128,128,128)
+COLORS[1]['TRACK_RECORDED_CORE'] = (255,160,100,255)
+COLORS[1]['TRACK_RECORDED_BG'] = (200,100,0,20)
+COLORS[1]['TRACK_HOVER_CORE'] = (50,200,200,255)
+COLORS[1]['TRACK_HOVER_BG'] = (0,200,100,100)
+COLORS[1]['FFT_LINE'] = (255,255,255,130)
+COLORS[1]['FFT_LINE_AVG'] = (255,255,255,40)
+COLORS[1]['FFT_LINE2'] = (10,10,10,100)
+COLORS[1]['FFT_FILL'] = (200,200,200,30)
+COLORS[1]['FFT_FILL_LINE'] = (200,200,200,100)
 
-COLORS[1]['BG_CONS'] = (60, 60, 60, 255)
+COLORS[1]['BG_CONS'] = (60,60,60,255)
 COLORS[1]['CONS_INFO'] = (200,235,200,255)
 COLORS[1]['CONS_WARN'] = (255,215,0,255)
 COLORS[1]['CONS_ERR'] = (255,170,170,255)
@@ -1783,7 +1793,7 @@ def reset_track_press(sender=None, app_data=None):
         cons_info(f'Track reset:{track}')
 
         sweep_abort()
-        track_line_data_y_recorded=track_line_data_y[track]=[dbinit]*TRACK_BUCKETS
+        track_line_data_y_recorded=track_line_data_y[track]=[dbmin_sample]*TRACK_BUCKETS
 
         redraw_recorded_track_line=True
     else:
@@ -2145,11 +2155,11 @@ def tracks_buckets_quant_change(sender=None, app_data=None,try_to_load=False):
                     track_line_data_y[track]=loads(f.read())
             except Exception as tl_e:
                 l_error(f'Track load error:{tl_e}')
-                track_line_data_y[track]=[dbmin]*TRACK_BUCKETS
+                track_line_data_y[track]=[dbmin_sample]*TRACK_BUCKETS
 
     else:
         for track in range(tracks):
-            track_line_data_y[track]=[dbmin]*TRACK_BUCKETS
+            track_line_data_y[track]=[dbmin_sample]*TRACK_BUCKETS
 
     for track in range(tracks):
         set_value(f"track{track}_bg", [bucket_tracks_freqs, track_line_data_y[track]])
@@ -2688,8 +2698,13 @@ def theme_callback(ti):
     #OPT=4
     res_append( (COLORS[TI]['BG_CONS'],COLORS[TI]['CONS_OPT']) )
 
-    global console_color_tab
+    global console_color_tab,INNER_SHADOW,OUTER_SHADOW,INNER_HIGHLIGHT,OUTER_HIGHLIGHT
     console_color_tab=tuple(res)
+
+    INNER_SHADOW=COLORS[TI]['INNER_SHADOW']
+    OUTER_SHADOW=COLORS[TI]['OUTER_SHADOW']
+    INNER_HIGHLIGHT=COLORS[TI]['INNER_HIGHLIGHT']
+    OUTER_HIGHLIGHT=COLORS[TI]['OUTER_HIGHLIGHT']
 
 PEAKS=cfg['peaks']
 def peaks_callback():
@@ -2797,7 +2812,7 @@ def help_callback():
             "F11 - debug info                     F5  - FFT FBA                   LMB - generate specified frequency ",
             "F12 - settings                       F6  - FFT Smoothing             RMB -lock frequency                ",
             "G   - Filled chart                   F7  - FFT TDA                   Mouse Wheel, Arrows,PgUp,PgDown -  ",
-            "L / D  - light/dark theme            P - peaks detection                     modify locked frequency,    ",
+            "L / D  - light/dark theme            P - peaks detection                     modify locked frequency,   ",
             "Space  - pause refreshing                                                    console scroll             ",
             "S / C  - save file (png/csv)                                                                            ",
             "Pause  - frames capture (gif)                                                                           ",
@@ -2866,14 +2881,10 @@ if cfg['viewport_width']:
 if cfg['viewport_pos']:
     set_viewport_pos(cfg['viewport_pos'])
 
-on_viewport_resize()
-
 dpg.set_viewport_small_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas_small.png")))
 dpg.set_viewport_large_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas.png")))
 
 dpg.set_viewport_resize_callback(callback=on_viewport_resize)
-
-#round_viewport()
 
 ########################################################################
 setup_dearpygui()
@@ -2931,8 +2942,6 @@ in_dev_changed(None,None,True)
 next_check = 0
 status_shown=True
 status_hide_time=0
-
-on_viewport_resize()
 
 round_viewport()
 
@@ -3223,7 +3232,6 @@ def output_frame_buffer_callback(sender, app_data):
     except Exception as ofbce:
         cons_err(f'{ofbce=}')
 
-############################################################################################################################
 next_redraw=0
 def main_loop():
     global sweeping,out_callbacks,out_samples,set_viewport_pos_scheduled,set_viewport_resize_scheduled,schedule_screenshot
@@ -3240,6 +3248,11 @@ def main_loop():
     main_loop_outside=0
     main_loop_inside=0
 
+    on_viewport_resize()
+    render_dearpygui_frame()
+
+    dl_tag='draw_layer'
+
     while is_dearpygui_running():
         now=perf_counter()
         main_loop_outside+=now-now_end
@@ -3251,8 +3264,6 @@ def main_loop():
                 set_viewport_pos((vp_x + mouse_x - offset_x,vp_y + mouse_y - offset_y))
                 render_dearpygui_frame()
                 set_viewport_pos_scheduled=False
-                #sleep(0.0001)
-                #continue
             except Exception as e_pos:
                 cons_err(f'{e_pos=}')
 
@@ -3264,8 +3275,6 @@ def main_loop():
                 on_viewport_resize()
                 render_dearpygui_frame()
                 set_viewport_resize_scheduled=False
-                #sleep(0.0001)
-                #continue
             except Exception as e_res:
                 cons_err(f'{e_res=}')
 
@@ -3454,6 +3463,28 @@ def main_loop():
             break
 
         if now>next_redraw:
+            delete_item('draw_layer', children_only=True)
+
+            mn,mx = get_item_rect_min('plot'),get_item_rect_max('plot')
+            x0,y0,x1,y1 = float(mn[0])+41, float(mn[1]+8),float(mx[0])-8, float(mx[1])-27
+
+            x0p1=x0+1
+            y0p1=y0+1
+            x1p1=x1-1
+            y1m1=y1-1
+
+            # left / up
+            draw_line((x0p1,y0p1),(x1p1,y0p1), color=INNER_SHADOW, thickness=2, parent=dl_tag)
+            draw_line((x0p1,y0p1),(x0p1,y1m1), color=INNER_SHADOW, thickness=2, parent=dl_tag)
+            draw_line((x0,y0),(x1,y0),color=OUTER_SHADOW, thickness=1, parent=dl_tag)
+            draw_line((x0,y0),(x0,y1),color=OUTER_SHADOW, thickness=1, parent=dl_tag)
+
+            # right / down
+            draw_line((x0p1,y1m1),(x1p1,y1m1),color=INNER_HIGHLIGHT, thickness=2, parent=dl_tag)
+            draw_line((x1p1,y0p1),(x1p1,y1m1),color=INNER_HIGHLIGHT, thickness=2, parent=dl_tag)
+            draw_line((x0,y1),(x1,y1),color=OUTER_HIGHLIGHT, thickness=1, parent=dl_tag)
+            draw_line((x1,y0),(x1,y1),color=OUTER_HIGHLIGHT, thickness=1, parent=dl_tag)
+
             try:
                 if console_direction_mod==2:
                     if console_shift<=0:
@@ -3461,14 +3492,13 @@ def main_loop():
                             console_show_end_index+=1
                             console_shift+=console_line_height
 
-                delete_item('draw_layer', children_only=True)
                 line_x_pos=330 if DEBUG else slider_width+yaxis_width+20
 
                 for l,(text,code) in enumerate(list(islice(console_buffer,max(0,console_show_end_index-console_visible_lines),console_show_end_index+1))):
                     text_trimmed=text if len(text)<console_visible_chars else text[0:console_visible_chars_m3] + '...'
 
                     for (mx,my,center) in theme_text_aura:
-                        draw_text(pos=(line_x_pos + mx,title_hight + plot_upper_margin + l*console_line_height + console_shift + my),text=text_trimmed,color=console_color_tab[code][center],parent='draw_layer',size=console_fontsize)
+                        draw_text(pos=(line_x_pos + mx,title_hight + plot_upper_margin + l*console_line_height + console_shift + my),text=text_trimmed,color=console_color_tab[code][center],parent=dl_tag,size=console_fontsize)
 
                 lines_to_show=console_buffer_len-console_show_end_index
 
@@ -3490,7 +3520,6 @@ def main_loop():
             main_loop_inside+=now_end-now
             sleep(0.0001)
 
-############################################################################################################################
 gc_collect()
 gc_freeze()
 
