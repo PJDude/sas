@@ -1867,12 +1867,15 @@ def track_action_callback(sender=None,app_data=None,track=None):
 
 def in_dev_config_items():
     api_name=get_value('in_api')
+    print(f'in_dev_config_items:{api_name=}')
+
     api=api_name2api[api_name]
 
     try:
-        in_api_devices_indexes=api_name2api[api_name]['devices']
+        api_devices_indexes=api_name2api[api_name]['devices']
+        print(f'in_dev_config_items:{api_devices_indexes=}')
 
-        devices = [query_devices(dev_index) for dev_index in in_api_devices_indexes]
+        devices = [query_devices(dev_index) for dev_index in api_devices_indexes]
         default_input_device_name=query_devices(api['default_input_device'])
 
         if get_value('allow_all_devices'):
@@ -1888,18 +1891,21 @@ def in_dev_config_items():
         configure_item("in_dev",items=in_values)
 
         return in_values
-    except Exception as idcn_e:
-        cons_err(f'{idcn_e=}')
+    except Exception as e:
+        cons_err(f'in_dev_config_items error:{e},api_name:{api_name}')
         return []
 
 def out_dev_config_items():
     api_name=get_value('out_api')
+    print(f'out_dev_config_items:{api_name=}')
+
     api=api_name2api[api_name]
 
     try:
-        out_api_devices_indexes=api['devices']
+        api_devices_indexes=api['devices']
+        print(f'out_dev_config_items:{api_devices_indexes=}')
 
-        devices = [query_devices(dev_index) for dev_index in out_api_devices_indexes]
+        devices = [query_devices(dev_index) for dev_index in api_devices_indexes]
 
         default_output_device_name=query_devices(api['default_output_device'])
 
@@ -1913,8 +1919,8 @@ def out_dev_config_items():
 
         return out_values
 
-    except Exception as odcn_e:
-        cons_err(f'{odcn_e=}')
+    except Exception as e:
+        cons_err(f'out_dev_config_items error:{e},api_name:{api_name}')
         return []
 
 #def dithering_off_callback(sender=None, app_data=None,user_data=False):
