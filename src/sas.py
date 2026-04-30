@@ -1469,9 +1469,12 @@ def initial_set_devices():
         in_dev_config_items()
 
         in_dev = cfg['in_dev']
-        l_info(f'{in_dev=}')
+        l_info(f'{in_dev=},{api['devices']}')
 
-        devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
+        try:
+            devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
+        except Exception as e:
+            l_error(f'initial_set_devices(1):{e=}')
 
         devices_names_of_api=[dev['name'] for dev in devices_of_api]
 
@@ -1511,9 +1514,13 @@ def initial_set_devices():
         out_dev_config_items()
 
         out_dev = cfg['out_dev']
-        l_info(f'{out_dev=}')
+        l_info(f'{out_dev=},{api['devices']}')
 
-        devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
+        try:
+            devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
+        except Exception as e:
+            l_error(f'initial_set_devices(2):{e=}')
+
         devices_names_of_api=[dev['name'] for dev in devices_of_api]
 
         if out_dev in devices_names_of_api:
