@@ -1867,16 +1867,23 @@ def track_action_callback(sender=None,app_data=None,track=None):
 
 def in_dev_config_items():
     api_name=get_value('in_api')
-    print(f'in_dev_config_items:{api_name=}')
+    l_info(f'in_dev_config_items:{api_name=}')
 
     api=api_name2api[api_name]
 
     try:
         api_devices_indexes=api_name2api[api_name]['devices']
-        print(f'in_dev_config_items:{api_devices_indexes=}')
+        l_info(f'in_dev_config_items:{api_devices_indexes=}')
 
         devices = [query_devices(dev_index) for dev_index in api_devices_indexes]
-        default_input_device_name=query_devices(api['default_input_device'])
+
+        default_input_device=api['default_input_device']
+        l_info(f'in_dev_config_items:{default_input_device=}')
+
+        if default_input_device!=-1:
+            default_input_device_name=query_devices(api['default_input_device'])
+        else:
+            default_input_device_name=''
 
         if get_value('allow_all_devices'):
             in_values=[ dev['name'] for dev in devices]
@@ -1897,17 +1904,23 @@ def in_dev_config_items():
 
 def out_dev_config_items():
     api_name=get_value('out_api')
-    print(f'out_dev_config_items:{api_name=}')
+    l_info(f'out_dev_config_items:{api_name=}')
 
     api=api_name2api[api_name]
 
     try:
         api_devices_indexes=api['devices']
-        print(f'out_dev_config_items:{api_devices_indexes=}')
+        l_info(f'out_dev_config_items:{api_devices_indexes=}')
 
         devices = [query_devices(dev_index) for dev_index in api_devices_indexes]
 
-        default_output_device_name=query_devices(api['default_output_device'])
+        default_output_device=api['default_output_device']
+        l_info(f'out_dev_config_items:{default_output_device=}')
+
+        if default_output_device!=-1:
+            default_output_device_name=query_devices(default_output_device)
+        else:
+            default_output_device_name=''
 
         out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0]
         # and dev['index']
