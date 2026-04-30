@@ -1878,9 +1878,9 @@ def in_dev_config_items():
         devices = [query_devices(dev_index) for dev_index in api_devices_indexes]
 
         default_input_device=api['default_input_device']
-        l_info(f'in_dev_config_items:{default_input_device=}')
+        l_info(f'in_dev_config_items:{default_input_device=},{type(default_input_device)}')
 
-        if default_input_device!=-1:
+        if str(default_input_device)!='-1':
             default_input_device_name=query_devices(api['default_input_device'])
         else:
             default_input_device_name=''
@@ -1890,6 +1890,8 @@ def in_dev_config_items():
         else:
             in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0]
             # and dev['index']
+
+        l_info(f'{in_values=}')
 
         tooltip_str='\n'.join([ ('*' if name==default_input_device_name else '-') + ' ' + name for name in in_values])
 
@@ -1915,15 +1917,17 @@ def out_dev_config_items():
         devices = [query_devices(dev_index) for dev_index in api_devices_indexes]
 
         default_output_device=api['default_output_device']
-        l_info(f'out_dev_config_items:{default_output_device=}')
+        l_info(f'out_dev_config_items:{default_output_device=},{type(default_output_device)}')
 
-        if default_output_device!=-1:
+        if str(default_output_device)!='-1':
             default_output_device_name=query_devices(default_output_device)
         else:
             default_output_device_name=''
 
         out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0]
         # and dev['index']
+
+        l_info(f'{out_values=}')
 
         tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
         widget_tooltip(f"Available (API:{api_name}):\n\n{tooltip_str}","out_dev")
