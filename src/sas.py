@@ -2338,6 +2338,8 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
     global device_out_current
 
     dev_name=cfg["out_dev"]=get_value("out_dev")
+    l_info(f'out_dev_changed:{dev_name=}')
+
 
     in_api=get_value('out_api')
     api=[api for api in query_hostapis() if api['name']==in_api][0]
@@ -2345,37 +2347,42 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
     devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
     devices_names_of_api=[dev['name'] for dev in devices_of_api]
 
-    device_out_current=[dev for dev in devices_of_api if dev['name']==dev_name][0]
+    devices_matching=[dev for dev in devices_of_api if dev['name']==dev_name]
 
-    output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
+    if devices_matching:
+        device_out_current=devices_matching[0]
 
-    configure_item("out_channel",items=output_channels)
+        output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
 
-    cfg["out_channel"]=out_channel_value=get_value("out_channel")
+        configure_item("out_channel",items=output_channels)
 
-    if not out_channel_value or out_channel_value not in output_channels:
-        out_channel_value=1
-        set_value("out_channel",out_channel_value)
+        cfg["out_channel"]=out_channel_value=get_value("out_channel")
 
-    sel_rates=check_sample_rates_output(device_out_current['index'])
-    configure_item("out_samplerate",items=sel_rates)
+        if not out_channel_value or out_channel_value not in output_channels:
+            out_channel_value=1
+            set_value("out_channel",out_channel_value)
 
-    values_str=' - ' + '\n - '.join(sel_rates)
-    widget_tooltip(f"Available:\n\n{values_str}","out_samplerate")
+        sel_rates=check_sample_rates_output(device_out_current['index'])
+        configure_item("out_samplerate",items=sel_rates)
 
-    prev_out_samplerate = cfg['out_samplerate']
-    out_samplerate_to_set = prev_out_samplerate if prev_out_samplerate in sel_rates else str(int(device_out_current['default_samplerate']))
-    cfg['out_samplerate']=out_samplerate_to_set
+        values_str=' - ' + '\n - '.join(sel_rates)
+        widget_tooltip(f"Available:\n\n{values_str}","out_samplerate")
 
-    set_value("out_samplerate",out_samplerate_to_set)
+        prev_out_samplerate = cfg['out_samplerate']
+        out_samplerate_to_set = prev_out_samplerate if prev_out_samplerate in sel_rates else str(int(device_out_current['default_samplerate']))
+        cfg['out_samplerate']=out_samplerate_to_set
 
-    out_samplerate_changed()
-    out_channel_changed(None,out_channel_value)
-    out_latency_changed(None,cfg['out_latency'])
-    out_blocksize_changed(None,cfg['out_blocksize'])
+        set_value("out_samplerate",out_samplerate_to_set)
 
-    if user_data:
-        out_stream_init()
+        out_samplerate_changed()
+        out_channel_changed(None,out_channel_value)
+        out_latency_changed(None,cfg['out_latency'])
+        out_blocksize_changed(None,cfg['out_blocksize'])
+
+        if user_data:
+            out_stream_init()
+    else:
+        device_out_current=None
 
 device_in_current=None
 def in_dev_changed(sender=None, app_data=None,user_data=False):
@@ -2385,41 +2392,52 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_dev_changed:{sender},{app_data},{user_data}')
 
     dev_name=cfg["in_dev"]=get_value("in_dev")
+    l_info(f'in_dev_changed:{dev_name=}')
 
     in_api=get_value('in_api')
+    l_info(f'in_dev_changed:{in_api=}')
     api=[api for api in query_hostapis() if api['name']==in_api][0]
 
-    devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
-    device_in_current=[dev for dev in devices_of_api if dev['name']==dev_name][0]
+    api_devices=api['devices']
+    l_info(f'in_dev_changed:{api_devices=}')
 
-    input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
+    devices_of_api=[query_devices(dev_id) for dev_id in api_devices]
+    l_info(f'in_dev_changed:{devices_of_api=}')
 
-    configure_item("in_channel",items=input_channels)
-    cfg['in_channel']=in_channel_value=get_value("in_channel")
+    devices_matching=[dev for dev in devices_of_api if dev['name']==dev_name]
+    if devices_matching:
+        device_in_current=devices_matching[0]
 
-    if not in_channel_value or in_channel_value not in input_channels:
-        in_channel_value=1
-        set_value("in_channel",in_channel_value)
+        input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
 
-    sel_rates=check_sample_rates_input(device_in_current['index'])
-    configure_item("in_samplerate",items=sel_rates)
+        configure_item("in_channel",items=input_channels)
+        cfg['in_channel']=in_channel_value=get_value("in_channel")
 
-    values_str=' - ' + '\n - '.join(sel_rates)
-    widget_tooltip(f"Available:\n\n{values_str}","in_samplerate")
+        if not in_channel_value or in_channel_value not in input_channels:
+            in_channel_value=1
+            set_value("in_channel",in_channel_value)
 
-    prev_in_samplerate = cfg['in_samplerate']
-    in_samplerate_to_set = prev_in_samplerate if prev_in_samplerate in sel_rates else str(int(device_in_current['default_samplerate']))
-    cfg['in_samplerate']=in_samplerate_to_set
-    set_value("in_samplerate",in_samplerate_to_set)
+        sel_rates=check_sample_rates_input(device_in_current['index'])
+        configure_item("in_samplerate",items=sel_rates)
 
-    in_channel_changed(None,in_channel_value)
-    in_latency_changed(None,cfg['in_latency'])
-    in_blocksize_changed(None,cfg['in_blocksize'])
+        values_str=' - ' + '\n - '.join(sel_rates)
+        widget_tooltip(f"Available:\n\n{values_str}","in_samplerate")
 
-    if user_data:
-        common_precalc()
+        prev_in_samplerate = cfg['in_samplerate']
+        in_samplerate_to_set = prev_in_samplerate if prev_in_samplerate in sel_rates else str(int(device_in_current['default_samplerate']))
+        cfg['in_samplerate']=in_samplerate_to_set
+        set_value("in_samplerate",in_samplerate_to_set)
 
-        in_stream_init()
+        in_channel_changed(None,in_channel_value)
+        in_latency_changed(None,cfg['in_latency'])
+        in_blocksize_changed(None,cfg['in_blocksize'])
+
+        if user_data:
+            common_precalc()
+
+            in_stream_init()
+    else:
+        device_in_current=None
 
 def click_callback(sender, button_nr):
     if is_item_hovered("plot"):
