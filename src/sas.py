@@ -1469,7 +1469,7 @@ def initial_set_devices():
         in_dev_config_items()
 
         in_dev = cfg['in_dev']
-        l_info(f'{in_dev=},{api['devices']}')
+        l_info(f'initial_set_devices:{in_dev=},{api['devices']}')
 
         try:
             devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
@@ -1477,6 +1477,7 @@ def initial_set_devices():
             l_error(f'initial_set_devices(1):{e=}')
 
         devices_names_of_api=[dev['name'] for dev in devices_of_api]
+        l_info(f'initial_set_devices(1):{devices_names_of_api=}')
 
         if in_dev in devices_names_of_api:
             set_value('in_dev',in_dev)
@@ -1484,7 +1485,12 @@ def initial_set_devices():
             in_set_by_cfg=True
             set_value('in_samplerate',cfg['in_samplerate'])
         else:
-            val=cfg['in_dev']=query_devices(device=api_name2api[in_api]['default_input_device'])['name']
+            default_input_device=api_name2api[in_api]['default_input_device']
+            if default_input_device!=-1:
+                val=cfg['in_dev']=query_devices(device=default_input_device)['name']
+            else:
+                val=cfg['in_dev']=None
+
             set_value('in_dev',cfg['in_dev'])
             l_info(f'in_dev set by default:{val}')
             in_set_by_cfg=True
@@ -1522,6 +1528,7 @@ def initial_set_devices():
             l_error(f'initial_set_devices(2):{e=}')
 
         devices_names_of_api=[dev['name'] for dev in devices_of_api]
+        l_info(f'initial_set_devices(2):{devices_names_of_api=}')
 
         if out_dev in devices_names_of_api:
             set_value('out_dev',out_dev)
@@ -1529,7 +1536,12 @@ def initial_set_devices():
             out_set_by_cfg=True
             set_value('out_samplerate',cfg['out_samplerate'])
         else:
-            val=cfg['out_dev']=query_devices(device=api_name2api[out_api]['default_output_device'])['name']
+            default_output_device=api_name2api[out_api]['default_output_device']
+            if default_output_device!=-1:
+                val=cfg['out_dev']=query_devices(device=default_output_device)['name']
+            else:
+                val=cfg['out_dev']=None
+
             set_value('out_dev',cfg['out_dev'])
             l_info(f'out_dev set by default:{val}')
             out_set_by_cfg=True
@@ -1873,13 +1885,13 @@ def track_action_callback(sender=None,app_data=None,track=None):
     refresh_tracks()
 
 def in_dev_config_items():
-    api_name=get_value('in_api')
-    l_info(f'in_dev_config_items:{api_name=}')
+    in_api=get_value('in_api')
+    l_info(f'in_dev_config_items:{in_api=}')
 
-    api=api_name2api[api_name]
+    api=api_name2api[in_api]
 
     try:
-        api_devices_indexes=api_name2api[api_name]['devices']
+        api_devices_indexes=api_name2api[in_api]['devices']
         l_info(f'in_dev_config_items:{api_devices_indexes=}')
 
         devices = [query_devices(dev_index) for dev_index in api_devices_indexes]
@@ -1902,20 +1914,20 @@ def in_dev_config_items():
 
         tooltip_str='\n'.join([ ('*' if name==default_input_device_name else '-') + ' ' + name for name in in_values])
 
-        widget_tooltip(f"Available (API:{api_name}):\n\n{tooltip_str}","in_dev")
+        widget_tooltip(f"Available (API:{in_api}):\n\n{tooltip_str}","in_dev")
 
         configure_item("in_dev",items=in_values)
 
         return in_values
     except Exception as e:
-        cons_err(f'in_dev_config_items error:{e},api_name:{api_name}')
+        cons_err(f'in_dev_config_items error:{e},in_api:{in_api}')
         return []
 
 def out_dev_config_items():
-    api_name=get_value('out_api')
-    l_info(f'out_dev_config_items:{api_name=}')
+    out_api=get_value('out_api')
+    l_info(f'out_dev_config_items:{out_api=}')
 
-    api=api_name2api[api_name]
+    api=api_name2api[out_api]
 
     try:
         api_devices_indexes=api['devices']
@@ -1937,14 +1949,14 @@ def out_dev_config_items():
         l_info(f'{out_values=}')
 
         tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
-        widget_tooltip(f"Available (API:{api_name}):\n\n{tooltip_str}","out_dev")
+        widget_tooltip(f"Available (API:{out_api}):\n\n{tooltip_str}","out_dev")
 
         configure_item("out_dev",items=out_values)
 
         return out_values
 
     except Exception as e:
-        cons_err(f'out_dev_config_items error:{e},api_name:{api_name}')
+        cons_err(f'out_dev_config_items error:{e},out_api:{out_api}')
         return []
 
 #def dithering_off_callback(sender=None, app_data=None,user_data=False):
@@ -1964,11 +1976,12 @@ def in_wasapi_exclusive_callback(sender=None, app_data=None,user_data=False):
         in_dev_changed(None,None,user_data)
 
 def in_api_callback(sender=None, app_data=None,user_data=False):
-    api_name=cfg['in_api']=get_value('in_api')
-    cons_opt(f'Input API:{api_name}')
+    in_api=cfg['in_api']=get_value('in_api')
+    cons_opt(f'Input API:{in_api}')
 
     if user_data:
-        cfg['in_dev']=query_devices(device=api_name2api[api_name]['default_input_device'])['name']
+        default_input_device=api_name2api[in_api]['default_input_device']
+        cfg['in_dev']=query_devices(device=api_name2api[in_api]['default_input_device'])['name']
 
     cfg['allow_all_devices'] = get_value('allow_all_devices')
     in_dev_config_items()
@@ -1978,11 +1991,11 @@ def in_api_callback(sender=None, app_data=None,user_data=False):
     in_dev_changed(None,None,user_data)
 
 def out_api_callback(sender=None, app_data=None,user_data=False):
-    api_name=cfg['out_api']=get_value('out_api')
-    cons_opt(f'Output API:{api_name}')
+    in_api=cfg['out_api']=get_value('out_api')
+    cons_opt(f'Output API:{in_api}')
 
     if user_data:
-        cfg['out_dev']=query_devices(device=api_name2api[api_name]['default_output_device'])['name']
+        cfg['out_dev']=query_devices(device=api_name2api[in_api]['default_output_device'])['name']
 
     out_dev_config_items()
 
@@ -2326,8 +2339,8 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
     dev_name=cfg["out_dev"]=get_value("out_dev")
 
-    api_name=get_value('out_api')
-    api=[api for api in query_hostapis() if api['name']==api_name][0]
+    in_api=get_value('out_api')
+    api=[api for api in query_hostapis() if api['name']==in_api][0]
 
     devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
     devices_names_of_api=[dev['name'] for dev in devices_of_api]
@@ -2373,8 +2386,8 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
 
     dev_name=cfg["in_dev"]=get_value("in_dev")
 
-    api_name=get_value('in_api')
-    api=[api for api in query_hostapis() if api['name']==api_name][0]
+    in_api=get_value('in_api')
+    api=[api for api in query_hostapis() if api['name']==in_api][0]
 
     devices_of_api=[query_devices(dev_id) for dev_id in api['devices']]
     device_in_current=[dev for dev in devices_of_api if dev['name']==dev_name][0]
