@@ -1663,18 +1663,6 @@ def in_samplerate_changed(sender=None, app_data=None,user_data=False):
         common_precalc()
         in_stream_init()
 
-def out_stream_stop():
-    if stream_out:
-        stream_out.stop()
-        cons_info('OutputStream stop.')
-        sleep(0.2)
-
-def in_stream_stop():
-    if stream_in:
-        stream_in.stop()
-        cons_info('InputStream stop.')
-        sleep(0.2)
-
 def latency_for_stream(latency):
     if latency=='default':
         return None
@@ -1684,8 +1672,6 @@ def latency_for_stream(latency):
 def out_stream_init():
     configure_item('out_status',texture_tag=ico['out_off'])
     global stream_out,device_out_current,out_channel_buffer_mod_index
-
-    out_stream_stop()
 
     if stream_out:
         stream_out.close()
@@ -1742,7 +1728,6 @@ def in_stream_init():
     configure_item('in_status',texture_tag=ico['in_off'])
     global stream_in,device_in_current,in_channel_buffer_mod_index
 
-    in_stream_stop()
     if stream_in:
         stream_in.close()
         cons_info('InputStream closed.')
@@ -3131,7 +3116,7 @@ def processing():
         processing_outside+=processing_begin-processing_end
 
         if precalc_ready:
-            while True:
+            while stream_in and samples_chunks_fifo:
                 data_new_chunk_len=0
                 data_len=0
                 try:
@@ -3286,8 +3271,11 @@ def processing():
         processing_end=perf_counter()
         processing_inside+=processing_end-processing_begin
         if do_sleep:
-            sleep(0.00001)
             do_sleep=False
+            sleep(0.0001)
+
+    l_info('processing thread - exiting.')
+    sys_exit()
 
 Thread(target=processing,daemon=True).start()
 
@@ -3614,11 +3602,8 @@ sweeping=False
 lock_frequency=False
 
 play_stop()
-out_stream_stop()
 
 exiting=True
-
-in_stream_stop()
 
 if stream_in:
     stream_in.close()
