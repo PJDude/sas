@@ -3387,6 +3387,7 @@ def main_loop():
         if settings_wrapper_scheduled:
             try:
                 height,height_min = settings_wrapper_scheduled
+                settings_wrapper_scheduled=None
                 render_dearpygui_frame()
                 if cfg['settings']:
                     set_viewport_min_height(height_min)
@@ -3402,110 +3403,20 @@ def main_loop():
                     set_viewport_height(height)
 
                 render_dearpygui_frame()
-                settings_wrapper_scheduled=None
                 continue
             except Exception as settings_e:
                 cons_err(f'{settings_e=}')
 
-        if now >= next_check :
-            next_check = now+1.0
-
-            if DEBUG and not (dragging or resizing or PAUSE):
-                try:
-                    try:
-                        proc_ratio=processing_inside/(processing_inside+processing_outside)
-                    except:
-                        proc_ratio="Nan"
-
-                    try:
-                        main_ratio=main_loop_inside/(main_loop_inside+main_loop_outside)
-                    except:
-                        main_ratio="Nan"
-
-                    stream_out_cpu_load = stream_out.cpu_load if stream_out else 0
-                    stream_in_cpu_load = stream_in.cpu_load if stream_in else 0
-
-                    stream_out_latency = stream_out.latency if stream_out else 0
-                    stream_in_latency = stream_in.latency if stream_in else 0
-                    part1 = [f"FPS:{frames}/{changes}  sat:{main_ratio:.5f}/{proc_ratio:.5f}\n",
-                            f"             Output       Input",
-                            f"samples/s  {out_samples:8d}    {in_samples:8d}",
-                            f"blocks/s   {out_callbacks:8d}    {in_callbacks:8d}",
-                            f"errors/s   {out_errors:8d}    {in_errors:8d}",
-                            " ",
-                            f"CPU        {stream_out_cpu_load:.6f}    {stream_in_cpu_load:.6f}",
-                            f"latency[s] {stream_out_latency:.6f}    {stream_in_latency:.6f}",
-                            " ",
-                            " "]
-
-                    fft_calc_mean=fft_calc_sum_time/fft_calcs if fft_calcs else 0
-                    fft_calc_in_sec=int(1.0/fft_calc_mean) if fft_calc_mean else 0
-
-                    fft_proc_mean=fft_proc_sum_time/fft_calcs if fft_calcs else 0
-                    fft_proc_in_sec=int(1.0/fft_proc_mean) if fft_proc_mean and (FFT_TDA or FFT_FBA or FFT_SMOOTH) else 0
-
-                    fft_peaks_mean=fft_peaks_sum_time/fft_calcs if fft_calcs else 0
-                    fft_peaks_in_sec=int(1.0/fft_peaks_mean) if fft_peaks_mean and PEAKS else 0
-
-                    fft_proc_sum_time=0
-                    fft_calc_sum_time=0
-                    fft_peaks_sum_time=0
-                    fft_calcs=0
-
-                    part_fft = [f"FFT Window: {round(fft_duration,3)}s",
-                                f"FFT Calcs: {fft_calc_mean:.5f}s / {fft_calc_in_sec:5d}/s",
-                                f"FFT Procs: {fft_proc_mean:.5f}s / {fft_proc_in_sec:5d}/s",
-                                f"FFT Peaks: {fft_peaks_mean:.5f}s / {fft_peaks_in_sec:5d}/s",
-                                "",
-                                f"   FFT /  FBA  /  act",
-                                f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}" if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
-                                ] if FFT else []
-
-                    list_sum=part1 + part_fft
-                    set_value('debug_text','\n'.join(list_sum))
-
-                    l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t{fft_calc_mean:.5f}:{fft_proc_mean:.5f}:{fft_peaks_mean:.5f}\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out_cpu_load:.6f}:{stream_in_cpu_load:.6f}\t{stream_out_latency:.6f}:{stream_in_latency:.6f}')
-
-                except Exception as debug_e:
-                    cons_err(f'{debug_e=}')
-
-            if not stream_in and not stream_out:
-                cons_err('Output stream not initialized / Input stream not initialized !')
-            elif not stream_in:
-                cons_err('Input stream not initialized !')
-            elif not stream_out:
-                cons_warn('Output stream not initialized !')
-            elif in_callbacks==0 and in_samples==0:
-                cons_err('No Input signal !')
-            elif PAUSE:
-                cons_warn('Paused.')
-
-            out_samples=0
-            out_callbacks=0
-            out_errors=0
-
-            frames = 0
-            changes = 0
-            in_samples = 0
-            in_callbacks = 0
-            in_errors=0
-
-            main_loop_inside=0
-            main_loop_outside=0
-
-            processing_inside=0
-            processing_outside=0
-
-        if windows:
-            try:
-                if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
-                    while ShowCursor(False) >= 0:
-                        pass
-                else:
-                    while ShowCursor(True) < 0:
-                        pass
-            except Exception as win_cur_e:
-                cons_err(f'{win_cur_e=}')
+        #if windows:
+        #    try:
+        #        if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
+        #            while ShowCursor(False) >= 0:
+        #                pass
+        #        else:
+        #            while ShowCursor(True) < 0:
+        #                pass
+        #    except Exception as win_cur_e:
+        #        cons_err(f'{win_cur_e=}')
 
         ##################################
         if sweeping:
@@ -3527,10 +3438,9 @@ def main_loop():
 
         ##################################
 
-        if exiting:
-            break
-
         if now>next_redraw:
+            next_redraw=now+frame_time
+
             delete_item('draw_layer', children_only=True)
 
             mn,mx = get_item_rect_min('plot'),get_item_rect_max('plot')
@@ -3580,10 +3490,100 @@ def main_loop():
             except Exception as console_e:
                 cons_err(f'{console_e=}')
 
+            if now>=next_check :
+                next_check = now+1.0
+
+                if DEBUG and not (dragging or resizing or PAUSE):
+                    try:
+                        try:
+                            proc_ratio=processing_inside/(processing_inside+processing_outside)
+                        except:
+                            proc_ratio="Nan"
+
+                        try:
+                            main_ratio=main_loop_inside/(main_loop_inside+main_loop_outside)
+                        except:
+                            main_ratio="Nan"
+
+                        stream_out_cpu_load = stream_out.cpu_load if stream_out else 0
+                        stream_in_cpu_load = stream_in.cpu_load if stream_in else 0
+
+                        stream_out_latency = stream_out.latency if stream_out else 0
+                        stream_in_latency = stream_in.latency if stream_in else 0
+                        part1 = [f"FPS:{frames}/{changes}  sat:{main_ratio:.5f}/{proc_ratio:.5f}\n",
+                                f"             Output       Input",
+                                f"samples/s  {out_samples:8d}    {in_samples:8d}",
+                                f"blocks/s   {out_callbacks:8d}    {in_callbacks:8d}",
+                                f"errors/s   {out_errors:8d}    {in_errors:8d}",
+                                " ",
+                                f"CPU        {stream_out_cpu_load:.6f}    {stream_in_cpu_load:.6f}",
+                                f"latency[s] {stream_out_latency:.6f}    {stream_in_latency:.6f}",
+                                " ",
+                                " "]
+
+                        fft_calc_mean=fft_calc_sum_time/fft_calcs if fft_calcs else 0
+                        fft_calc_in_sec=int(1.0/fft_calc_mean) if fft_calc_mean else 0
+
+                        fft_proc_mean=fft_proc_sum_time/fft_calcs if fft_calcs else 0
+                        fft_proc_in_sec=int(1.0/fft_proc_mean) if fft_proc_mean and (FFT_TDA or FFT_FBA or FFT_SMOOTH) else 0
+
+                        fft_peaks_mean=fft_peaks_sum_time/fft_calcs if fft_calcs else 0
+                        fft_peaks_in_sec=int(1.0/fft_peaks_mean) if fft_peaks_mean and PEAKS else 0
+
+                        fft_proc_sum_time=0
+                        fft_calc_sum_time=0
+                        fft_peaks_sum_time=0
+                        fft_calcs=0
+
+                        part_fft = [f"FFT Window: {round(fft_duration,3)}s",
+                                    f"FFT Calcs: {fft_calc_mean:.5f}s / {fft_calc_in_sec:5d}/s",
+                                    f"FFT Procs: {fft_proc_mean:.5f}s / {fft_proc_in_sec:5d}/s",
+                                    f"FFT Peaks: {fft_peaks_mean:.5f}s / {fft_peaks_in_sec:5d}/s",
+                                    "",
+                                    f"   FFT /  FBA  /  act",
+                                    f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}" if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
+                                    ] if FFT else []
+
+                        list_sum=part1 + part_fft
+                        set_value('debug_text','\n'.join(list_sum))
+
+                        l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t{fft_calc_mean:.5f}:{fft_proc_mean:.5f}:{fft_peaks_mean:.5f}\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out_cpu_load:.6f}:{stream_in_cpu_load:.6f}\t{stream_out_latency:.6f}:{stream_in_latency:.6f}')
+
+                    except Exception as debug_e:
+                        cons_err(f'{debug_e=}')
+
+                if not stream_in and not stream_out:
+                    cons_err('Output stream not initialized / Input stream not initialized !')
+                elif not stream_in:
+                    cons_err('Input stream not initialized !')
+                elif not stream_out:
+                    cons_warn('Output stream not initialized !')
+                elif in_callbacks==0 and in_samples==0:
+                    cons_err('No Input signal !')
+                elif PAUSE:
+                    cons_warn('Paused.')
+
+                out_samples=0
+                out_callbacks=0
+                out_errors=0
+
+                frames = 0
+                changes = 0
+                in_samples = 0
+                in_callbacks = 0
+                in_errors=0
+
+                main_loop_inside=0
+                main_loop_outside=0
+
+                processing_inside=0
+                processing_outside=0
+
             render_dearpygui_frame()
-            next_redraw=now+frame_time
             frames += 1
         else:
+            if exiting:
+                break
             now_end=perf_counter()
             main_loop_inside+=now_end-now
             sleep(0.0001)
