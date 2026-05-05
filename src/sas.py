@@ -978,25 +978,24 @@ logging.basicConfig(
 TARGET_FPS=60
 
 if windows:
-    from os import startfile
     import ctypes
 
-    user32 = ctypes.windll.user32
+    #user32 = ctypes.windll.user32
 
-    ShowCursor = user32.ShowCursor
-    LoadCursorW = user32.LoadCursorW
-    SetCursor = user32.SetCursor
+    #ShowCursor = user32.ShowCursor
+    #LoadCursorW = user32.LoadCursorW
+    #SetCursor = user32.SetCursor
 
-    IDC_ARROW    = 32512
-    IDC_SIZEALL  = 32646
-    IDC_CROSS    = 32515
-    IDC_HAND     = 32649
+    #IDC_ARROW    = 32512
+    #IDC_SIZEALL  = 32646
+    #IDC_CROSS    = 32515
+    #IDC_HAND     = 32649
 
-    def load_cursor(idc_id):
-        l_info('cursor_loaded')
-        return LoadCursorW(None, idc_id)
+    #def load_cursor(idc_id):
+    #    l_info('cursor_loaded')
+    #    return LoadCursorW(None, idc_id)
 
-    arrow_cursor = load_cursor(IDC_ARROW)
+    #arrow_cursor = load_cursor(IDC_ARROW)
 
     try:
         hdc = user32.GetDC(None)
@@ -1004,9 +1003,11 @@ if windows:
         user32.ReleaseDC(None, hdc)
         if rate > 0:
             TARGET_FPS=float(rate)
-            print(f'{TARGET_FPS=}')
+            l_info(f'{TARGET_FPS=}')
+        else:
+            l_warning(f'TARGET_FPS default')
     except Exception as fps_e:
-        print(f'{fps_e=}')
+        l_error(f'{fps_e=}')
 
     import psutil
     try:
@@ -1014,20 +1015,20 @@ if windows:
     except Exception as prior_e:
         print(f'{prior_e=}')
 
-    def round_viewport():
-        try:
-            hwnd = user32.FindWindowW("GLFW30", None) or user32.GetForegroundWindow()
-            try:
-                dwmapi = ctypes.windll.dwmapi
-                val = ctypes.c_int(2)  # DWMWCP_ROUND
-                dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(val), ctypes.sizeof(val))
-            except Exception as r1e:
-                print(f'{r1e=}')
-                w, h, r = dpg.get_viewport_width(), dpg.get_viewport_height(), 12
-                rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, r, r)
-                user32.SetWindowRgn(hwnd, rgn, True)
-        except Exception as r2e:
-            print(f'{r2e=}')
+    #def round_viewport():
+    #    try:
+    #        hwnd = user32.FindWindowW("GLFW30", None) or user32.GetForegroundWindow()
+    #        try:
+    #            dwmapi = ctypes.windll.dwmapi
+    #            val = ctypes.c_int(2)  # DWMWCP_ROUND
+    #            dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(val), ctypes.sizeof(val))
+    #        except Exception as r1e:
+    #            print(f'{r1e=}')
+    #            w, h, r = dpg.get_viewport_width(), dpg.get_viewport_height(), 12
+    #            rgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, r, r)
+    #            user32.SetWindowRgn(hwnd, rgn, True)
+    #    except Exception as r2e:
+    #        print(f'{r2e=}')
 else:
     try:
         import subprocess, re
@@ -1039,8 +1040,8 @@ else:
     except Exception as fps_e:
         print(f'{fps_e=}')
 
-    def round_viewport():
-        pass
+    #def round_viewport():
+    #    pass
 
 settings_height=186
 
@@ -1378,6 +1379,7 @@ def audio_input_callback(indata, frames, time_info, status):
 def go_to_homepage():
     try:
         if windows:
+            from os import startfile
             cons_info(f'opening: {HOMEPAGE}')
             startfile(HOMEPAGE)
         else:
@@ -3010,7 +3012,7 @@ next_check = 0
 status_shown=True
 status_hide_time=0
 
-round_viewport()
+#round_viewport()
 
 if not decorated:
     try:
@@ -3326,23 +3328,23 @@ def main_loop():
         main_loop_outside+=now-now_end
 
         if set_viewport_pos_scheduled:
+            set_viewport_pos_scheduled=False
             try:
                 vp_x, vp_y = get_viewport_pos()
                 mouse_x, mouse_y = get_mouse_pos()
                 set_viewport_pos((vp_x + mouse_x - offset_x,vp_y + mouse_y - offset_y))
                 render_dearpygui_frame()
-                set_viewport_pos_scheduled=False
             except Exception as e_pos:
                 cons_err(f'{e_pos=}')
 
         if set_viewport_resize_scheduled:
             try:
                 x_resize,y_resize=set_viewport_resize_scheduled
+                set_viewport_resize_scheduled=False
                 set_viewport_width(x_resize)
                 set_viewport_height(y_resize)
                 on_viewport_resize()
                 render_dearpygui_frame()
-                set_viewport_resize_scheduled=False
             except Exception as e_res:
                 cons_err(f'{e_res=}')
 
