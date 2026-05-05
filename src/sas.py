@@ -980,9 +980,8 @@ TARGET_FPS=60
 if windows:
     import ctypes
 
-    #user32 = ctypes.windll.user32
-
-    #ShowCursor = user32.ShowCursor
+    user32 = ctypes.windll.user32
+    ShowCursor = user32.ShowCursor
     #LoadCursorW = user32.LoadCursorW
     #SetCursor = user32.SetCursor
 
@@ -3409,16 +3408,16 @@ def main_loop():
             except Exception as settings_e:
                 cons_err(f'{settings_e=}')
 
-        #if windows:
-        #    try:
-        #        if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
-        #            while ShowCursor(False) >= 0:
-        #                pass
-        #        else:
-        #            while ShowCursor(True) < 0:
-        #                pass
-        #    except Exception as win_cur_e:
-        #        cons_err(f'{win_cur_e=}')
+        if windows:
+            try:
+                if playing_state and not (sweeping or lock_frequency) and is_item_hovered("plot"):
+                    while ShowCursor(False) >= 0:
+                        pass
+                else:
+                    while ShowCursor(True) < 0:
+                        pass
+            except Exception as win_cur_e:
+                cons_err(f'{win_cur_e=}')
 
         ##################################
         if sweeping:
