@@ -670,7 +670,7 @@ def build_gui():
                                         add_table_column(width_fixed=True, init_width_or_weight=240,width=240)
 
                                         with table_row():
-                                            add_image_button(ico["refresh"],tag='out_reinit',width=16,callback=out_reinit_callback); widget_tooltip('Re-Initialize Output Stream')
+                                            add_image_button(ico["refresh"],tag='out_reinit',width=16,callback=out_stream_init); widget_tooltip('Re-Initialize Output Stream')
                                             dpg.add_image(ico["out_off"],tag='out_status',width=16); widget_tooltip('Output Stream status')
                                             add_text(default_value='Output')
                                             add_slider_int(tag='amplitude',callback=amplitude_callback,max_value=100,min_value=0,default_value=cfg['amplitude'],format="%d",track_offset=0.5,width=150); widget_tooltip('Amplitude')
@@ -680,7 +680,7 @@ def build_gui():
                                         add_table_column(width_fixed=True, init_width_or_weight=16, width=16)
                                         add_table_column(width_fixed=True, init_width_or_weight=80)
                                         with table_row():
-                                            add_image_button(ico["refresh"],tag='in_reinit',width=16,callback=in_reinit_callback); widget_tooltip('Re-Initialize Input Stream')
+                                            add_image_button(ico["refresh"],tag='in_reinit',width=16,callback=in_stream_init); widget_tooltip('Re-Initialize Input Stream')
                                             dpg.add_image(ico["in_off"],tag='in_status',width=16); widget_tooltip('Input Stream status')
                                             add_text(default_value='Input')
 
@@ -1674,7 +1674,7 @@ def out_stream_init():
     configure_item('out_status',texture_tag=ico['out_off'])
     global stream_out,device_out_current,out_channel_buffer_mod_index
 
-    if stream_out:
+    if stream_out is not None:
         stream_out.close()
         cons_info('OutputStream closed.')
         sleep(0.1)
@@ -1718,18 +1718,30 @@ def out_stream_init():
             channels=channels
         )
         #dither_off=True
+        cons_const('OutputStream initialized.')
+    except Exception as e:
+        cons_err(f'OutputStream initialization error:{e}')
+        stream_out=None
+        return
 
-        cons_const('init done.\nStarting output stream...')
+    try:
         stream_out.start()
         configure_item('out_status',texture_tag=ico['out_on'])
+        cons_const('OutputStream started.')
     except Exception as e:
-        cons_err(f'OutputStream init error:{e}')
+        stream_out.close()
+        stream_out=None
+        cons_err(f'OutputStream start error:{e}')
+
+    if not stream_out.active:
+        cons_err(f'OutputStream not active.')
+        stream_out=None
 
 def in_stream_init():
     configure_item('in_status',texture_tag=ico['in_off'])
     global stream_in,device_in_current,in_channel_buffer_mod_index
 
-    if stream_in:
+    if stream_in is not None:
         stream_in.close()
         cons_info('InputStream closed.')
         sleep(0.1)
@@ -1768,12 +1780,23 @@ def in_stream_init():
             channels=channels
         )
         #dither_off=True
-        cons_const('init done.\nStarting input stream...')
+        cons_const('InputStream initialized.')
+    except Exception as e:
+        stream_in=None
+        cons_err(f'InputStream initialization error:{e}')
+        return
+
+    try:
         stream_in.start()
         configure_item('in_status',texture_tag=ico['in_on'])
-
     except Exception as e:
-        cons_err(f'InputStream init error:{e}')
+        stream_in.close()
+        stream_in=None
+        cons_err(f'InputStream start error:{e}')
+
+    if not stream_in.active:
+        cons_err(f'InputStream not active.')
+        stream_in=None
 
 def show_info(message):
     cons_const("")
@@ -2892,21 +2915,15 @@ def help_callback():
 
     next_check=0
 
-def in_reinit_callback():
-    in_stream_init()
-
-def out_reinit_callback():
-    out_stream_init()
-
 def sd_reinit_callback():
-    cons_info('Terminating...')
+    cons_info('Terminating PortAudio ...')
 
     try:
         _terminate()
     except Exception as t_e:
         cons_err(f'error:{t_e}')
 
-    cons_info('Reinitializing...')
+    cons_info('Reinitializing PortAudio ...')
     try:
         _initialize()
     except Exception as i_e:
@@ -3117,7 +3134,7 @@ def processing():
         processing_outside+=processing_begin-processing_end
 
         if precalc_ready:
-            while stream_in and samples_chunks_fifo:
+            while stream_in is not None and samples_chunks_fifo:
                 data_new_chunk_len=0
                 data_len=0
                 try:
@@ -3506,11 +3523,11 @@ def main_loop():
                         except:
                             main_ratio="Nan"
 
-                        stream_out_cpu_load = stream_out.cpu_load if stream_out else 0
-                        stream_in_cpu_load = stream_in.cpu_load if stream_in else 0
+                        stream_out_cpu_load = stream_out.cpu_load if stream_out is not None else 0
+                        stream_in_cpu_load = stream_in.cpu_load if stream_in is not None else 0
 
-                        stream_out_latency = stream_out.latency if stream_out else 0
-                        stream_in_latency = stream_in.latency if stream_in else 0
+                        stream_out_latency = stream_out.latency if stream_out is not None else 0
+                        stream_in_latency = stream_in.latency if stream_in is not None else 0
                         part1 = [f"FPS:{frames}/{changes}  sat:{main_ratio:.5f}/{proc_ratio:.5f}\n",
                                 f"             Output       Input",
                                 f"samples/s  {out_samples:8d}    {in_samples:8d}",
@@ -3553,11 +3570,11 @@ def main_loop():
                     except Exception as debug_e:
                         cons_err(f'{debug_e=}')
 
-                if not stream_in and not stream_out:
+                if stream_in is None and stream_out is None:
                     cons_err('Output stream not initialized / Input stream not initialized !')
-                elif not stream_in:
+                elif stream_in is None:
                     cons_err('Input stream not initialized !')
-                elif not stream_out:
+                elif stream_out is None:
                     cons_warn('Output stream not initialized !')
                 elif in_callbacks==0 and in_samples==0:
                     cons_err('No Input signal !')
@@ -3594,20 +3611,16 @@ gc_freeze()
 
 main_loop()
 
+play_stop()
+
 cfg['viewport_pos']=get_viewport_pos()
 cfg['viewport_height']=get_viewport_height()
 cfg['viewport_width']=get_viewport_width()
 
-print('exiting')
+l_info('Exiting.')
+
 sweeping=False
 lock_frequency=False
-
-play_stop()
-
-exiting=True
-
-if stream_in:
-    stream_in.close()
 
 with open(cfg_file, "w", encoding="utf-8") as f:
     f.write(dumps(cfg,sort_keys=True,indent=4))
@@ -3616,6 +3629,11 @@ for track in range(tracks):
     with open(track_file(track,TRACK_BUCKETS), "w", encoding="utf-8") as f:
         f.write(dumps(track_line_data_y[track],sort_keys=True,indent=4))
 
+if stream_in is not None:
+    stream_in.close()
+
+if stream_out is not None:
+    stream_out.close()
+
 destroy_context()
-l_info('Exiting.')
 sys_exit(0)
