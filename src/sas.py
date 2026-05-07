@@ -1927,10 +1927,8 @@ def in_dev_config_items():
 
         configure_item("in_dev",items=in_values)
 
-        return in_values
     except Exception as e:
         cons_err(f'in_dev_config_items error:{e},in_api:{in_api}')
-        return []
 
 def out_dev_config_items():
     out_api=get_value('out_api')
@@ -1962,11 +1960,8 @@ def out_dev_config_items():
 
         configure_item("out_dev",items=out_values)
 
-        return out_values
-
     except Exception as e:
         cons_err(f'out_dev_config_items error:{e},out_api:{out_api}')
-        return []
 
 #def dithering_off_callback(sender=None, app_data=None,user_data=False):
 #    cfg['dithering_off']=get_value('dithering_off')
@@ -1990,7 +1985,8 @@ def in_api_callback(sender=None, app_data=None,user_data=False):
 
     if user_data:
         default_input_device=api_name2api[in_api]['default_input_device']
-        cfg['in_dev']=query_devices(device=api_name2api[in_api]['default_input_device'])['name']
+        if default_input_device!=-1:
+            cfg['in_dev']=query_devices(device=default_input_device)['name']
 
     cfg['allow_all_devices'] = get_value('allow_all_devices')
     in_dev_config_items()
@@ -2263,14 +2259,22 @@ def common_precalc():
 
     global in_samplerate_by_fft_size,cfg,fft_duration,log_bucket_fft_width,log_bucket_fft_width_by2,bucket_fft_freqs,fft_values_x_all,fft_line_data_y,bucket_fft_edges,fft_bin_indices,fft_bin_counts,next_check,current_sample_db_time_samples,fft_bin_indices_selected,fft_values_x_bins,precalc_ready,FFT_ACTUAL_BUCKETS,fft_values_y_prev,data
 
-    samplerate=get_value('in_samplerate')
+    in_samplerate=get_value('in_samplerate')
+    l_info(f'{in_samplerate=}')
 
     current_sample_db_time=0.1
-    current_sample_db_time_samples=int(float(samplerate)*current_sample_db_time)
 
-    in_samplerate_by_fft_size = float(samplerate) / FFT_SIZE
+    try:
+        in_samplerate_float=float(in_samplerate)
+    except:
+        current_sample_db_time_samples=1
+        return
+
+    current_sample_db_time_samples=int(in_samplerate_float*current_sample_db_time)
+
+    in_samplerate_by_fft_size = in_samplerate_float / FFT_SIZE
     fft_duration= 1.0/in_samplerate_by_fft_size
-    l_info(f'{samplerate=},{fft_duration=}')
+    l_info(f'{fft_duration=}')
 
     dummy_data=[200]*FFT_POINTS
     fft_values_x_all=[0]*FFT_POINTS
