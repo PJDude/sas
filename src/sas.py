@@ -705,8 +705,8 @@ def build_gui():
                                         add_combo(tag='out_channel',default_value=cfg['out_channel'],callback=out_channel_changed,user_data=True)
                                         add_combo(tag='out_samplerate',default_value='',callback=out_samplerate_changed,user_data=True)
 
-                                        add_combo(tag='out_latency',label='',callback=out_latency_changed,items=latency_values,default_value=cfg['out_latency'],user_data=True); widget_tooltip(latency_tooltip)
-                                        add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=out_blocksize_values,default_value=cfg['out_blocksize'],user_data=True) ; widget_tooltip(blocksize_tooltip)
+                                        add_combo(tag='out_latency',label='',callback=out_latency_changed,items=('high','low','default'),default_value=cfg['out_latency'],user_data=True); widget_tooltip(latency_tooltip)
+                                        add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=(1024,512,256,128,64,'default'),default_value=cfg['out_blocksize'],user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                                     with group(width=-1):
                                         add_combo(tag='in_api',default_value='',callback=in_api_callback,width=c1width,user_data=True)
@@ -719,8 +719,8 @@ def build_gui():
                                         add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
                                         add_combo(tag='in_samplerate',default_value='',callback=in_samplerate_changed,user_data=True)
 
-                                        add_combo(tag='in_latency',label='',callback=in_latency_changed,items=latency_values,default_value='',user_data=True); widget_tooltip(latency_tooltip)
-                                        add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=in_blocksize_values,default_value='',user_data=True) ; widget_tooltip(blocksize_tooltip)
+                                        add_combo(tag='in_latency',label='',callback=in_latency_changed,items=('high','low','default'),default_value='',user_data=True); widget_tooltip(latency_tooltip)
+                                        add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=(512,256,128,64,'default'),default_value='',user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                     with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=settings_height-5):
                         with group(width=-1):
@@ -738,15 +738,15 @@ def build_gui():
 
                                 with table_row():
                                     add_text(default_value='size'); FFT_size_tooltip='FFT size\n\nF3 / Shift+F3'; widget_tooltip(FFT_size_tooltip)
-                                    add_combo(tag='fft_size',items=FFT_items,default_value=cfg['fft_size'],callback=fft_size_callback,width=c2width); widget_tooltip(FFT_size_tooltip)
+                                    add_combo(tag='fft_size',items=('512','1024','2048','4096','8192','16384','32768','65536','131072','262144','524288','1048576','2097152'),default_value=cfg['fft_size'],callback=fft_size_callback,width=c2width); widget_tooltip(FFT_size_tooltip)
                                 with table_row():
                                     add_text(default_value='window'); FFT_window_tooltip='FFT window\n\nF4 / Shift+F4' ; widget_tooltip(FFT_window_tooltip)
-                                    add_combo(tag='fft_window',items=['ones','hanning','hamming','blackman','bartlett'],default_value=cfg['fft_window'],callback=fft_window_callback,width=c2width); widget_tooltip(FFT_window_tooltip)
+                                    add_combo(tag='fft_window',items=('ones','hanning','hamming','blackman','bartlett'),default_value=cfg['fft_window'],callback=fft_window_callback,width=c2width); widget_tooltip(FFT_window_tooltip)
 
                                 FFT_buckets_tooltip='Frequency Bin Aggregation\n(equal frequency "buckets" on log scale)\n\nkey: F5 / Shift+F5, (+Ctrl Toggle)'
                                 with table_row():
                                     add_checkbox(tag='fft_fba',label='FBA',callback=fft_fba_callback,default_value=cfg['fft_fba']); widget_tooltip(FFT_buckets_tooltip)
-                                    add_combo(tag='fft_fba_size',items=FBA_items,default_value=cfg['fft_fba_size'],callback=fft_fba_size_callback,user_data=True,width=c2width); widget_tooltip(FFT_buckets_tooltip)
+                                    add_combo(tag='fft_fba_size',items=('512','1024','2048','4096'),default_value=cfg['fft_fba_size'],callback=fft_fba_size_callback,user_data=True,width=c2width); widget_tooltip(FFT_buckets_tooltip)
                                 with table_row():
                                     add_checkbox(tag='fft_smooth',label='Smth',callback=fft_smooth_callback,default_value=cfg['fft_smooth']); FFT_smoothing_tooltip='Smoothing\n\nkey: F6 / Shift+F6 (+Ctrl Toggle)'; widget_tooltip(FFT_smoothing_tooltip)
                                     add_slider_int(tag='fft_smooth_factor',callback=fft_smooth_factor_callback,max_value=12,min_value=1,default_value=cfg['fft_smooth_factor'],format="%d",width=130,track_offset=0.5); widget_tooltip(FFT_smoothing_tooltip)
@@ -786,7 +786,7 @@ def build_gui():
 
                                     with table_row():
                                         add_text(default_value='buckets')
-                                        add_combo(tag='track_buckets',items=['64','128','256'],default_value=cfg['track_buckets'],callback=tracks_buckets_quant_change,width=c2width)
+                                        add_combo(tag='track_buckets',items=('64','128','256'),default_value=cfg['track_buckets'],callback=tracks_buckets_quant_change,width=c2width)
                                     with table_row():
                                         add_text(default_value='TDA'); FFT_tooltip6='Time domain averaging'; widget_tooltip(FFT_tooltip6)
                                         add_slider_float(tag='tracks_tda_factor',callback=tracks_tda_factor_callback,max_value=0.95,min_value=0.05,default_value=cfg['tracks_tda_factor'],format="%.2f",width=130,track_offset=0.5); widget_tooltip(FFT_tooltip6)
@@ -956,14 +956,6 @@ cfg.setdefault("out_wasapi_exclusive",False)
 cfg.setdefault("in_wasapi_exclusive",False)
 #cfg.setdefault("dithering_off",True)
 cfg.setdefault("amplitude",30)
-
-latency_values=('high','low','default')
-
-FFT_items=('512','1024','2048','4096','8192','16384','32768','65536','131072','262144','524288','1048576','2097152')
-FBA_items=('512','1024','2048','4096')
-
-out_blocksize_values=(1024,512,256,128,64,'default')
-in_blocksize_values=(512,256,128,64,'default')
 
 track_line_data_y={}
 
@@ -1691,6 +1683,10 @@ def out_stream_init():
         channels=1
     out_channel_buffer_mod_index=channels-1
 
+    if not device_out_current:
+        cons_err('no device_out_current!')
+        return
+
     device=int(device_out_current['index'])
     samplerate=int(get_value('out_samplerate'))
     latency=latency_for_stream(get_value('out_latency'))
@@ -1751,6 +1747,10 @@ def in_stream_init():
         l_info('in WASAPI Exclusive mode !')
     else:
         extra_settings=None
+
+    if not device_in_current:
+        cons_err('no device_in_current!')
+        return
 
     device=int(device_in_current['index'])
 
@@ -2396,6 +2396,8 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
             out_stream_init()
     else:
         device_out_current=None
+        configure_item("out_channel",items=[''])
+        configure_item("out_samplerate",items=[''])
 
 device_in_current=None
 def in_dev_changed(sender=None, app_data=None,user_data=False):
@@ -2418,6 +2420,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_dev_changed:{devices_of_api=}')
 
     devices_matching=[dev for dev in devices_of_api if dev['name']==dev_name]
+
     if devices_matching:
         device_in_current=devices_matching[0]
 
@@ -2451,6 +2454,11 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
             in_stream_init()
     else:
         device_in_current=None
+        configure_item("in_channel",items=[''])
+        configure_item("in_samplerate",items=[''])
+
+        if user_data:
+            common_precalc()
 
 def click_callback(sender, button_nr):
     if is_item_hovered("plot"):
