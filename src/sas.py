@@ -1454,8 +1454,8 @@ def refresh_devices():
         cons_err(f'd_e2:{d_e2}')
 
     values_str=' - ' + '\n - '.join(api_name2api)
-    configure_item('out_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
-    configure_item('in_api',items=list(api_name2api.keys())); widget_tooltip(f"Available:\n\n{values_str}","in_api")
+    configure_item('out_api',items=list(api_name2api.keys()) if api_name2api else ['']); widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
+    configure_item('in_api',items=list(api_name2api.keys()) if api_name2api else [''] ); widget_tooltip(f"Available:\n\n{values_str}","in_api")
 
 def initial_set_devices():
     global api_name2api,default_in_dev,default_out_dev
@@ -1925,7 +1925,7 @@ def in_dev_config_items():
 
         widget_tooltip(f"Available (API:{in_api}):\n\n{tooltip_str}","in_dev")
 
-        configure_item("in_dev",items=in_values)
+        configure_item("in_dev",items=in_values if in_values else [''])
 
     except Exception as e:
         cons_err(f'in_dev_config_items error:{e},in_api:{in_api}')
@@ -1958,7 +1958,7 @@ def out_dev_config_items():
         tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
         widget_tooltip(f"Available (API:{out_api}):\n\n{tooltip_str}","out_dev")
 
-        configure_item("out_dev",items=out_values)
+        configure_item("out_dev",items=out_values if out_values else [''])
 
     except Exception as e:
         cons_err(f'out_dev_config_items error:{e},out_api:{out_api}')
@@ -2367,7 +2367,7 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
         output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
 
-        configure_item("out_channel",items=output_channels)
+        configure_item("out_channel",items=output_channels if output_channels else [''])
 
         cfg["out_channel"]=out_channel_value=get_value("out_channel")
 
@@ -2376,7 +2376,7 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
             set_value("out_channel",out_channel_value)
 
         sel_rates=check_sample_rates_output(device_out_current['index'])
-        configure_item("out_samplerate",items=sel_rates)
+        configure_item("out_samplerate",items=sel_rates if sel_rates else [''])
 
         values_str=' - ' + '\n - '.join(sel_rates)
         widget_tooltip(f"Available:\n\n{values_str}","out_samplerate")
@@ -2423,7 +2423,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
 
         input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
 
-        configure_item("in_channel",items=input_channels)
+        configure_item("in_channel",items=input_channels if input_channels else [''])
         cfg['in_channel']=in_channel_value=get_value("in_channel")
 
         if not in_channel_value or in_channel_value not in input_channels:
@@ -2431,7 +2431,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
             set_value("in_channel",in_channel_value)
 
         sel_rates=check_sample_rates_input(device_in_current['index'])
-        configure_item("in_samplerate",items=sel_rates)
+        configure_item("in_samplerate",items=sel_rates if sel_rates else [''])
 
         values_str=' - ' + '\n - '.join(sel_rates)
         widget_tooltip(f"Available:\n\n{values_str}","in_samplerate")
@@ -2968,7 +2968,9 @@ if cfg['viewport_width']:
     set_viewport_width(cfg['viewport_width'])
 
 if cfg['viewport_pos']:
-    set_viewport_pos(cfg['viewport_pos'])
+    x,y=cfg['viewport_pos']
+    if x>0 and y>0:
+        set_viewport_pos(cfg['viewport_pos'])
 
 dpg.set_viewport_small_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas_small.png")))
 dpg.set_viewport_large_icon(Path(path_join(EXECUTABLE_DIR,"./icons/sas.png")))
@@ -3543,33 +3545,38 @@ def main_loop():
                                 " ",
                                 " "]
 
-                        fft_calc_mean=fft_calc_sum_time/fft_calcs if fft_calcs else 0
-                        fft_calc_in_sec=int(1.0/fft_calc_mean) if fft_calc_mean else 0
+                        if stream_in is not None:
+                            fft_calc_mean=fft_calc_sum_time/fft_calcs if fft_calcs else 0
+                            fft_calc_in_sec=int(1.0/fft_calc_mean) if fft_calc_mean else 0
 
-                        fft_proc_mean=fft_proc_sum_time/fft_calcs if fft_calcs else 0
-                        fft_proc_in_sec=int(1.0/fft_proc_mean) if fft_proc_mean and (FFT_TDA or FFT_FBA or FFT_SMOOTH) else 0
+                            fft_proc_mean=fft_proc_sum_time/fft_calcs if fft_calcs else 0
+                            fft_proc_in_sec=int(1.0/fft_proc_mean) if fft_proc_mean and (FFT_TDA or FFT_FBA or FFT_SMOOTH) else 0
 
-                        fft_peaks_mean=fft_peaks_sum_time/fft_calcs if fft_calcs else 0
-                        fft_peaks_in_sec=int(1.0/fft_peaks_mean) if fft_peaks_mean and PEAKS else 0
+                            fft_peaks_mean=fft_peaks_sum_time/fft_calcs if fft_calcs else 0
+                            fft_peaks_in_sec=int(1.0/fft_peaks_mean) if fft_peaks_mean and PEAKS else 0
 
-                        fft_proc_sum_time=0
-                        fft_calc_sum_time=0
-                        fft_peaks_sum_time=0
-                        fft_calcs=0
+                            part_fft = [f"FFT Window: {round(fft_duration,3)}s",
+                                        f"FFT Calcs: {fft_calc_mean:.5f}s / {fft_calc_in_sec:5d}/s",
+                                        f"FFT Procs: {fft_proc_mean:.5f}s / {fft_proc_in_sec:5d}/s",
+                                        f"FFT Peaks: {fft_peaks_mean:.5f}s / {fft_peaks_in_sec:5d}/s",
+                                        "",
+                                        f"   FFT /  FBA  /  act",
+                                        f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}" if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
+                                        ] if FFT else []
 
-                        part_fft = [f"FFT Window: {round(fft_duration,3)}s",
-                                    f"FFT Calcs: {fft_calc_mean:.5f}s / {fft_calc_in_sec:5d}/s",
-                                    f"FFT Procs: {fft_proc_mean:.5f}s / {fft_proc_in_sec:5d}/s",
-                                    f"FFT Peaks: {fft_peaks_mean:.5f}s / {fft_peaks_in_sec:5d}/s",
-                                    "",
-                                    f"   FFT /  FBA  /  act",
-                                    f"{FFT_POINTS:6d} / {FFT_FBA_SIZE:5d} /{FFT_ACTUAL_BUCKETS:5d}" if FFT_FBA else f"{FFT_POINTS:6d} / ---- / ----",
-                                    ] if FFT else []
+                            set_value('debug_text','\n'.join(part1 + part_fft))
 
-                        list_sum=part1 + part_fft
-                        set_value('debug_text','\n'.join(list_sum))
+                            fft_proc_sum_time=0
+                            fft_calc_sum_time=0
+                            fft_peaks_sum_time=0
+                            fft_calcs=0
 
-                        l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t{fft_calc_mean:.5f}:{fft_proc_mean:.5f}:{fft_peaks_mean:.5f}\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out_cpu_load:.6f}:{stream_in_cpu_load:.6f}\t{stream_out_latency:.6f}:{stream_in_latency:.6f}')
+                            l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t{fft_calc_mean:.5f}:{fft_proc_mean:.5f}:{fft_peaks_mean:.5f}\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out_cpu_load:.6f}:{stream_in_cpu_load:.6f}\t{stream_out_latency:.6f}:{stream_in_latency:.6f}')
+                        else:
+                            set_value('debug_text','\n'.join(part1))
+
+                            l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t-:-:-\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out_cpu_load:.6f}:{stream_in_cpu_load:.6f}\t{stream_out_latency:.6f}:{stream_in_latency:.6f}')
+
 
                     except Exception as debug_e:
                         cons_err(f'{debug_e=}')
