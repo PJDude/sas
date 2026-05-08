@@ -529,6 +529,24 @@ with theme() as grid_line_theme:
         dpg.add_theme_color(dpg.mvPlotCol_Line,(128, 128, 128, 128),category=dpg.mvThemeCat_Plots)
         dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight,1.0,category=dpg.mvThemeCat_Plots)
 
+def configure_combo_items(combo,items,default=None):
+    prev_val=get_value(combo)
+    if not items:
+        items=['']
+
+    if default is not None and default in items:
+        new_val=default
+    elif cfg[combo] and cfg[combo] in items:
+        new_val=cfg[combo]
+    elif prev_val in items:
+        new_val=prev_val
+    else:
+        new_val=items[0]
+
+    l_info(f'configure_combo_items:{combo},{items},{default},{new_val}')
+    set_value(combo,new_val)
+    configure_item(combo,items=items)
+    cfg[combo]=new_val
 
 ###################################################
 def build_gui():
@@ -698,29 +716,29 @@ def build_gui():
                                         add_text(default_value='Block size') ; widget_tooltip(blocksize_tooltip)
 
                                     with group(width=-1):
-                                        add_combo(tag='out_api',default_value='',callback=out_api_callback,width=c1width,user_data=True)
+                                        add_combo(tag='out_api',callback=out_api_callback,width=c1width,user_data=True)
                                         add_checkbox(tag='out_wasapi_exclusive',label='WASAPI Exclusive Mode',callback=out_wasapi_exclusive_callback,default_value=cfg['out_wasapi_exclusive'],user_data=True,enabled=windows); widget_tooltip('WASAPI Exclusive Mode\n\nExclusive mode allows to deliver audio\ndata directly to hardware bypassing software mixing\n\n(Windows only)')
 
-                                        add_combo(tag='out_dev',default_value='',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest,user_data=True)
+                                        add_combo(tag='out_dev',callback=out_dev_changed, height_mode=dpg.mvComboHeight_Largest,user_data=True)
                                         add_combo(tag='out_channel',default_value=cfg['out_channel'],callback=out_channel_changed,user_data=True)
-                                        add_combo(tag='out_samplerate',default_value='',callback=out_samplerate_changed,user_data=True)
+                                        add_combo(tag='out_samplerate',callback=out_samplerate_changed,user_data=True)
 
                                         add_combo(tag='out_latency',label='',callback=out_latency_changed,items=('high','low','default'),default_value=cfg['out_latency'],user_data=True); widget_tooltip(latency_tooltip)
                                         add_combo(tag='out_blocksize',label='',callback=out_blocksize_changed,items=(1024,512,256,128,64,'default'),default_value=cfg['out_blocksize'],user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                                     with group(width=-1):
-                                        add_combo(tag='in_api',default_value='',callback=in_api_callback,width=c1width,user_data=True)
+                                        add_combo(tag='in_api',callback=in_api_callback,width=c1width,user_data=True)
 
                                         with group(horizontal=True):
                                             add_checkbox(tag='allow_all_devices',label='All',callback=in_api_callback,default_value=cfg['allow_all_devices'],user_data=True); widget_tooltip('Show all devices\n(outputs included)')
                                             add_checkbox(tag='in_wasapi_exclusive',label='WASAPI Exclusive',callback=in_wasapi_exclusive_callback,default_value=cfg['in_wasapi_exclusive'],user_data=True,show=False); widget_tooltip('Exclusive mode allows to receive audio\ndata directly to hardware bypassing software mixing')
 
-                                        add_combo(tag='in_dev',default_value='',callback=in_dev_changed,user_data=True, height_mode=dpg.mvComboHeight_Largest)
-                                        add_combo(tag='in_channel',default_value='',callback=in_channel_changed,user_data=True)
-                                        add_combo(tag='in_samplerate',default_value='',callback=in_samplerate_changed,user_data=True)
+                                        add_combo(tag='in_dev',callback=in_dev_changed,user_data=True, height_mode=dpg.mvComboHeight_Largest)
+                                        add_combo(tag='in_channel',callback=in_channel_changed,user_data=True)
+                                        add_combo(tag='in_samplerate',callback=in_samplerate_changed,user_data=True)
 
-                                        add_combo(tag='in_latency',label='',callback=in_latency_changed,items=('high','low','default'),default_value='',user_data=True); widget_tooltip(latency_tooltip)
-                                        add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=(512,256,128,64,'default'),default_value='',user_data=True) ; widget_tooltip(blocksize_tooltip)
+                                        add_combo(tag='in_latency',label='',callback=in_latency_changed,items=('high','low','default'),user_data=True); widget_tooltip(latency_tooltip)
+                                        add_combo(tag='in_blocksize',label='',callback=in_blocksize_changed,items=(512,256,128,64,'default'),user_data=True) ; widget_tooltip(blocksize_tooltip)
 
                     with child_window(border=True,autosize_y=False,autosize_x=False,width=220,no_scrollbar=True,height=settings_height-5):
                         with group(width=-1):
@@ -936,14 +954,14 @@ cfg.setdefault('recorded',-1)
 cfg.setdefault('in_api','Windows WASAPI' if windows else 'ALSA')
 cfg.setdefault('out_api','Windows WASAPI' if windows else 'ALSA')
 
-cfg.setdefault("out_dev",None)
-cfg.setdefault("in_dev",None)
+cfg.setdefault('out_dev',None)
+cfg.setdefault('in_dev',None)
 
-cfg.setdefault("in_channel","1")
-cfg.setdefault("out_channel","1")
+cfg.setdefault('in_channel',"1")
+cfg.setdefault('out_channel',"1")
 
-cfg.setdefault("in_samplerate",'44100')
-cfg.setdefault("out_samplerate",'44100')
+cfg.setdefault('in_samplerate','44100')
+cfg.setdefault('out_samplerate','44100')
 
 cfg.setdefault("in_latency",'default')
 cfg.setdefault("out_latency",'default')
@@ -1446,8 +1464,14 @@ def refresh_devices():
         cons_err(f'd_e2:{d_e2}')
 
     values_str=' - ' + '\n - '.join(api_name2api)
-    configure_item('out_api',items=list(api_name2api.keys()) if api_name2api else ['']); widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
-    configure_item('in_api',items=list(api_name2api.keys()) if api_name2api else [''] ); widget_tooltip(f"Available:\n\n{values_str}","in_api")
+    #configure_item('out_api',items=list(api_name2api.keys()) if api_name2api else [''])
+    configure_combo_items('out_api',list(api_name2api.keys()))
+    widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
+
+    #configure_item('in_api',items=list(api_name2api.keys()) if api_name2api else [''] )
+    #configure_item('in_api',items=list(api_name2api.keys()) if api_name2api else [''] )
+    configure_combo_items('in_api',list(api_name2api.keys()))
+    widget_tooltip(f"Available:\n\n{values_str}","in_api")
 
 def initial_set_devices():
     global api_name2api,default_in_dev,default_out_dev
@@ -1477,6 +1501,7 @@ def initial_set_devices():
             l_info(f'in_dev set by cfg:{in_dev}')
             in_set_by_cfg=True
             set_value('in_samplerate',cfg['in_samplerate'])
+            #in_channel
         else:
             default_input_device=api_name2api[in_api]['default_input_device']
             if default_input_device!=-1:
@@ -1614,7 +1639,7 @@ def out_channel_changed(sender=None, app_data=None,user_data=False):
     play_stop()
 
     val=cfg['out_channel']=get_value('out_channel')
-    cons_opt(f'Output channell:{val}')
+    cons_opt(f'Output channel:{val}')
 
     if user_data:
         out_stream_init()
@@ -1625,7 +1650,7 @@ def in_channel_changed(sender=None, app_data=None,user_data=False):
     l_info(f'in_channel_changed:{sender},{app_data},{user_data}')
 
     val=cfg['in_channel']=get_value('in_channel')
-    cons_opt(f'Input channell:{val}')
+    cons_opt(f'Input channel:{val}')
 
     if user_data:
         in_stream_init()
@@ -1639,7 +1664,7 @@ def out_samplerate_changed(sender=None, app_data=None,user_data=False):
     cons_opt(f'Output samplerate:{val}')
 
     global two_pi_by_out_samplerate
-    two_pi_by_out_samplerate = two_pi/float64(get_value("out_samplerate"))
+    two_pi_by_out_samplerate = two_pi/float64(get_value('out_samplerate'))
 
     if user_data:
         common_precalc()
@@ -1700,7 +1725,7 @@ def out_stream_init():
     api=cfg['out_api']
 
     cons_const('')
-    dev_name=cfg["out_dev"]
+    dev_name=cfg['out_dev']
 
     cons_const(f'OutputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}')
 
@@ -1768,7 +1793,7 @@ def in_stream_init():
     api=cfg['in_api']
 
     cons_const('')
-    dev_name=cfg["in_dev"]
+    dev_name=cfg['in_dev']
     cons_const(f'InputStream init ({api}) - {dev_name}\n  {samplerate=}\n  {latency=}\n  {blocksize=}\n  {channels=}')
 
     try:
@@ -1908,8 +1933,8 @@ def in_dev_config_items():
         default_input_device=api['default_input_device']
         l_info(f'in_dev_config_items:{default_input_device=},{type(default_input_device)}')
 
-        if str(default_input_device)!='-1':
-            default_input_device_name=query_devices(api['default_input_device'])
+        if default_input_device!=-1:
+            default_input_device_name=query_devices(default_input_device)['name']
         else:
             default_input_device_name=''
 
@@ -1919,13 +1944,14 @@ def in_dev_config_items():
             in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0]
             # and dev['index']
 
-        l_info(f'{in_values=}')
+        l_info(f'in_dev_config_items:{in_values=}')
 
         tooltip_str='\n'.join([ ('*' if name==default_input_device_name else '-') + ' ' + name for name in in_values])
 
-        widget_tooltip(f"Available (API:{in_api}):\n\n{tooltip_str}","in_dev")
+        widget_tooltip(f"Available (API:{in_api}):\n\n{tooltip_str}",'in_dev')
 
-        configure_item("in_dev",items=in_values if in_values else [''])
+        #configure_item('in_dev',items=in_values if in_values else [''])
+        configure_combo_items('in_dev',in_values,default_input_device_name)
 
     except Exception as e:
         cons_err(f'in_dev_config_items error:{e},in_api:{in_api}')
@@ -1945,8 +1971,8 @@ def out_dev_config_items():
         default_output_device=api['default_output_device']
         l_info(f'out_dev_config_items:{default_output_device=},{type(default_output_device)}')
 
-        if str(default_output_device)!='-1':
-            default_output_device_name=query_devices(default_output_device)
+        if default_output_device!=-1:
+            default_output_device_name=query_devices(default_output_device)['name']
         else:
             default_output_device_name=''
 
@@ -1956,9 +1982,10 @@ def out_dev_config_items():
         l_info(f'{out_values=}')
 
         tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
-        widget_tooltip(f"Available (API:{out_api}):\n\n{tooltip_str}","out_dev")
+        widget_tooltip(f"Available (API:{out_api}):\n\n{tooltip_str}",'out_dev')
 
-        configure_item("out_dev",items=out_values if out_values else [''])
+        #configure_item('out_dev',items=out_values if out_values else [''])
+        configure_combo_items('out_dev',out_values,default_output_device_name)
 
     except Exception as e:
         cons_err(f'out_dev_config_items error:{e},out_api:{out_api}')
@@ -2350,7 +2377,7 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
     global device_out_current
 
-    dev_name=cfg["out_dev"]=get_value("out_dev")
+    dev_name=cfg['out_dev']=get_value('out_dev')
     l_info(f'out_dev_changed:{dev_name=}')
 
 
@@ -2367,28 +2394,30 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
         output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
 
-        configure_item("out_channel",items=output_channels if output_channels else [''])
+        #configure_item('out_channel',items=output_channels if output_channels else [''])
+        configure_combo_items('out_channel',output_channels)
 
-        cfg["out_channel"]=out_channel_value=get_value("out_channel")
+        #cfg['out_channel']=out_channel_value=get_value('out_channel')
 
-        if not out_channel_value or out_channel_value not in output_channels:
-            out_channel_value=1
-            set_value("out_channel",out_channel_value)
+        #if not out_channel_value or out_channel_value not in output_channels:
+        #    out_channel_value=1
+        #    set_value('out_channel',out_channel_value)
 
         sel_rates=check_sample_rates_output(device_out_current['index'])
-        configure_item("out_samplerate",items=sel_rates if sel_rates else [''])
+        #configure_item('out_samplerate',items=sel_rates if sel_rates else [''])
+        configure_combo_items('out_samplerate',sel_rates)
 
         values_str=' - ' + '\n - '.join(sel_rates)
-        widget_tooltip(f"Available:\n\n{values_str}","out_samplerate")
+        widget_tooltip(f"Available:\n\n{values_str}",'out_samplerate')
 
         prev_out_samplerate = cfg['out_samplerate']
         out_samplerate_to_set = prev_out_samplerate if prev_out_samplerate in sel_rates else str(int(device_out_current['default_samplerate']))
         cfg['out_samplerate']=out_samplerate_to_set
 
-        set_value("out_samplerate",out_samplerate_to_set)
+        set_value('out_samplerate',out_samplerate_to_set)
 
         out_samplerate_changed()
-        out_channel_changed(None,out_channel_value)
+        out_channel_changed(None,cfg['out_channel'])
         out_latency_changed(None,cfg['out_latency'])
         out_blocksize_changed(None,cfg['out_blocksize'])
 
@@ -2396,8 +2425,11 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
             out_stream_init()
     else:
         device_out_current=None
-        configure_item("out_channel",items=[''])
-        configure_item("out_samplerate",items=[''])
+        #configure_item('out_channel',items=[''])
+        configure_combo_items('out_channel',[])
+
+        #configure_item('out_samplerate',items=[''])
+        configure_combo_items('out_samplerate',[])
 
 device_in_current=None
 def in_dev_changed(sender=None, app_data=None,user_data=False):
@@ -2406,7 +2438,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
 
     l_info(f'in_dev_changed:{sender},{app_data},{user_data}')
 
-    dev_name=cfg["in_dev"]=get_value("in_dev")
+    dev_name=cfg['in_dev']=get_value('in_dev')
     l_info(f'in_dev_changed:{dev_name=}')
 
     in_api=get_value('in_api')
@@ -2426,25 +2458,28 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
 
         input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
 
-        configure_item("in_channel",items=input_channels if input_channels else [''])
-        cfg['in_channel']=in_channel_value=get_value("in_channel")
+        #configure_item('in_channel',items=input_channels if input_channels else [''])
+        configure_combo_items('in_channel',input_channels)
 
-        if not in_channel_value or in_channel_value not in input_channels:
-            in_channel_value=1
-            set_value("in_channel",in_channel_value)
+        #cfg['in_channel']=in_channel_value=get_value('in_channel')
+
+        #if not in_channel_value or in_channel_value not in input_channels:
+        #    in_channel_value=1
+        #    set_value('in_channel',in_channel_value)
 
         sel_rates=check_sample_rates_input(device_in_current['index'])
-        configure_item("in_samplerate",items=sel_rates if sel_rates else [''])
+        #configure_item('in_samplerate',items=sel_rates if sel_rates else [''])
+        configure_combo_items('in_samplerate',sel_rates)
 
         values_str=' - ' + '\n - '.join(sel_rates)
-        widget_tooltip(f"Available:\n\n{values_str}","in_samplerate")
+        widget_tooltip(f"Available:\n\n{values_str}",'in_samplerate')
 
         prev_in_samplerate = cfg['in_samplerate']
         in_samplerate_to_set = prev_in_samplerate if prev_in_samplerate in sel_rates else str(int(device_in_current['default_samplerate']))
         cfg['in_samplerate']=in_samplerate_to_set
-        set_value("in_samplerate",in_samplerate_to_set)
+        set_value('in_samplerate',in_samplerate_to_set)
 
-        in_channel_changed(None,in_channel_value)
+        in_channel_changed(None,cfg['in_channel'])
         in_latency_changed(None,cfg['in_latency'])
         in_blocksize_changed(None,cfg['in_blocksize'])
 
@@ -2454,8 +2489,11 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
             in_stream_init()
     else:
         device_in_current=None
-        configure_item("in_channel",items=[''])
-        configure_item("in_samplerate",items=[''])
+        #configure_item('in_channel',items=[''])
+        configure_combo_items('in_channel',[])
+
+        #configure_item('in_samplerate',items=[''])
+        configure_combo_items('in_samplerate',[])
 
         if user_data:
             common_precalc()
