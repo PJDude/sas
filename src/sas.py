@@ -859,8 +859,6 @@ def build_gui():
             add_mouse_release_handler(callback=release_callback)
             add_mouse_wheel_handler(callback=wheel_callback)
             add_key_press_handler(callback=key_press_callback)
-
-            dpg.add_mouse_down_handler(button=0, callback=on_mouse_down)
             dpg.add_mouse_move_handler(callback=on_mouse_move)
 
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -1014,7 +1012,7 @@ if windows:
             TARGET_FPS=float(rate)
             l_info(f'{TARGET_FPS=}')
         else:
-            l_warning(f'TARGET_FPS default')
+            l_warning('TARGET_FPS default')
     except Exception as fps_e:
         l_error(f'{fps_e=}')
 
@@ -1355,11 +1353,6 @@ def play_start():
 
     if track_line_data_y_recorded:
         recorded=int(cfg['recorded'])
-        #bind_item_theme(f"track{recorded}_bg",track_recorded_bg_theme)
-        #bind_item_theme(f"track{recorded}",track_recorded_core_theme)
-
-        #bind_item_theme(f"track{recorded}_bg",track_recorded_bg_theme)
-        #bind_item_theme(f"track{recorded}",track_recorded_core_theme)
 
     redraw_recorded_track_line=True
 
@@ -1428,14 +1421,14 @@ def refresh_devices():
         cons_err(f'query_devices error:{e}')
         devices=[]
 
-    any_inputs=any([ dev['name'] for dev in devices if dev['max_input_channels'] > 0])
+    any_inputs=any(( dev['name'] for dev in devices if dev['max_input_channels'] > 0))
     if any_inputs:
         try:
             default_in_dev=query_devices(kind='input')
         except Exception as e:
             l_error(f'query_devices input error:{e}')
 
-    any_outputs=any([ dev['name'] for dev in devices if dev['max_output_channels'] > 0])
+    any_outputs=any(( dev['name'] for dev in devices if dev['max_output_channels'] > 0))
     if any_outputs:
         try:
             default_out_dev=query_devices(kind='output')
@@ -1690,8 +1683,8 @@ def in_samplerate_changed(sender=None, app_data=None,user_data=False):
 def latency_for_stream(latency):
     if latency=='default':
         return None
-    else:
-        return latency
+
+    return latency
 
 def out_stream_init():
     configure_item('out_status',texture_tag=ico['out_off'])
@@ -1761,7 +1754,7 @@ def out_stream_init():
         cons_err(f'OutputStream start error:{e}')
 
     if not stream_out.active:
-        cons_err(f'OutputStream not active.')
+        cons_err('OutputStream not active.')
         stream_out=None
 
 def in_stream_init():
@@ -1826,7 +1819,7 @@ def in_stream_init():
         cons_err(f'InputStream start error:{e}')
 
     if not stream_in.active:
-        cons_err(f'InputStream not active.')
+        cons_err('InputStream not active.')
         stream_in=None
 
 def show_info(message):
@@ -1947,7 +1940,6 @@ def in_dev_config_items():
             in_values=[ dev['name'] for dev in devices]
         else:
             in_values=[ dev['name'] for dev in devices if dev['max_input_channels'] > 0]
-            # and dev['index']
 
         l_info(f'in_dev_config_items:{in_values=}')
 
@@ -1978,7 +1970,6 @@ def out_dev_config_items():
         default_output_device_name=query_devices(default_output_device)['name'] if default_output_device!=-1 else ''
 
         out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0]
-        # and dev['index']
 
         l_info(f'{out_values=}')
 
@@ -2012,7 +2003,6 @@ def in_api_callback(sender=None, app_data=None,user_data=False):
 
     if user_data:
         default_input_device=api_name2api[in_api]['default_input_device']
-        #default_input_device=-1
         if default_input_device!=-1:
             cfg['in_dev']=query_devices(device=default_input_device)['name']
 
@@ -2155,9 +2145,6 @@ def fft_fba_callback(sender=None, app_data=None):
     FFT_FBA=cfg['fft_fba']=get_value('fft_fba')
     l_info(f'fft_fba_callback:{sender},{app_data},{FFT_FBA}')
     cons_opt(f'FFT FBA:{FFT_FBA}')
-
-    #if not FFT_FBA:
-    #    set_value('fft_smooth',False)
 
     configure_item('fft_smooth',enabled=FFT_FBA)
     configure_item('fft_smooth_factor',enabled=FFT_FBA,show=FFT_FBA)
@@ -2397,12 +2384,6 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
         configure_combo_items('out_channel',output_channels)
 
-        #cfg['out_channel']=out_channel_value=get_value('out_channel')
-
-        #if not out_channel_value or out_channel_value not in output_channels:
-        #    out_channel_value=1
-        #    set_value('out_channel',out_channel_value)
-
         sel_rates=check_sample_rates_output(device_out_current['index'])
         configure_combo_items('out_samplerate',sel_rates)
 
@@ -2455,12 +2436,6 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
         input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
 
         configure_combo_items('in_channel',input_channels)
-
-        #cfg['in_channel']=in_channel_value=get_value('in_channel')
-
-        #if not in_channel_value or in_channel_value not in input_channels:
-        #    in_channel_value=1
-        #    set_value('in_channel',in_channel_value)
 
         sel_rates=check_sample_rates_input(device_in_current['index'])
 
@@ -2532,8 +2507,6 @@ def release_callback(sender, button_nr):
 
         if is_item_hovered("plot"):
             play_stop()
-        #else:
-            #global sweeping,lock_frequency
     else:
         l_info(f'another button:{button_nr}')
 
@@ -2583,8 +2556,6 @@ def on_mouse_move_tracks_leave(sender, app_data):
     refresh_tracks()
 
 dragging,resizing = False,False
-def on_mouse_down(sender, app_data):
-    pass
 
 set_viewport_pos_scheduled=False
 set_viewport_resize_scheduled=False
@@ -2913,7 +2884,7 @@ def debug_callback():
 
     if DEBUG:
         configure_item("fft_avg",show=PEAKS)
-        l_info(f'DEB:\tframes/changes\tmain_ratio/proc_ratio\tfft_calc_mean:fft_proc_mean:fft_peaks_mean\tout_samples:in_samples\tout_callbacks:in_callbacks\tout_errors:in_errors\tstream_out.cpu_load:stream_in.cpu_load\tstream_out.latency:stream_in.latency')
+        l_info('DEB:\tframes/changes\tmain_ratio/proc_ratio\tfft_calc_mean:fft_proc_mean:fft_peaks_mean\tout_samples:in_samples\tout_callbacks:in_callbacks\tout_errors:in_errors\tstream_out.cpu_load:stream_in.cpu_load\tstream_out.latency:stream_in.latency')
     else:
         configure_item("fft_avg",show=False)
 
@@ -2987,7 +2958,7 @@ def settings_wrapper_toggle():
 
 def settings_wrapper():
     global cfg,settings_wrapper_scheduled
-    l_info(f'settings_wrapper:' + str(cfg['settings']))
+    l_info('settings_wrapper:' + str(cfg['settings']))
 
     if cfg['settings']:
         settings_wrapper_scheduled=(max(viewport_height_min[1],get_viewport_height()+settings_height),viewport_height_min[1])
@@ -3044,7 +3015,6 @@ except Exception as exception_1:
 portaudio_release,portaudio_descr=get_portaudio_version()
 distro_info+= "\nnumpy       " + str(numpy_version) + "\nsounddevice " + str(sounddevice_version) + "\nportaudio release " + str(portaudio_release) + "\n" + portaudio_descr + "\n\nDearPyGui   " + str(dpg.get_dearpygui_version()) + "\n\n"
 
-print(distro_info)
 l_info(distro_info)
 
 def track_file(track,tlen):
@@ -3391,10 +3361,8 @@ def main_loop():
         now=perf_counter()
         main_loop_outside+=now-now_end
 
-        jobs = get_callback_queue()
-        if jobs:
+        if jobs := get_callback_queue():
             run_callbacks(jobs)
-
             #for job in jobs:
             #    print(f'{job=}')
             #    run_callbacks((job,))
@@ -3626,7 +3594,6 @@ def main_loop():
                             set_value('debug_text','\n'.join(part1))
 
                             l_info(f'DEB:\t{frames}/{changes}\t{main_ratio:.5f}/{proc_ratio:.5f}\t-:-:-\t{out_samples:}:{in_samples:}\t{out_callbacks:}:{in_callbacks:}\t{out_errors:}:{in_errors:}\t{stream_out_cpu_load:.6f}:{stream_in_cpu_load:.6f}\t{stream_out_latency:.6f}:{stream_in_latency:.6f}')
-
 
                     except Exception as debug_e:
                         cons_err(f'{debug_e=}')
