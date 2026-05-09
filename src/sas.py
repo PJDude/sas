@@ -40,7 +40,7 @@
 
 import dearpygui.dearpygui as dpg
 from dearpygui.dearpygui import create_context,get_plot_mouse_pos,set_value,get_value,bind_item_theme,item_handler_registry,plot,add_line_series,theme,configure_item,render_dearpygui_frame,is_dearpygui_running,destroy_context,theme_component,add_item_hover_handler,bind_item_handler_registry,add_mouse_click_handler,add_mouse_release_handler,add_key_press_handler,add_mouse_wheel_handler,handler_registry,add_combo,child_window,table_row,add_checkbox,add_text,add_table_column,window,table,is_item_hovered,tooltip,add_image_button,add_static_texture,texture_registry
-from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,mvTooltip
+from dearpygui.dearpygui import create_viewport,get_viewport_client_width,get_viewport_client_height,set_viewport_height,hide_item,show_item,set_item_height,set_item_width,get_viewport_height,show_viewport,set_item_pos,set_primary_window,mvTooltip,get_callback_queue,run_callbacks
 from dearpygui.dearpygui import mvEventType_Enter,mvEventType_Leave,is_key_down,get_item_configuration,group,configure_app,add_spacer,delete_item,add_plot_annotation,set_axis_limits,set_axis_ticks,add_image_series,add_shade_series,add_draw_layer,add_slider_float,add_slider_int,setup_dearpygui
 from dearpygui.dearpygui import mvKey_LControl,mvKey_LShift,get_mouse_pos,get_viewport_width,get_viewport_pos,set_viewport_width,mvTable_SizingStretchProp,set_viewport_pos,get_item_rect_size,get_item_pos,output_frame_buffer,set_viewport_min_height,draw_text,move_item,draw_line,get_item_rect_min,get_item_rect_max
 
@@ -544,8 +544,8 @@ def configure_combo_items(combo,items,default=None):
         new_val=items[0]
 
     l_info(f'configure_combo_items:{combo},{items},{default},{new_val}')
+    configure_item(combo,items=items,default_value='new_val')
     set_value(combo,new_val)
-    configure_item(combo,items=items)
     cfg[combo]=new_val
 
 ###################################################
@@ -1022,7 +1022,7 @@ if windows:
     try:
         psutil.Process(os.getpid()).nice(psutil.HIGH_PRIORITY_CLASS)
     except Exception as prior_e:
-        print(f'{prior_e=}')
+        l_error(f'{prior_e=}')
 
     #def round_viewport():
     #    try:
@@ -1464,12 +1464,10 @@ def refresh_devices():
         cons_err(f'd_e2:{d_e2}')
 
     values_str=' - ' + '\n - '.join(api_name2api)
-    #configure_item('out_api',items=list(api_name2api.keys()) if api_name2api else [''])
+
     configure_combo_items('out_api',list(api_name2api.keys()))
     widget_tooltip(f"Available:\n\n{values_str}\n\n{out_api_tooltip}","out_api")
 
-    #configure_item('in_api',items=list(api_name2api.keys()) if api_name2api else [''] )
-    #configure_item('in_api',items=list(api_name2api.keys()) if api_name2api else [''] )
     configure_combo_items('in_api',list(api_name2api.keys()))
     widget_tooltip(f"Available:\n\n{values_str}","in_api")
 
@@ -1523,6 +1521,10 @@ def initial_set_devices():
             cfg['in_samplerate']=int(default_in_dev['default_samplerate'])
             set_value('in_samplerate',cfg['in_samplerate'])
             l_info(f"in set by defaults:',{cfg['in_api']},{cfg['in_dev']}")
+        else:
+            l_info('default_in_dev - Empty !')
+            configure_combo_items('in_samplerate',[])
+            configure_combo_items('in_dev',[])
 
     set_value('in_channel',cfg['in_channel'])
     set_value('in_latency',cfg['in_latency'])
@@ -1574,6 +1576,10 @@ def initial_set_devices():
             cfg['out_samplerate']=int(default_out_dev['default_samplerate'])
             set_value('out_samplerate',cfg['out_samplerate'])
             l_info(f"out set by defaults:'{cfg['out_api']},{cfg['out_dev']}")
+        else:
+            l_info('default_out_dev - Empty !')
+            configure_combo_items('out_samplerate',[])
+            configure_combo_items('out_dev',[])
 
     set_value('out_channel',cfg['out_channel'])
     set_value('out_latency',cfg['out_latency'])
@@ -1931,12 +1937,11 @@ def in_dev_config_items():
         devices = [query_devices(dev_index) for dev_index in api_devices_indexes]
 
         default_input_device=api['default_input_device']
+
         l_info(f'in_dev_config_items:{default_input_device=},{type(default_input_device)}')
 
-        if default_input_device!=-1:
-            default_input_device_name=query_devices(default_input_device)['name']
-        else:
-            default_input_device_name=''
+        default_input_device_name=query_devices(default_input_device)['name'] if default_input_device!=-1 else ''
+        l_info(f'in_dev_config_items:{default_input_device_name=}')
 
         if get_value('allow_all_devices'):
             in_values=[ dev['name'] for dev in devices]
@@ -1950,7 +1955,6 @@ def in_dev_config_items():
 
         widget_tooltip(f"Available (API:{in_api}):\n\n{tooltip_str}",'in_dev')
 
-        #configure_item('in_dev',items=in_values if in_values else [''])
         configure_combo_items('in_dev',in_values,default_input_device_name)
 
     except Exception as e:
@@ -1971,10 +1975,7 @@ def out_dev_config_items():
         default_output_device=api['default_output_device']
         l_info(f'out_dev_config_items:{default_output_device=},{type(default_output_device)}')
 
-        if default_output_device!=-1:
-            default_output_device_name=query_devices(default_output_device)['name']
-        else:
-            default_output_device_name=''
+        default_output_device_name=query_devices(default_output_device)['name'] if default_output_device!=-1 else ''
 
         out_values=[ dev['name'] for dev in devices if dev['max_output_channels'] > 0]
         # and dev['index']
@@ -1984,7 +1985,6 @@ def out_dev_config_items():
         tooltip_str='\n'.join([ ('*' if name==default_output_device_name else '-') + ' ' + name for name in out_values])
         widget_tooltip(f"Available (API:{out_api}):\n\n{tooltip_str}",'out_dev')
 
-        #configure_item('out_dev',items=out_values if out_values else [''])
         configure_combo_items('out_dev',out_values,default_output_device_name)
 
     except Exception as e:
@@ -2012,6 +2012,7 @@ def in_api_callback(sender=None, app_data=None,user_data=False):
 
     if user_data:
         default_input_device=api_name2api[in_api]['default_input_device']
+        #default_input_device=-1
         if default_input_device!=-1:
             cfg['in_dev']=query_devices(device=default_input_device)['name']
 
@@ -2394,7 +2395,6 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
 
         output_channels=[str(val) for val in range(1,device_out_current['max_output_channels']+1)]
 
-        #configure_item('out_channel',items=output_channels if output_channels else [''])
         configure_combo_items('out_channel',output_channels)
 
         #cfg['out_channel']=out_channel_value=get_value('out_channel')
@@ -2404,7 +2404,6 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
         #    set_value('out_channel',out_channel_value)
 
         sel_rates=check_sample_rates_output(device_out_current['index'])
-        #configure_item('out_samplerate',items=sel_rates if sel_rates else [''])
         configure_combo_items('out_samplerate',sel_rates)
 
         values_str=' - ' + '\n - '.join(sel_rates)
@@ -2425,10 +2424,7 @@ def out_dev_changed(sender=None, app_data=None,user_data=True):
             out_stream_init()
     else:
         device_out_current=None
-        #configure_item('out_channel',items=[''])
         configure_combo_items('out_channel',[])
-
-        #configure_item('out_samplerate',items=[''])
         configure_combo_items('out_samplerate',[])
 
 device_in_current=None
@@ -2458,7 +2454,6 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
 
         input_channels=[str(val) for val in range(1,device_in_current['max_input_channels']+1)]
 
-        #configure_item('in_channel',items=input_channels if input_channels else [''])
         configure_combo_items('in_channel',input_channels)
 
         #cfg['in_channel']=in_channel_value=get_value('in_channel')
@@ -2468,7 +2463,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
         #    set_value('in_channel',in_channel_value)
 
         sel_rates=check_sample_rates_input(device_in_current['index'])
-        #configure_item('in_samplerate',items=sel_rates if sel_rates else [''])
+
         configure_combo_items('in_samplerate',sel_rates)
 
         values_str=' - ' + '\n - '.join(sel_rates)
@@ -2489,10 +2484,7 @@ def in_dev_changed(sender=None, app_data=None,user_data=False):
             in_stream_init()
     else:
         device_in_current=None
-        #configure_item('in_channel',items=[''])
         configure_combo_items('in_channel',[])
-
-        #configure_item('in_samplerate',items=[''])
         configure_combo_items('in_samplerate',[])
 
         if user_data:
@@ -2521,6 +2513,17 @@ def click_callback(sender, button_nr):
                 lock_frequency=True
                 play_start()
                 status_set_frequency()
+    else:
+        global dragging, resizing, offset_x, offset_y
+        if not dragging:
+            offset_x, offset_y = get_mouse_pos(local=False)
+
+            vh,vw = get_viewport_height(),get_viewport_width()
+
+            if offset_y<title_hight:
+                dragging = True
+            elif offset_x>vw-30 and offset_y>vh-30:
+                resizing = True
 
 def release_callback(sender, button_nr):
     if button_nr==0:
@@ -2581,16 +2584,7 @@ def on_mouse_move_tracks_leave(sender, app_data):
 
 dragging,resizing = False,False
 def on_mouse_down(sender, app_data):
-    global dragging, resizing, offset_x, offset_y
-    if not dragging:
-        offset_x, offset_y = get_mouse_pos(local=False)
-
-        vh,vw = get_viewport_height(),get_viewport_width()
-
-        if offset_y<title_hight:
-            dragging = True
-        elif offset_x>vw-30 and offset_y>vh-30:
-            resizing = True
+    pass
 
 set_viewport_pos_scheduled=False
 set_viewport_resize_scheduled=False
@@ -2630,16 +2624,19 @@ def on_mouse_move(sender, app_data):
             play_stop()
 
 def key_press_callback(sender, app_data):
+    #reaguje rownież na eventy myszy
+
     global precalc_ready,next_redraw,console_show_end_index,console_direction_mod,console_buffer_last_elem,lock_frequency
 
     Shift = is_key_down(mvKey_LShift)
     Ctrl = is_key_down(mvKey_LControl)
 
-    for delay in range(1024):
-        if precalc_ready:
-            break
-        else:
-            sleep(0.001)
+    #????
+    #for delay in range(1024):
+    #    if precalc_ready:
+    #        break
+    #    else:
+    #        sleep(0.001)
 
     if app_data==dpg.mvKey_Spacebar:
         set_value('pause',(True,False)[get_value('pause')])
@@ -2785,7 +2782,6 @@ def key_press_callback(sender, app_data):
         play_stop()
         sweeping=False
     else:
-        #print(app_data)
         pass
 
 def theme_callback(ti):
@@ -3091,9 +3087,9 @@ if not decorated:
         cons_err(f'{decor_exception=}')
 
 try:
-    configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False,mouse_draw_cursor=True)
+    configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False,manual_callback_management=True,mouse_draw_cursor=True)
 except:
-    configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False)
+    configure_app(anti_aliased_lines=True,anti_aliased_lines_use_tex=True,anti_aliased_fill=True,docking=False,manual_callback_management=True)
 
 on_viewport_resize()
 cons_info('\n'*console_visible_lines + 'Press H for help. Press Backspace to clear the console.\n')
@@ -3394,6 +3390,14 @@ def main_loop():
     while is_dearpygui_running():
         now=perf_counter()
         main_loop_outside+=now-now_end
+
+        jobs = get_callback_queue()
+        if jobs:
+            run_callbacks(jobs)
+
+            #for job in jobs:
+            #    print(f'{job=}')
+            #    run_callbacks((job,))
 
         if set_viewport_pos_scheduled:
             set_viewport_pos_scheduled=False
