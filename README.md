@@ -18,9 +18,8 @@
 - [DearPyGui](https://dearpygui.readthedocs.io) — GUI framework
 - [PyInstaller](https://pyinstaller.org) — building the portable executable
 
-
-![image info](./info/sas.gif)
-![image info](./info/sas.png)
+![](info/sas.gif)
+![](info/sas.png)
 
 ### Configuration / First Use
 
