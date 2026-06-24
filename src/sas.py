@@ -65,6 +65,8 @@ Image_fromarray=Image.fromarray
 from pathlib import Path
 from json import dumps,loads
 
+from subprocess import Popen
+
 import os
 from os import name as os_name, system, sep, environ
 from os.path import join as path_join,dirname,abspath
@@ -1050,6 +1052,19 @@ else:
     #def round_viewport():
     #    pass
 
+    ENV = environ.copy()
+
+    LD_LIBRARY_PATH_ORIG = ENV.pop("LD_LIBRARY_PATH_ORIG", None)
+
+    if LD_LIBRARY_PATH_ORIG is not None:
+        l_info(f'{LD_LIBRARY_PATH_ORIG=}')
+        ENV["LD_LIBRARY_PATH"] = LD_LIBRARY_PATH_ORIG
+    else:
+        l_info(f'NO LD_LIBRARY_PATH_ORIG')
+        ENV.pop("LD_LIBRARY_PATH", None)
+
+    ENV.pop("LD_PRELOAD", None)
+
 settings_height=186
 
 decorated=cfg['decorated']
@@ -1385,8 +1400,10 @@ def go_to_homepage():
             cons_info(f'opening: {HOMEPAGE}')
             startfile(HOMEPAGE)
         else:
+            command=["xdg-open",HOMEPAGE]
             cons_info(f'executing: xdg-open {HOMEPAGE}')
-            system("xdg-open " + HOMEPAGE)
+            Popen(command,start_new_session=True,env=ENV)
+
     except Exception as e:
         l_error(f'go_to_homepage error:{e}')
 
