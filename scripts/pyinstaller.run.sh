@@ -16,9 +16,7 @@ echo ''
 echo running-pyinstaller
 echo wd:`pwd`
 
-python3 --version > distro.info.txt
-echo '' >> distro.info.txt
-echo pyinstaller `pyinstaller --version` >> distro.info.txt
+echo pyinstaller `pyinstaller --version` > distro.info.txt
 
 echo ''
 echo running-pyinstaller

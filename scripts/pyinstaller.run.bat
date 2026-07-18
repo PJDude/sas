@@ -1,3 +1,4 @@
+
 @cd "%~dp0.."
 @echo building with pyinstaller
 @cd src
@@ -15,10 +16,7 @@
 @echo running-pyinstaller
 @echo wd:%CD%
 
-@python --version > distro.info.txt
-@echo. >> distro.info.txt
-@echo|set /p="pyinstaller " >> distro.info.txt
-@pyinstaller --version >> distro.info.txt
+@(echo|set /p="pyinstaller " & pyinstaller --version) > distro.info.txt
 
 @echo.
 @echo running-pyinstaller

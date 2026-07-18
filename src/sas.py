@@ -166,6 +166,13 @@ except Exception as e_ver:
 
 print(f'{VER_TIMESTAMP=}')
 
+def running_in_flatpak():
+    return "FLATPAK_ID" in environ
+    #return Path("/.flatpak-info").exists()
+
+print('running_in_flatpak:',running_in_flatpak())
+
+
 title=f"Simple Audio Sweeper {VER_TIMESTAMP}"
 
 create_context()
@@ -868,10 +875,13 @@ if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
 else:
     EXECUTABLE_DIR = Path(__file__).parent
 
-if getattr(sys, 'frozen', False):
-    EXECUTABLE_DIR_REAL = os.path.dirname(sys.executable)
+if running_in_flatpak():
+    EXECUTABLE_DIR_REAL = abspath(Path(environ['XDG_DATA_HOME']))
+elif getattr(sys, 'frozen', False):
+    EXECUTABLE_DIR_REAL = dirname(sys.executable)
 else:
-    EXECUTABLE_DIR_REAL = os.path.dirname(abspath(__file__))
+    EXECUTABLE_DIR_REAL = dirname(abspath(__file__))
+
 
 print(f'{EXECUTABLE_DIR=}')
 print(f'{EXECUTABLE_DIR_REAL=}')
@@ -1847,7 +1857,8 @@ def show_info(message):
 def about_wrapper():
     text1= f'Simple Audio Sweeper {VER_TIMESTAMP}\nAuthor: Piotr Jochymek\n\n{HOMEPAGE}\n\nPJ.soft.dev.x@gmail.com\n'
     text2='\n' + distro_info + '\n'
-    show_info('\n' + text1+text2 + '\nPress H for help. Press Backspace to clear the console.\n')
+    text3='data dir:' + INTERNAL_DIR + '\n'
+    show_info('\n' + text1+text2+text3 + '\nPress H for help. Press Backspace to clear the console.\n')
 
 def normalize_text(text):
     res=[]
@@ -1867,7 +1878,8 @@ def license_wrapper():
             license_txt=Path(path_join(dirname(EXECUTABLE_DIR),'LICENSE')).read_text(encoding='ASCII')
         except Exception as exception_lic_2:
             cons_err(str(exception_lic_2))
-            sys_exit(1)
+            license_txt='\nERROR! cannot access LICENSE file !'
+            #sys_exit(1)
 
     show_info(license_txt)
 
@@ -3029,8 +3041,14 @@ except Exception as exception_1:
     print(exception_1)
     distro_info = 'Error. No distro.info.txt file.'
 
+sys.version
+
 portaudio_release,portaudio_descr=get_portaudio_version()
-distro_info+= "\nnumpy       " + str(numpy_version) + "\nsounddevice " + str(sounddevice_version) + "\nportaudio release " + str(portaudio_release) + "\n" + portaudio_descr + "\n\nDearPyGui   " + str(dpg.get_dearpygui_version()) + "\n\n"
+distro_info+= "\nPython:" + sys.version + \
+    "\nnumpy       " + str(numpy_version) + \
+    "\nsounddevice " + str(sounddevice_version) + \
+    "\nportaudio release " + str(portaudio_release) + \
+    "\n" + portaudio_descr + "\n\nDearPyGui   " + str(dpg.get_dearpygui_version()) + "\n\n"
 
 l_info(distro_info)
 
