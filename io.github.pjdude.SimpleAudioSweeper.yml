@@ -102,10 +102,12 @@ modules:
       - install -Dm644 io.github.pjdude.SimpleAudioSweeper.desktop          /app/share/applications/io.github.pjdude.SimpleAudioSweeper.desktop
       - install -Dm644 io.github.pjdude.SimpleAudioSweeper.metainfo.xml     /app/share/metainfo/io.github.pjdude.SimpleAudioSweeper.metainfo.xml
     sources:
-       - type: git
-         url: https://github.com/PJDude/sas.git
+       - type: dir
+         path: .
+       #- type: git
+       #  url: https://github.com/PJDude/sas.git
          #tag: v2.0124.549
-         commit: 41c90d2edc163f9b1b312f12655e04f8fbd27d58
+       #  commit: 41c90d2edc163f9b1b312f12655e04f8fbd27d58
 
        - type: file
          path: sas.sh
