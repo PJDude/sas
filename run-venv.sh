@@ -10,6 +10,9 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.txt
 
 cd ./src
+
+echo 'local venv run' > distro.info.txt
+
 . ../scripts/icons.convert.sh
 . ../scripts/version.gen.sh
 python3 ./sas.py
