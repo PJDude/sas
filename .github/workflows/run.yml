@@ -290,7 +290,7 @@ jobs:
     - name: images download
       uses: actions/download-artifact@v6
       with:
-        name: images
+        name: images-lin
         path: ./src/images.py
 
     - uses: actions/checkout@v6
