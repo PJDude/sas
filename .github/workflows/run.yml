@@ -222,11 +222,6 @@ jobs:
         path: ./src/images.py
         if-no-files-found: error
 
-    #####################################
-    - name: version read
-      id: version
-      run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
-
   flatpak:
     name: "Flatpak"
     needs: [lin-pyinstaller]
@@ -269,6 +264,10 @@ jobs:
       with:
         name: pyinstaller-lin
         path: ./
+
+    - name: version read
+      id: version
+      run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
 
     - name: rename windows distro
       run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.zip
