@@ -299,4 +299,6 @@ jobs:
         manifest-path: io.github.pjdude.SimpleAudioSweeper.yml
         #cache-key: flatpak-builder-${{ github.sha }}
         cache: false
-        arg: --force-clean
+        verbose: true
+        upload-artifact: true
+
