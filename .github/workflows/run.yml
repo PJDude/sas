@@ -297,4 +297,6 @@ jobs:
       with:
         bundle: io.github.pjdude.SimpleAudioSweeper.flatpak
         manifest-path: io.github.pjdude.SimpleAudioSweeper.yml
-        cache-key: flatpak-builder-${{ github.sha }}
+        #cache-key: flatpak-builder-${{ github.sha }}
+        cache: false
+        arg: --force-clean
