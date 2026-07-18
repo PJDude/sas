@@ -105,8 +105,7 @@ modules:
        - type: git
          url: https://github.com/PJDude/sas.git
          #tag: v2.0124.549
-         commit: b3d789641011853f102fc96d7d9471f35e040703
-         #branch: main
+         commit: 41c90d2edc163f9b1b312f12655e04f8fbd27d58
 
        - type: file
          path: sas.sh
