@@ -94,10 +94,12 @@ modules:
     buildsystem: simple
     build-commands:
       - mkdir -p /app/share/sas
-      - install -Dm777 sas.sh /app/bin/sas
-      - cp -vr src/. /app/share/sas
-      - cp images.py /app/share/sas/images.py
-      - cp version.txt /app/share/sas/version.txt
+      - install -Dm755 sas.sh /app/bin/sas
+      #- cp -vr src/. /app/share/sas
+      - cp -v src/sas.py /app/share/sas/sas.py
+      - cp -v images.py /app/share/sas/images.py
+      - cp -v version.txt /app/share/sas/version.txt
+      - cp -v src/distro.info.txt /app/share/sas/distro.info.txt
       - install -Dm644 src/icons/sas.png                                    /app/share/icons/hicolor/256x256/apps/io.github.pjdude.SimpleAudioSweeper.png
       - install -Dm644 io.github.pjdude.SimpleAudioSweeper.desktop          /app/share/applications/io.github.pjdude.SimpleAudioSweeper.desktop
       - install -Dm644 io.github.pjdude.SimpleAudioSweeper.metainfo.xml     /app/share/metainfo/io.github.pjdude.SimpleAudioSweeper.metainfo.xml
