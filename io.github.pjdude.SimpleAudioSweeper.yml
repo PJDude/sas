@@ -105,16 +105,16 @@ modules:
        - type: git
          url: https://github.com/PJDude/sas.git
          #tag: v2.0124.549
-         commit: 1ba9bf969bd8986e60752fc50d5d46b7904b30b9
+         commit: b3d789641011853f102fc96d7d9471f35e040703
          #branch: main
 
-      - type: file
-        path: sas.sh
-      - type: file
-        path: io.github.pjdude.SimpleAudioSweeper.desktop
-      - type: file
-        path: io.github.pjdude.SimpleAudioSweeper.metainfo.xml
-      - type: file
-        path: /hdd/purple2/private/essential/sas/src/images.py
-      - type: file
-        path: /hdd/purple2/private/essential/sas/src/version.txt
+       - type: file
+         path: sas.sh
+       - type: file
+         path: io.github.pjdude.SimpleAudioSweeper.desktop
+       - type: file
+         path: io.github.pjdude.SimpleAudioSweeper.metainfo.xml
+       - type: file
+         path: /hdd/purple2/private/essential/sas/src/images.py
+       - type: file
+         path: /hdd/purple2/private/essential/sas/src/version.txt
