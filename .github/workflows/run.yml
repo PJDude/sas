@@ -208,7 +208,7 @@ jobs:
       run: bash "pyinstaller.run.sh"
 
     #####################################
-    - name: upload lin distro
+    - name: upload lin pyinstaller distro
       uses: actions/upload-artifact@v4
       with:
         name: pyinstaller-lin
@@ -227,53 +227,6 @@ jobs:
       id: version
       run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
 
-    - name: rename linux distro
-      run: mv ./build-pyinstaller/sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.zip
-
-    #####################################
-    - name: download windows pyinstaller distro
-      uses: actions/download-artifact@v6
-      with:
-        name: pyinstaller-win
-        path: ./
-
-    - name: rename windows distro
-      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.zip
-
-    #####################################
-#    - name: download windows nuitka distro
-#      uses: actions/download-artifact@v6
-#      with:
-#        name: nuitka-win
-#        path: ./
-
-#    - name: rename windows distro
-#      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.nuitka.zip
-
-
-    #####################################
-#    - name: download linux nuitka distro
-#      uses: actions/download-artifact@v6
-#      with:
-#        name: nuitka-lin
-#        path: ./
-
-#    - name: rename linux distro
-#      run: mv ./sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.nuitka.zip
-
-    #####################################
-    - name: Create GitHub release
-      uses: softprops/action-gh-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.version.outputs.version }}
-        name: sas ${{ steps.version.outputs.version }}
-        draft: true
-        prerelease: false
-        files: |
-            sas.${{ steps.version.outputs.version }}.lin.zip
-            sas.${{ steps.version.outputs.version }}.win.zip
   flatpak:
     name: "Flatpak"
     needs: [lin-pyinstaller]
@@ -304,3 +257,35 @@ jobs:
         verbose: true
         upload-artifact: true
 
+    #####################################
+    - name: download windows pyinstaller distro
+      uses: actions/download-artifact@v6
+      with:
+        name: pyinstaller-win
+        path: ./
+
+    - name: download linux pyinstaller distro
+      uses: actions/download-artifact@v6
+      with:
+        name: pyinstaller-lin
+        path: ./
+
+    - name: rename windows distro
+      run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.zip
+
+    - name: rename linux distro
+      run: mv ./sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.zip
+
+    - name: Create GitHub release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: sas ${{ steps.version.outputs.version }}
+        draft: true
+        prerelease: false
+        files: |
+            sas.${{ steps.version.outputs.version }}.lin.zip
+            sas.${{ steps.version.outputs.version }}.win.zip
+            io.github.pjdude.SimpleAudioSweeper.${{ steps.version.outputs.version }}.flatpak
