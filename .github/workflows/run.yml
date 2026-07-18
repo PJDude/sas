@@ -223,6 +223,7 @@ jobs:
         if-no-files-found: error
 
   flatpak:
+    permissions: write-all
     name: "Flatpak"
     needs: [lin-pyinstaller]
     runs-on: ubuntu-latest
