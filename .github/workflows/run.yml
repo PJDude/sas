@@ -215,6 +215,13 @@ jobs:
         path: ./build-pyinstaller/sas.lin.zip
         if-no-files-found: error
 
+    - name: upload lin images
+      uses: actions/upload-artifact@v4
+      with:
+        name: images-lin
+        path: ./src/images.py
+        if-no-files-found: error
+
     #####################################
     - name: version read
       id: version
@@ -275,6 +282,17 @@ jobs:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
       options: --privileged
     steps:
+    - name: version download
+      uses: actions/download-artifact@v6
+      with:
+        name: version
+        path: ./src
+    - name: images download
+      uses: actions/download-artifact@v6
+      with:
+        name: images
+        path: ./src/images.py
+
     - uses: actions/checkout@v6
     - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
       with:

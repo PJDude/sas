@@ -115,6 +115,6 @@ modules:
        - type: file
          path: io.github.pjdude.SimpleAudioSweeper.metainfo.xml
        - type: file
-         path: /hdd/purple2/private/essential/sas/src/images.py
+         path: src/images.py
        - type: file
-         path: /hdd/purple2/private/essential/sas/src/version.txt
+         path: src/version.txt
