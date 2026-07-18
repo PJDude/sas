@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.pjdude.SimpleAudioSweeper</id>
+  <name>Simple Audio Sweeper</name>
+  <summary>Simple Audio Sweeper. A handy tool for DIY audio enthusiasts.</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <description>
+    <p>
+      Simple Audio Sweeper is ...
+    </p>
+    <p>Main functions:</p>
+    <ul>
+      <li>Automatic and manual frequency spectrum sweep</li>
+      <li>Generation of arbitrary test frequencies</li>
+      <li>Real-time FFT spectrum display with selectable FFT size and window function</li>
+      <li>Audio input/output device selection</li>
+      <li>8 independent spectrum buffers for result comparison</li>
+      <li>Export results to PNG or CSV</li>
+    </ul>
+
+  </description>
+
+  <launchable type="desktop-id">io.github.pjdude.SimpleAudioSweeper.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://github.com/PJDude/sas/raw/main/info/sas.png</image>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/PJDude/sas</url>
+  <url type="bugtracker">https://github.com/PJDude/sas/issues</url>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="version_string_to_repplace" date="date_string_to_replace"/>
+  </releases>
+</component>
