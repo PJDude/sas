@@ -262,8 +262,22 @@ jobs:
       with:
         tag_name: ${{ steps.version.outputs.version }}
         name: sas ${{ steps.version.outputs.version }}
-        draft: false
+        draft: true
         prerelease: false
         files: |
             sas.${{ steps.version.outputs.version }}.lin.zip
             sas.${{ steps.version.outputs.version }}.win.zip
+  flatpak:
+    name: "Flatpak"
+    needs: [lin-pyinstaller]
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      options: --privileged
+    steps:
+    - uses: actions/checkout@v6
+    - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      with:
+        bundle: io.github.pjdude.SimpleAudioSweeper.flatpak
+        manifest-path: io.github.pjdude.SimpleAudioSweeper.yml
+        cache-key: flatpak-builder-${{ github.sha }}
