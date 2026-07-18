@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Simple Audio Sweeper
+GenericName=Audio Frequency Response Analyzer
+Comment=Simple Audio Sweeper. A handy tool for DIY audio enthusiasts.
+Exec=sas
+Icon=io.github.pjdude.SimpleAudioSweeper
+Categories=AudioVideo;Audio;Utility;
+Terminal=false
+StartupNotify=true
+Keywords=audio;sweep;frequency;fft;spectrum;analyzer;
