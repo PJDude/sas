@@ -127,7 +127,7 @@ modules:
          path: src/sas.py
        - type: file
          path: src/version.txt
-       - type: file
-         path: src/distro.info.txt
+       #- type: file
+       #  path: src/distro.info.txt
        - type: file
          path: src/icons/sas.png
