@@ -96,16 +96,18 @@ modules:
       - mkdir -p /app/share/sas
       - install -Dm755 sas.sh /app/bin/sas
       #- cp -vr src/. /app/share/sas
-      - cp -v src/sas.py /app/share/sas/sas.py
+      - cp -v sas.py /app/share/sas/sas.py
       - cp -v images.py /app/share/sas/images.py
       - cp -v version.txt /app/share/sas/version.txt
-      - cp -v src/distro.info.txt /app/share/sas/distro.info.txt
-      - install -Dm644 src/icons/sas.png                                    /app/share/icons/hicolor/256x256/apps/io.github.pjdude.SimpleAudioSweeper.png
+      - cp -v distro.info.txt /app/share/sas/distro.info.txt
+      - install -Dm644 sas.png                                              /app/share/icons/hicolor/256x256/apps/io.github.pjdude.SimpleAudioSweeper.png
       - install -Dm644 io.github.pjdude.SimpleAudioSweeper.desktop          /app/share/applications/io.github.pjdude.SimpleAudioSweeper.desktop
       - install -Dm644 io.github.pjdude.SimpleAudioSweeper.metainfo.xml     /app/share/metainfo/io.github.pjdude.SimpleAudioSweeper.metainfo.xml
     sources:
-       - type: dir
-         path: .
+       #- type: dir
+       #  path: src
+       #  dest: src
+
        #- type: git
        #  url: https://github.com/PJDude/sas.git
          #tag: v2.0124.549
@@ -120,4 +122,10 @@ modules:
        - type: file
          path: src/images.py
        - type: file
+         path: src/sas.py
+       - type: file
          path: src/version.txt
+       - type: file
+         path: src/distro.info.txt
+       - type: file
+         path: src/icons/sas.png
