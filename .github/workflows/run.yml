@@ -275,6 +275,9 @@ jobs:
     - name: rename linux distro
       run: mv ./sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.zip
 
+    - name: rename linux distro
+      run: mv ./io.github.pjdude.SimpleAudioSweeper.flatpak ./sas.${{ steps.version.outputs.version }}.flatpak
+
     - name: Create GitHub release
       uses: softprops/action-gh-release@v1
       env:
@@ -287,4 +290,4 @@ jobs:
         files: |
             sas.${{ steps.version.outputs.version }}.lin.zip
             sas.${{ steps.version.outputs.version }}.win.zip
-            io.github.pjdude.SimpleAudioSweeper.${{ steps.version.outputs.version }}.flatpak
+            sas.${{ steps.version.outputs.version }}.flatpak
