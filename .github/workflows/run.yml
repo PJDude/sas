@@ -267,7 +267,7 @@ jobs:
     #####################################
     - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
       with:
-        bundle: io.github.pjdude.SimpleAudioSweeper.${{ steps.version.outputs.version }}.flatpak
+        bundle: io.github.pjdude.SimpleAudioSweeper.flatpak
         manifest-path: io.github.pjdude.SimpleAudioSweeper.local.yml
         cache-key: flatpak-builder-${{ github.sha }}
         verbose: true
