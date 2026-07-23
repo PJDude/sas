@@ -36,6 +36,6 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
-    <release version="version_string_to_repplace" date="date_string_to_replace"/>
+    <release version="VERSION_TO_REPLACE" date="DATE_TO_REPLACE"/>
   </releases>
 </component>
