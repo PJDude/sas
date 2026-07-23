@@ -8,6 +8,7 @@ VERSION=${VERSION:1:10}
 echo VERSION=$VERSION
 
 COMMIT_SHA=${GITHUB_SHA:-xxxxx}
+DATE=$(date '+%Y-%m-%d')
 
 replace() {
     local from="$1"
@@ -16,4 +17,4 @@ replace() {
 }
 
 cat io.github.pjdude.SimpleAudioSweeper.template.yml | replace COMMIT_SHA_TO_REPLACE $COMMIT_SHA | replace VERSION_TO_REPLACE $VERSION > io.github.pjdude.SimpleAudioSweeper.yml
-cat io.github.pjdude.SimpleAudioSweeper.metainfo.template.xml | replace VERSION_TO_REPLACE $VERSION > io.github.pjdude.SimpleAudioSweeper.metainfo.xml
+cat io.github.pjdude.SimpleAudioSweeper.metainfo.template.xml | replace VERSION_TO_REPLACE $VERSION | replace DATE_TO_REPLACE $DATE > io.github.pjdude.SimpleAudioSweeper.metainfo.xml

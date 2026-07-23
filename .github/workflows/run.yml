@@ -239,6 +239,11 @@ jobs:
       with:
         name: version
         path: ./src
+    #####################################
+    - name: version read
+      id: version
+      run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
+    #####################################
     - name: images download
       uses: actions/download-artifact@v6
       with:
@@ -253,26 +258,18 @@ jobs:
     - name: upload flatpak metainfo
       uses: actions/upload-artifact@v4
       with:
-        name: flatpak-metainfo
-        path: ./io.github.pjdude.SimpleAudioSweeper.metainfo.xml
-        if-no-files-found: error
-
-    #####################################
-    - name: upload flatpak manifest
-      uses: actions/upload-artifact@v4
-      with:
-        name: flatpak-manifest
-        path: ./io.github.pjdude.SimpleAudioSweeper.yml
+        name: flatpak-files-${{ steps.version.outputs.version }}
+        path: |
+            ./io.github.pjdude.SimpleAudioSweeper.metainfo.xml
+            ./io.github.pjdude.SimpleAudioSweeper.yml
         if-no-files-found: error
 
     #####################################
     - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
       with:
-        bundle: io.github.pjdude.SimpleAudioSweeper.flatpak
+        bundle: io.github.pjdude.SimpleAudioSweeper.${{ steps.version.outputs.version }}.flatpak
         manifest-path: io.github.pjdude.SimpleAudioSweeper.local.yml
-        #cache-key: flatpak-builder-${{ github.sha }}
-        cache: false
-        restore-cache: false
+        cache-key: flatpak-builder-${{ github.sha }}
         verbose: true
         upload-artifact: true
 
@@ -288,10 +285,6 @@ jobs:
       with:
         name: pyinstaller-lin
         path: ./
-
-    - name: version read
-      id: version
-      run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
 
     - name: rename windows distro
       run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.zip
