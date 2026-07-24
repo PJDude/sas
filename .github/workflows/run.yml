@@ -175,7 +175,7 @@ jobs:
     - name: checkout
       uses: actions/checkout@v6
 
-    - name: flatpak-prepare
+    - name: flatpak-preinstall
       run: |
         sudo apt-get update
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak flatpak-builder xz-utils
@@ -239,7 +239,7 @@ jobs:
       run: |
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         flatpak-builder --force-clean --user --install-deps-from=flathub flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
-        flatpak-builder --user --install --force-clean flatpak_build_dir --repo=flatpak_repo_dir "$MANIFEST"
+        flatpak-builder --user --install --force-clean flatpak_build_dir --repo=flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.yml
         flatpak build-bundle flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.flatpak io.github.pjdude.SimpleAudioSweeper
 
     - name: rename linux distro
