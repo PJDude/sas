@@ -233,13 +233,23 @@ jobs:
     - name: build flatpak
       run: |
         pwd
-        ls -l
-        bash "scripts/flatpak-prepare.sh"
+        echo ==================================
         ls -l
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+        echo ==================================
+        ls -l
+        bash "scripts/flatpak-prepare.sh"
+        echo ==================================
+        ls -l
         flatpak-builder --force-clean --user --install-deps-from=flathub flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
+        echo ==================================
+        ls -l
         flatpak-builder --user --install --force-clean flatpak_build_dir --repo=flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.yml
+        echo ==================================
+        ls -l
         flatpak build-bundle flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.flatpak io.github.pjdude.SimpleAudioSweeper
+        echo ==================================
+        ls -l
 
     - name: rename linux distro
       run: mv ./io.github.pjdude.SimpleAudioSweeper.flatpak ./sas.${{ steps.version.outputs.version }}.local.flatpak
