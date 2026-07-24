@@ -172,7 +172,6 @@ def running_in_flatpak():
 
 print('running_in_flatpak:',running_in_flatpak())
 
-
 title=f"Simple Audio Sweeper {VER_TIMESTAMP}"
 
 create_context()
@@ -870,23 +869,26 @@ def build_gui():
             add_key_press_handler(callback=key_press_callback)
             dpg.add_mouse_move_handler(callback=on_mouse_move)
 
-if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+if running_in_flatpak():
+    EXECUTABLE_DIR = Path(__file__).parent
+elif getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     EXECUTABLE_DIR = Path(sys._MEIPASS)
 else:
     EXECUTABLE_DIR = Path(__file__).parent
 
 if running_in_flatpak():
     EXECUTABLE_DIR_REAL = abspath(Path(environ['XDG_DATA_HOME']))
+    INTERNAL_DIR = EXECUTABLE_DIR_REAL
 elif getattr(sys, 'frozen', False):
     EXECUTABLE_DIR_REAL = dirname(sys.executable)
+    INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"data"])
 else:
     EXECUTABLE_DIR_REAL = dirname(abspath(__file__))
-
+    INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"data"])
 
 print(f'{EXECUTABLE_DIR=}')
 print(f'{EXECUTABLE_DIR_REAL=}')
 
-INTERNAL_DIR = sep.join([EXECUTABLE_DIR_REAL,"data"])
 INTERNAL_DIR_CSV_DEBUG = sep.join([INTERNAL_DIR,'debug'])
 INTERNAL_DIR_CSV = sep.join([INTERNAL_DIR,'csv'])
 INTERNAL_DIR_LOGS = sep.join([INTERNAL_DIR,'log'])
@@ -3035,11 +3037,13 @@ try:
 except:
     theme_callback(1)
 
+distro_info_path=path_join(EXECUTABLE_DIR,'distro.info.txt')
+
 try:
-    distro_info=Path(path_join(EXECUTABLE_DIR,'distro.info.txt')).read_text(encoding='utf-8')
+    distro_info=Path(distro_info_path).read_text(encoding='utf-8')
 except Exception as exception_1:
     print(exception_1)
-    distro_info = 'Error. No distro.info.txt file.'
+    distro_info = f'Error. No {distro_info_path} file.'
 
 sys.version
 
