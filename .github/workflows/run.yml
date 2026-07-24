@@ -237,9 +237,20 @@ jobs:
     #####################################
     - name: build flatpak
       run: |
+        flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         flatpak-builder --force-clean --user --install-deps-from=flathub flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
         flatpak-builder --user --install --force-clean flatpak_build_dir --repo=flatpak_repo_dir "$MANIFEST"
         flatpak build-bundle flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.flatpak io.github.pjdude.SimpleAudioSweeper
+
+    - name: rename linux distro
+      run: mv ./io.github.pjdude.SimpleAudioSweeper.flatpak ./sas.${{ steps.version.outputs.version }}.local.flatpak
+
+    - name: upload flatpak local
+      uses: actions/upload-artifact@v4
+      with:
+        name: flatpak-local
+        path: ./sas.${{ steps.version.outputs.version }}.local.flatpak
+        if-no-files-found: error
 
 ######################################################
   flatpak:
