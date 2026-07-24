@@ -11,7 +11,7 @@ permissions: read-all
 
 jobs:
 ##########################################################################
-  win-pyinstaller-gen-version:
+  win:
     runs-on: windows-latest
 
     steps:
@@ -64,123 +64,14 @@ jobs:
         path: ./build-pyinstaller/sas.win.zip
         if-no-files-found: error
 
-##########################################################################
-#  win-nuitka:
-#    needs: [win-pyinstaller-gen-version]
-#    runs-on: windows-latest
-
-#    steps:
-#    - name: checkout
-#      uses: actions/checkout@v6
-
-#    - name: python setup
-#      uses: actions/setup-python@v6
-#      with:
-#        python-version: "3.13"
-#        cache: 'pip'
-#        check-latest: true
-
-#    - name: pip upgrade
-#      run: python -m pip install --upgrade pip
-
-#    - name: install requirements
-#      run: pip install -r requirements.txt
-
-    #####################################
-#    - name: version download
-#      uses: actions/download-artifact@v6
-#      with:
-#        name: version
-#        path: ./src
-
-    #####################################
-#    - name: convert icons to python source
-#      working-directory: ./scripts
-#      run: "icons.convert.bat"
-#      shell: cmd
-
-    #####################################
-#    - name: run nuitka
-#      working-directory: ./scripts
-#      run: "nuitka.run.bat"
-#      shell: cmd
-
-    #####################################
-#    - name: upload win nuitka distro
-#      uses: actions/upload-artifact@v4
-#      with:
-#        name: nuitka-win
-#        path: ./build-nuitka/sas.win.zip
-#        if-no-files-found: error
-
-##########################################################################
-#  lin-nuitka:
-#    permissions: write-all
-#    needs: [win-nuitka]
-#    runs-on: ubuntu-20.04
-
-#    steps:
-#    - name: checkout
-#      uses: actions/checkout@v6
-
-#    - name: python setup
-#      uses: actions/setup-python@v6
-#      with:
-#        python-version: "3.13"
-#        cache: 'pip'
-#        check-latest: true
-
-#    - name: pip upgrade
-#      run: python -m pip install --upgrade pip
-
-#    - name: install requirements
-#      run: pip install -r requirements.txt
-
-#    - name: strip python binaries
-#      run: find $pythonLocation -name *.so* -type f -exec strip {} \;
-
-    #####################################
-#    - name: version download
-#      uses: actions/download-artifact@v6
-#      with:
-#        name: version
-#        path: ./src
-
-    #####################################
-#    - name: convert icons to python source
-#      working-directory: ./scripts
-#      run: bash "icons.convert.sh"
-
-    #####################################
-#    - name: run nuitka
-#      working-directory: ./scripts
-#      run: bash "nuitka.run.sh"
-
-
-    #####################################
-#    - name: upload lin distro
-#      uses: actions/upload-artifact@v4
-#      with:
-#        name: nuitka-lin
-#        path: ./build-nuitka/sas.lin.zip
-#        if-no-files-found: error
-
-##########################################################################
-  lin-pyinstaller:
+  lin:
     permissions: write-all
-    needs: [win-pyinstaller-gen-version]
+    needs: [win]
     runs-on: ubuntu-latest
 
     steps:
     - name: checkout
       uses: actions/checkout@v6
-
-    - name: flatpak-preinstall
-      run: |
-        sudo apt-get update
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak flatpak-builder xz-utils
-        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-        sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
 
     - name: python setup
       uses: actions/setup-python@v6
@@ -205,6 +96,12 @@ jobs:
         name: version
         path: ./src
 
+    #####################################
+    - name: version read
+      id: version
+      run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
+
+    #####################################
     - name: convert icons to python source
       working-directory: ./scripts
       run: bash "icons.convert.sh"
@@ -222,77 +119,30 @@ jobs:
         path: ./build-pyinstaller/sas.lin.zip
         if-no-files-found: error
 
-    - name: upload lin images
-      uses: actions/upload-artifact@v4
-      with:
-        name: images-lin
-        path: ./src/images.py
-        if-no-files-found: error
-
     #####################################
     - name: build flatpak
       run: |
-        pwd
-        echo ==================================
-        ls -l
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak flatpak-builder xz-utils
+        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-        echo ==================================
-        ls -l
         bash "scripts/flatpak-prepare.sh"
-        echo ==================================
-        ls -l
         flatpak-builder --force-clean --user --install-deps-from=flathub flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
-        echo ==================================
-        ls -l
         flatpak-builder --user --install --force-clean flatpak_build_dir --repo=flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.yml
-        echo ==================================
-        ls -l
         flatpak build-bundle flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.flatpak io.github.pjdude.SimpleAudioSweeper
-        echo ==================================
-        ls -l
 
-    - name: rename linux distro
-      run: mv ./io.github.pjdude.SimpleAudioSweeper.flatpak ./sas.${{ steps.version.outputs.version }}.local.flatpak
-
+    #####################################
     - name: upload flatpak local
       uses: actions/upload-artifact@v4
       with:
         name: flatpak-local
-        path: ./sas.${{ steps.version.outputs.version }}.local.flatpak
+        path: ./io.github.pjdude.SimpleAudioSweeper.flatpak
         if-no-files-found: error
 
-######################################################
-  flatpak:
-    permissions: write-all
-    name: "Flatpak"
-    needs: [lin-pyinstaller]
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
-      options: --privileged
-    steps:
-    - uses: actions/checkout@v6
-
     #####################################
-    - name: version download
-      uses: actions/download-artifact@v6
-      with:
-        name: version
-        path: ./src
-    #####################################
-    - name: version read
-      id: version
-      run: echo "version=$(cat ./src/version.txt)" >> $GITHUB_OUTPUT
-    #####################################
-    - name: images download
-      uses: actions/download-artifact@v6
-      with:
-        name: images-lin
-        path: ./src
-    #####################################
-    - name: flatpak-prepare
-      working-directory: ./scripts
-      run: bash "flatpak-prepare.sh"
+    - name: rename linux flatpak
+      run: mv ./io.github.pjdude.SimpleAudioSweeper.flatpak ./sas.${{ steps.version.outputs.version }}.flatpak
 
     #####################################
     - name: upload flatpak metainfo
@@ -301,17 +151,8 @@ jobs:
         name: flatpak-files-${{ steps.version.outputs.version }}
         path: |
             ./io.github.pjdude.SimpleAudioSweeper.metainfo.xml
-            ./io.github.pjdude.SimpleAudioSweeper.yml
+            ./io.github.pjdude.SimpleAudioSweeper.git.yml
         if-no-files-found: error
-
-    #####################################
-    - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-      with:
-        bundle: io.github.pjdude.SimpleAudioSweeper.flatpak
-        manifest-path: io.github.pjdude.SimpleAudioSweeper.local.yml
-        cache-key: flatpak-builder-${{ github.sha }}
-        verbose: true
-        upload-artifact: true
 
     #####################################
     - name: download windows pyinstaller distro
@@ -320,21 +161,15 @@ jobs:
         name: pyinstaller-win
         path: ./
 
-    - name: download linux pyinstaller distro
-      uses: actions/download-artifact@v6
-      with:
-        name: pyinstaller-lin
-        path: ./
-
+    #####################################
     - name: rename windows distro
       run: mv ./sas.win.zip ./sas.${{ steps.version.outputs.version }}.win.zip
 
+    #####################################
     - name: rename linux distro
-      run: mv ./sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.zip
+      run: mv ./build-pyinstaller/sas.lin.zip ./sas.${{ steps.version.outputs.version }}.lin.zip
 
-    - name: rename linux distro
-      run: mv ./io.github.pjdude.SimpleAudioSweeper.flatpak ./sas.${{ steps.version.outputs.version }}.flatpak
-
+    #####################################
     - name: Create GitHub release
       uses: softprops/action-gh-release@v1
       env:

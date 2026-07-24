@@ -16,18 +16,8 @@ replace() {
     sed "s/${from//\//\\/}/${to//\//\\/}/g"
 }
 
-
-echo WD:
-pwd
-
 cat io.github.pjdude.SimpleAudioSweeper.template.yml | replace COMMIT_SHA_TO_REPLACE $COMMIT_SHA | replace VERSION_TO_REPLACE $VERSION > io.github.pjdude.SimpleAudioSweeper.git.yml
-chmod -v 777 io.github.pjdude.SimpleAudioSweeper.git.yml
-echo io.github.pjdude.SimpleAudioSweeper.git.yml
+echo io.github.pjdude.SimpleAudioSweeper.git.yml - done
 
 cat io.github.pjdude.SimpleAudioSweeper.metainfo.template.xml | replace VERSION_TO_REPLACE $VERSION | replace DATE_TO_REPLACE $DATE > io.github.pjdude.SimpleAudioSweeper.metainfo.xml
-chmod -v 777 io.github.pjdude.SimpleAudioSweeper.metainfo.xml
-echo io.github.pjdude.SimpleAudioSweeper.metainfo.xml
-
-echo +++++++++++++++++++++++++++++++++++++++++++++++++++++++
-ls -l
-echo +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+echo io.github.pjdude.SimpleAudioSweeper.metainfo.xml - done
