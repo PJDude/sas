@@ -215,11 +215,6 @@ jobs:
       run: bash "pyinstaller.run.sh"
 
     #####################################
-    - name: flatpak-prepare
-      working-directory: ./scripts
-      run: bash "flatpak-prepare.sh"
-
-    #####################################
     - name: upload lin pyinstaller distro
       uses: actions/upload-artifact@v4
       with:
@@ -237,6 +232,10 @@ jobs:
     #####################################
     - name: build flatpak
       run: |
+        pwd
+        ls -l
+        bash "flatpak-prepare.sh"
+        ls -l
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         flatpak-builder --force-clean --user --install-deps-from=flathub flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
         flatpak-builder --user --install --force-clean flatpak_build_dir --repo=flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.yml
