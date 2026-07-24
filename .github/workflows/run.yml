@@ -215,6 +215,11 @@ jobs:
       run: bash "pyinstaller.run.sh"
 
     #####################################
+    - name: flatpak-prepare
+      working-directory: ./scripts
+      run: bash "flatpak-prepare.sh"
+
+    #####################################
     - name: upload lin pyinstaller distro
       uses: actions/upload-artifact@v4
       with:
@@ -229,6 +234,14 @@ jobs:
         path: ./src/images.py
         if-no-files-found: error
 
+    #####################################
+    - name: build flatpak
+      run: |
+        flatpak-builder --force-clean --user --install-deps-from=flathub flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
+        flatpak-builder --user --install --force-clean flatpak_build_dir --repo=flatpak_repo_dir "$MANIFEST"
+        flatpak build-bundle flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.flatpak io.github.pjdude.SimpleAudioSweeper
+
+######################################################
   flatpak:
     permissions: write-all
     name: "Flatpak"
