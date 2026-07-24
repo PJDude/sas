@@ -234,7 +234,7 @@ jobs:
       run: |
         pwd
         ls -l
-        bash "flatpak-prepare.sh"
+        bash "scripts/flatpak-prepare.sh"
         ls -l
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         flatpak-builder --force-clean --user --install-deps-from=flathub flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
