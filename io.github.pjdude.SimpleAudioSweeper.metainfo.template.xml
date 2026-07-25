@@ -5,7 +5,9 @@
   <summary>Simple Audio Sweeper. A handy tool for DIY audio enthusiasts.</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
-
+  <developer id="io.github.pjdude">
+    <name>Piotr Jochymek</name>
+  </developer>
   <description>
     <p>
       Simple Audio Sweeper generates any desired audio frequency and analyzes your audio system’s frequency response.
@@ -19,7 +21,6 @@
       <li>8 independent spectrum buffers for result comparison</li>
       <li>Export results to PNG or CSV</li>
     </ul>
-
   </description>
 
   <launchable type="desktop-id">io.github.pjdude.SimpleAudioSweeper.desktop</launchable>
@@ -32,6 +33,7 @@
 
   <url type="homepage">https://github.com/PJDude/sas</url>
   <url type="bugtracker">https://github.com/PJDude/sas/issues</url>
+  <url type="contact">https://github.com/PJDude</url>
 
   <content_rating type="oars-1.1"/>
 
