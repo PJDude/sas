@@ -3043,7 +3043,11 @@ try:
     distro_info=Path(distro_info_path).read_text(encoding='utf-8')
 except Exception as exception_1:
     print(exception_1)
-    distro_info = f'Error. No {distro_info_path} file.'
+    distro_info = f'Error. No {distro_info_path} file.\n'
+
+    for file in Path(EXECUTABLE_DIR).iterdir():
+        if file.is_file():
+            distro_info += str(file.name) + '\n'
 
 sys.version
 
