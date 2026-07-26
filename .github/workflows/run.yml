@@ -128,8 +128,7 @@ jobs:
         sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         bash "scripts/flatpak-prepare.sh"
-        flatpak-builder --force-clean --user --install-deps-from=flathub flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
-        flatpak-builder --user --install --force-clean flatpak_build_dir --repo=flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.yml
+        flatpak-builder --force-clean --disable-cache --user --install-deps-from=flathub --repo=flatpak_repo_dir flatpak_build_dir io.github.pjdude.SimpleAudioSweeper.yml
         flatpak build-bundle flatpak_repo_dir io.github.pjdude.SimpleAudioSweeper.flatpak io.github.pjdude.SimpleAudioSweeper
 
     #####################################
